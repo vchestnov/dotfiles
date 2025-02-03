@@ -1,0 +1,19 @@
+[core]
+    excludesfile = /home/seva/.gitignore_global
+	editor = vim
+[user]
+    name = Seva Chestnov
+    email = vchestnov@gmail.com
+[credential]
+    ; helper = cache --timeout=3600
+    helper = cache --timeout=10200
+[branch]
+    autosetupmerge = always
+[alias]
+    tr = log --graph --decorate --oneline --all
+[credential "https://git.overleaf.com"]
+    username = vchestnov@gmail.com
+
+[safe]
+	directory = /home/seva/soft/form
+	directory = /home/seva/soft/form

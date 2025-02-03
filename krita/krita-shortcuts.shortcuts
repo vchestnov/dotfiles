@@ -1,0 +1,22 @@
+[Shortcuts]
+KisToolSelectRectangular=S
+activateNextLayer=PgUp
+activatePreviousLayer=PgDown
+activate_preset_0=Ctrl+Alt+0;\s
+activate_preset_1=Ctrl+Alt+1; E
+add_new_paint_layer=F1
+convert-to-path=none
+decrease_opacity=P
+edit_selection=Shift+S
+erase_action=Shift+E
+help_contents=none
+mirrorImageHorizontal=M
+mirror_canvas=none
+remove_layer=Shift+Del
+selection_tool_mode_add=+
+selection_tool_mode_intersect=*
+selection_tool_mode_subtract=-
+show_mypaint_shade_selector=none
+show_snap_options_popup=none
+toggle_layer_visibility=`
+view_toggledockers=~
