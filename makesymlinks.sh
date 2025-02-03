@@ -10,11 +10,19 @@ dir=~/dotfiles                    # dotfiles directory
 private_dir=~/dotfiles/private    # private dotfiles directory
 olddir=~/.config/dotfiles_old     # old dotfiles backup directory
 #files="bashrc vimrc vim zshrc oh-my-zsh private scrotwm.conf Xresources"    # list of files/folders to symlink in homedir
-# list of dotfiles in ~/dotfiles/
-files="vimrc vim gitignore_global gitconfig xinitrc xsession bashrc zshrc tmux.conf fzf.bash"
+if [[ "$(uname)" == "Darwin" ]]; then
+    # list of dotfiles in ~/dotfiles/
+   files="vimrc vim gitignore_global gitconfig zshrc tmux.conf fzf.zsh"
 
-# private dotfiles in ~/dotfiles/private
-private_files="bash_history"
+    # private dotfiles in ~/dotfiles/private
+    private_files=""
+else
+    # list of dotfiles in ~/dotfiles/
+    files="vimrc vim gitignore_global gitconfig xinitrc xsession bashrc zshrc tmux.conf fzf.bash"
+
+    # private dotfiles in ~/dotfiles/private
+    private_files="bash_history"
+fi
 
 ##########
 

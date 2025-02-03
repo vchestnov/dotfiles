@@ -1,6 +1,55 @@
 set nocompatible
 filetype off
 
+" Check if vim-plug is installed, and install it if missing
+let data_dir = has('nvim') ? stdpath('data') . '/site' : '~/.vim'
+if empty(glob(data_dir . '/autoload/plug.vim'))
+  silent execute '!curl -fLo '.data_dir.'/autoload/plug.vim --create-dirs  https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim'
+  autocmd VimEnter * PlugInstall --sync | source $MYVIMRC
+endif
+
+call plug#begin('~/.vim/plugged')
+Plug 'VundleVim/Vundle.vim'
+
+Plug 'tomasr/molokai'
+
+Plug 'scrooloose/nerdtree'
+
+" Plug 'jeetsukumaran/vim-buffergator'
+" Plug 'kien/ctrlp.vim'
+
+" Plug 'scrooloose/nerdcommenter'
+Plug 'tpope/vim-commentary'
+
+Plug 'ervandew/supertab'
+Plug 'tpope/vim-surround'
+
+Plug 'godlygeek/tabular'
+"Plug 'nathanaelkane/vim-indent-guides'
+
+Plug 'tpope/vim-git'
+Plug 'tpope/vim-fugitive'
+Plug 'airblade/vim-gitgutter'
+
+Plug 'bling/vim-airline'
+Plug 'vim-airline/vim-airline-themes'
+
+" Plug 'restore_view.vim'
+Plug 'jpalardy/vim-slime'
+"Plug 'konfekt/fastfold'
+"Plug 'lervag/vimtex'
+
+Plug 'wellle/targets.vim'
+
+Plug 'junegunn/fzf'
+Plug 'junegunn/fzf.vim'
+
+Plug 'altercation/vim-colors-solarized'
+Plug 'NLKNguyen/papercolor-theme'
+Plug 'morhetz/gruvbox'
+call plug#end()
+
+if 0
 set rtp+=~/.vim/bundle/Vundle.vim/
 call vundle#begin()
 
@@ -46,6 +95,8 @@ Plugin 'morhetz/gruvbox'
 " Plugin 'joshdick/onedark.vim'
 
 call vundle#end()
+endif
+
 syntax on
 filetype plugin indent on
 
