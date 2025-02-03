@@ -7,29 +7,45 @@
 ########## Variables
 
 dir=~/dotfiles                    # dotfiles directory
-olddir=~/.config/dotfiles_old             # old dotfiles backup directory
+private_dir=~/dotfiles/private    # private dotfiles directory
+olddir=~/.config/dotfiles_old     # old dotfiles backup directory
 #files="bashrc vimrc vim zshrc oh-my-zsh private scrotwm.conf Xresources"    # list of files/folders to symlink in homedir
-files="vimrc vim gitignore_global gitconfig xinitrc xsession bashrc tmux.conf fzf.bash bash_history"
+# list of dotfiles in ~/dotfiles/
+files="vimrc vim gitignore_global gitconfig xinitrc xsession bashrc zshrc tmux.conf fzf.bash"
+
+# private dotfiles in ~/dotfiles/private
+private_files="bash_history"
 
 ##########
 
-# create dotfiles_old in homedir
-echo -n "Creating $olddir for backup of any existing dotfiles in ~ ..."
+# create backup directory for old dotfiles
+echo -n "Creating $olddir for backup of any existing dotfiles in home ..."
 mkdir -p $olddir
 echo "done"
 
 # change to the dotfiles directory
 echo -n "Changing to the $dir directory ..."
-cd $dir
+cd $dir || { echo "Failed to change directory to $dir"; exit 1; }
 echo "done"
 
-# move any existing dotfiles in homedir to dotfiles_old directory, then create symlinks from the homedir to any files in the ~/dotfiles directory specified in $files
+# process public dotfiles
 for file in $files; do
-    echo "Moving any existing dotfiles from ~ to $olddir"
-    mv ~/.$file ~/dotfiles_old/
-    echo "Creating symlink to $file in home directory."
-    ln -s $dir/$file ~/.$file
+    echo "Moving any existing dotfiles from home to $olddir"
+    mv -f ~/.$file "$olddir/"
+    echo "Creating symlink to $file in home directory"
+    ln -s "$dir/$file" ~/.$file
 done
+
+# process private dotfiles
+for file in $private_files; do
+    echo "Moving any existing dotfiles from home to $olddir"
+    mkdir -p "$olddir/private/$(dirname $file)"
+    mv -f ~/.$file "$olddir/private/$file"
+    echo "Creating symlink to $file in home directory"
+    ln -s "$private_dir/$file" ~/.$file
+done
+
+echo "Dotfiles setup complete. Auf Wiedersehen!"
 
 # install_zsh () {
 # # Test to see if zshell is installed.  If it is:
