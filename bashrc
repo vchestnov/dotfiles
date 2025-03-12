@@ -140,6 +140,8 @@ export LD_LIBRARY_PATH="/home/seva/soft/topcom/install/lib:$LD_LIBRARY_PATH"
 CPATH="$CPATH:/home/seva/soft/topcom/install/include"
 export CPATH
 
+export LD_LIBRARY_PATH="/home/seva/soft/finiteflow/build/lib:$LD_LIBRARY_PATH"
+
 # source "$HOME/soft/OpenXM/rc/dot.bashrc"
 # FORM
 export FORMPATH="$HOME/soft/form/color:$FORMPATH"
@@ -244,3 +246,5 @@ export PYTHONPATH=$PYTHONPATH:/path/to/finiteflow/pythonapi
 # export NVM_DIR="$HOME/.config/nvm"
 # [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
 # [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
+
+alias gnomecc='XDG_CURRENT_DESKTOP=GNOME gnome-control-center'
