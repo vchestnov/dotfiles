@@ -47,6 +47,8 @@ Plug 'junegunn/fzf.vim'
 Plug 'altercation/vim-colors-solarized'
 Plug 'NLKNguyen/papercolor-theme'
 Plug 'morhetz/gruvbox'
+
+Plug 'machakann/vim-highlightedyank'
 call plug#end()
 
 if 0
@@ -208,6 +210,9 @@ nmap <silent> <C-l> :wincmd l<CR>
 let g:airline#extensions#tabline#enabled = 1
 let g:airline#extensions#tabline#fnamemod = ':t'
 let g:airline_theme = 'minimalist'
+
+let g:highlightedyank_highlight_duration = 200
+set showcmd
 
 " " CtrlP Settings
 " let g:ctrlp_user_command = {
