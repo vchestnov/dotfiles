@@ -1,1 +1,2 @@
-syn region texMathZoneC matchgroup=texStatement start='\\begin{\(align\|align\*\)}' end='\\end{\(align\|align\*\)}' contains=@texMathZoneGroup
+" Make align a full math zone (like equation)
+syn region texMathZoneC start='\\begin{\(align\|align\*\)}' end='\\end{\(align\|align\*\)}' keepend contains=@texMathZoneGroup
