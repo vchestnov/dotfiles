@@ -51,58 +51,8 @@ Plug 'morhetz/gruvbox'
 Plug 'machakann/vim-highlightedyank'
 call plug#end()
 
-if 0
-set rtp+=~/.vim/bundle/Vundle.vim/
-call vundle#begin()
-
-Plugin 'VundleVim/Vundle.vim'
-
-Plugin 'tomasr/molokai'
-
-Plugin 'scrooloose/nerdtree'
-
-" Plugin 'jeetsukumaran/vim-buffergator'
-" Plugin 'kien/ctrlp.vim'
-
-" Plugin 'scrooloose/nerdcommenter'
-Plugin 'tpope/vim-commentary'
-
-Plugin 'ervandew/supertab'
-Plugin 'tpope/vim-surround'
-
-Plugin 'godlygeek/tabular'
-"Plugin 'nathanaelkane/vim-indent-guides'
-
-Plugin 'tpope/vim-git'
-Plugin 'tpope/vim-fugitive'
-Plugin 'airblade/vim-gitgutter'
-
-Plugin 'bling/vim-airline'
-Plugin 'vim-airline/vim-airline-themes'
-
-Plugin 'restore_view.vim'
-Plugin 'jpalardy/vim-slime'
-"Plugin 'konfekt/fastfold'
-"Plugin 'lervag/vimtex'
-
-Plugin 'wellle/targets.vim'
-
-Plugin 'junegunn/fzf'
-Plugin 'junegunn/fzf.vim'
-
-Plugin 'altercation/vim-colors-solarized'
-Plugin 'NLKNguyen/papercolor-theme'
-Plugin 'morhetz/gruvbox'
-
-" Plugin 'joshdick/onedark.vim'
-
-call vundle#end()
-endif
-
 syntax on
 filetype plugin indent on
-
-"autocmd vimenter * NERDTree
 
 function! NERDTreeQuit()
     redir => buffersoutput
@@ -285,10 +235,6 @@ autocmd BufNewFile,BufRead *.tex
 
 command! -complete=file -nargs=1 Remove :echo 'Remove: '.'<f-args>'.' '.(delete(<f-args>) == 0 ? 'SUCCEEDED' : 'FAILED')
 
-
-" autocmd BufNewFile,BufRead *.m set textwidth=200
-" autocmd BufNewFile,BufRead *.tex set textwidth=150
-
 let g:ConqueTerm_SessionSupport = 1
 
 ""Highlight long lines with grey
@@ -461,26 +407,6 @@ command! -nargs=* ReplH call ReplH(<f-args>)
 xmap <F1> <Plug>SlimeRegionSend
 nmap <F1> <Plug>SlimeParagraphSend
 nmap <F2> vaw<F1>
-" nmap <F2> :call SendMmaCodeInspect()<cr>
-
-function! SendMmaCodeInspect()
-    let l:save=&filetype
-    " let f_save=&filetype
-    set filetype=mmaCodeInspect
-    let l:rv = getreg('"')
-    let l:rt = getregtype('"')
-
-    silent exe "normal! yip"
-    call slime#send(@")
-    " set opfunc=slime#send_op<cr>g@ip
-    " call <Plug>SlimeParagraphSend
-    " echo &filetype
-    " ex "set filetype=" . l:save
-    " let &filetype=f_save
-    let &filetype=l:save
-    call setreg('"', l:rv, l:rt)
-    " call slime#send("test")
-endfunction
 
 " " https://vi.stackexchange.com/a/16709
 " " this causes a crash when used together with FZF
