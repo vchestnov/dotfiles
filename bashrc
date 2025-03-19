@@ -121,8 +121,11 @@ alias zathura='zathura --fork'
 
 export PATH="$PATH:$HOME/soft/julia/julia-1.7.2/bin"
 
-LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/local/lib"
-export LD_LIBRARY_PATH
+if [ -z "$LD_LIBRARY_PATH" ]; then
+    export LD_LIBRARY_PATH="/usr/local/lib"
+else
+    export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/local/lib"
+fi
 
 ## TeXLive 2022
 #export PATH="$HOME/software/texlive/2018/bin/x86_64-linux:$PATH"
