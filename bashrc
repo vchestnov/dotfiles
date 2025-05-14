@@ -217,7 +217,7 @@ if [[ $(hostname) = thinkpad ]]; then
 fi
 
 # FiniteFlow python API
-export PYTHONPATH=$PYTHONPATH:/path/to/finiteflow/pythonapi
+# export PYTHONPATH=$PYTHONPATH:/path/to/finiteflow/pythonapi
 
 
 # export PATH="$PATH:$HOME/soft/mambaforge/bin"

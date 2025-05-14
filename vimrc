@@ -80,6 +80,7 @@ autocmd WinEnter * call NERDTreeQuit()
 
 autocmd VimEnter * wincmd w
 
+
 set hidden       " hides buffers, instead of closing them
 set nowrap       " don't wrap lines
 set tabstop=4    " a tab is 4 spaces
@@ -103,6 +104,20 @@ set ttimeoutlen=50
 
 set formatoptions+=ct
 set tw=79
+
+function! PrefsttW()
+  " Soft wrap settings
+  set wrap
+  set linebreak
+  nnoremap j gj
+  nnoremap k gk
+  set tw=0
+  " Indentation settings
+  " set tabstop=2
+  " set shiftwidth=2
+  " set softtabstop=2
+  set expandtab
+endfunction   
 
 set t_Co=256
 colorscheme molokai
@@ -213,8 +228,9 @@ set showcmd
 
 autocmd BufNewFile,BufRead *.prc set filetype=form
 autocmd BufNewFile,BufRead *.m,*.wl set filetype=mma
-" autocmd BufNewFile,BufRead *.rr set filetype=asir
-autocmd BufNewFile,BufRead *.rr set filetype=c
+autocmd BufNewFile,BufRead *.sing set filetype=cpp
+autocmd BufNewFile,BufRead *.rr set filetype=asir
+" autocmd BufNewFile,BufRead *.rr set filetype=c
 autocmd BufNewFile,BufRead *.tex set filetype=tex
 " autocmd BufNewFile,BufRead *.h set filetype=form
 
@@ -443,6 +459,7 @@ function! s:bswitch_normal(count, direction)
     endif
 endfunction
 
+
 " function! s:bswitch_normal(count, direction)
 "     " This function switches to the previous or next normal buffer excluding
 "     " all special buffers like quickfix or terminals
@@ -475,3 +492,14 @@ endfunction
 
 nnoremap <silent> <leader>bp :<C-u>execute 'call <SNR>' . <SID>SID() . '_bswitch_normal(' . v:count1 . ', "previous")'<CR>
 nnoremap <silent> <leader>bn :<C-u>execute 'call <SNR>' . <SID>SID() . '_bswitch_normal(' . v:count1 . ', "next")'<CR>
+
+" Enable enhanced command-line completion
+set wildmenu
+" Make tab completion complete the extension too
+" set wildmode=longest:full,full
+set wildmode=full
+
+" Deprioritize LaTeX auxiliary files during tab completion
+set suffixes=.aux,.log,.dvi,.bak,.bbl,.blg,.out,.toc,.fdb_latexmk,.fls,.synctex.gz,.pdf
+" Add extensions to be checked when searching for files
+set suffixesadd=.tex,.bib,.sty
