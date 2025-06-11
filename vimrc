@@ -166,6 +166,43 @@ let mapleader=" "
 autocmd Filetype form setlocal commentstring=*\ %s
 autocmd Filetype mma setlocal commentstring=(*%s*)
 
+if &filetype ==# 'form'
+  setlocal commentstring=*%s
+
+  " Override gc in normal, visual, and operator-pending modes
+  nmap  <buffer> gc <Plug>(FormCommentOperator)
+  xmap  <buffer> gc :<C-u>call FormCommentRange(line("'<"), line("'>"))<CR>
+  omap  <buffer> gc :<C-u>set operatorfunc=FormCommentOpFunc<CR>g@
+
+  " Operator-pending entry point
+  nnoremap <silent> <Plug>(FormCommentOperator) :set operatorfunc=FormCommentOpFunc<CR>g@
+endif
+
+function! FormCommentLineToggle(line)
+  let l:line = getline(a:line)
+  if l:line =~ '^\*'
+    call setline(a:line, substitute(l:line, '^\*', '', ''))
+  else
+    call setline(a:line, '*' . l:line)
+  endif
+endfunction
+
+function! FormCommentRange(start, end)
+  for lnum in range(a:start, a:end)
+    call FormCommentLineToggle(lnum)
+  endfor
+endfunction
+
+function! FormCommentOpFunc(type)
+  " if a:type ==# 'line'
+    call FormCommentRange(line("'["), line("']"))
+  " elseif a:type ==# 'char' || a:type ==# 'block'
+  "   " Expand to whole lines for simplicity
+  "   call FormCommentRange(line("'<"), line("'>"))
+  " endif
+endfunction
+
+
 nmap <silent> <C-h> :wincmd h<CR>
 nmap <silent> <C-j> :wincmd j<CR>
 nmap <silent> <C-k> :wincmd k<CR>
@@ -326,7 +363,7 @@ let g:slime_asir_paste_index = 0
 function! _EscapeText_mma(text)
     let text = substitute(a:text, "\n*$", "", "")
     if count(text, "\n") >= 2
-        let file = printf("/tmp/.slime.%c.m", 97 + g:slime_mma_paste_index)
+        let file = printf("/tmp/.seva.slime.%c.m", 97 + g:slime_mma_paste_index)
         let g:slime_mma_paste_index = (g:slime_mma_paste_index + 1) % 26
         call writefile(split(a:text, "\n"), file, "b")
         return ["Get[\"" . file . "\"]\n"]
@@ -338,7 +375,7 @@ function! _EscapeText_mmaCodeInspect(text)
     echo "mmaCodeInspect"
     let text = substitute(a:text, "\n*$", "", "")
     if count(text, "\n") >= 2
-        let file = printf("/tmp/.slime.%c.m", 97 + g:slime_mma_paste_index)
+        let file = printf("/tmp/.seva.slime.%c.m", 97 + g:slime_mma_paste_index)
         let g:slime_mma_paste_index = (g:slime_mma_paste_index + 1) % 26
         call writefile(split(a:text, "\n"), file, "b")
         " return ["Get[\"" . file . "\"]\n"]
@@ -356,7 +393,7 @@ endfunction
 function! _EscapeText_asir(text)
     let text = substitute(a:text, "\n*$", "", "")
     if count(text, "\n") >= 2
-        let file = printf("/tmp/.slime.%c.rr", 97 + g:slime_asir_paste_index)
+        let file = printf("/tmp/.seva.slime.%c.rr", 97 + g:slime_asir_paste_index)
         let g:slime_asir_paste_index = (g:slime_asir_paste_index + 1) % 26
         call writefile(add(split(a:text, "\n"), "end\$"), file, "b")
         return ["load(\"" . file . "\");\n"]
