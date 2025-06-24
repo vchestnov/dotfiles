@@ -865,7 +865,7 @@ EOF
     log_success "dwm desktop entry created"
 
     log_info "Disabling IBus for reliable keyboard layout switching..."
-    tee -a ~/.xprofile > /dev/null << 'EOF'
+    tee ~/.xprofile > /dev/null << 'EOF'
 # Disable IBus to prevent conflicts with setxkbmap
 export GTK_IM_MODULE=none
 export QT_IM_MODULE=none
@@ -964,32 +964,6 @@ EOF
     cat > "$HOME/.bash_profile" << 'EOF'
 # Source .bashrc if it exists
 [[ -f ~/.bashrc ]] && . ~/.bashrc
-EOF
-
-    # Create basic Xresources
-    cat > "$HOME/.Xresources" << 'EOF'
-! st terminal colors and settings
-st.font: Liberation Mono:pixelsize=14:antialias=true:autohint=true
-
-! Colors (Gruvbox dark theme)
-*.foreground: #ebdbb2
-*.background: #282828
-*.color0:     #282828
-*.color1:     #cc241d
-*.color2:     #98971a
-*.color3:     #d79921
-*.color4:     #458588
-*.color5:     #b16286
-*.color6:     #689d6a
-*.color7:     #a89984
-*.color8:     #928374
-*.color9:     #fb4934
-*.color10:    #b8bb26
-*.color11:    #fabd2f
-*.color12:    #83a598
-*.color13:    #d3869b
-*.color14:    #8ec07c
-*.color15:    #ebdbb2
 EOF
 
     # Ensure all config files have proper ownership
@@ -1369,6 +1343,7 @@ if prompt_continue "Configure and patch suckless tools?"; then
 
                 apply_patch "https://dwm.suckless.org/patches/center/dwm-center-6.2.diff" "center"
                 git_apply_patch "$PATCHES_DIR/dwm/dwm-fix-dmenucmd.diff" "dmenucmd"
+                git_apply_patch "$PATCHES_DIR/dwm/dwm-xrdb-patch.diff" "xrdb"
 				# apply_patch "https://dwm.suckless.org/patches/xresources/dwm-xresources-20210827-138b405.diff" "xresources" "--fuzz=3"
 
                 # cp config.def.h /tmp/config.def.h.tmp
@@ -1483,10 +1458,10 @@ dwm.font: JetBrains Mono:pixelsize=14:antialias=true:hinting=true
 ! DWM specific Xresources
 dwm.normbgcolor: #282828
 dwm.normfgcolor: #ebdbb2
-dwm.selbgcolor: #458588
-dwm.selfgcolor: #ebdbb2
+dwm.selbgcolor: #fe8019
+dwm.selfgcolor: #282828
 dwm.normbordercolor: #504945
-dwm.selbordercolor: #83a598
+dwm.selbordercolor: #fe8019
 
 ! dmenu specific Xresources
 ! Normal item

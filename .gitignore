@@ -2,3 +2,4 @@ private/
 vim/*
 !vim/after/
 # !vim/after/**
+garage
