@@ -4,6 +4,10 @@
 # This script installs and configures a minimal development environment
 # Enhanced with breaks and safepoints for safer execution
 
+# =============================================================================
+# INTRO
+# =============================================================================
+
 set -e  # Exit on any error
 
 # Colors for output
@@ -139,7 +143,7 @@ log_success "Pre-flight checks completed"
 # SECTION 1: DIRECTORY SETUP
 # =============================================================================
 
-if prompt_continue "Set up directory structure and PATH?"; then
+# if prompt_continue "Set up directory structure and PATH?"; then
     log_section "DIRECTORY SETUP"
     
     # Create directories
@@ -159,7 +163,7 @@ if prompt_continue "Set up directory structure and PATH?"; then
     fi
 
     log_success "Directory structure created"
-fi
+# fi
 
 # =============================================================================
 # SECTION 2: SYSTEM PACKAGES
@@ -228,7 +232,9 @@ if prompt_continue "Update system and install build dependencies?"; then
         rfkill \
         blueman \
         vlc \
-        geeqie
+        geeqie \
+        android-file-transfer \
+        gnome-screenshot
 
     log_success "Build dependencies installed"
 fi
@@ -857,6 +863,17 @@ DesktopNames=dwm
 EOF
 
     log_success "dwm desktop entry created"
+
+    log_info "Disabling IBus for reliable keyboard layout switching..."
+    tee -a ~/.xprofile > /dev/null << 'EOF'
+# Disable IBus to prevent conflicts with setxkbmap
+export GTK_IM_MODULE=none
+export QT_IM_MODULE=none
+export XMODIFIERS=
+EOF
+
+    log_success "~/.xprofile updated to disable IBus"
+    
 fi
 
 # =============================================================================
@@ -1176,33 +1193,138 @@ fi
 if prompt_continue "Configure and patch suckless tools?"; then
     log_section "SUCKLESS CONFIGURATION"
 
-	# Function to apply a patch
-    apply_patch() {
-        local patch_url=$1
-        local patch_name=$2
-        local patch_args="${3:-}"
+    PATCHES_DIR="$HOME/dotfiles/patches"
+
+	# apply_patch() {
+	# 	local source=$1
+	# 	local patch_name=$2
+	# 	local patch_args="${3:-}"
+	# 	local use_git_apply="${4:-}"  # Pass "git" to use git apply
+	# 	local patch_file=""
+
+	# 	# Determine patch source type
+	# 	if [[ "$source" =~ ^https?:// ]]; then
+	# 		patch_file="${patch_name}.patch"
+	# 		if wget -q "$source" -O "$patch_file"; then
+	# 			log_info "Downloaded $patch_name patch from URL"
+	# 		else
+	# 			log_warning "Failed to download $patch_name patch"
+	# 			return
+	# 		fi
+	# 	elif [ -f "$source" ]; then
+	# 		patch_file="$source"
+	# 		patch_name="$(basename "$source" .patch)"
+	# 		log_info "Applying local patch from file: $patch_file"
+	# 	else
+	# 		log_warning "Local patch not found: $source"
+	# 		return
+	# 	fi
+
+	# 	# Apply the patch using either `patch` or `git apply`
+	# 	if [[ "$use_git_apply" == "git" ]]; then
+	# 		if git apply $patch_args "$patch_file"; then
+	# 			log_success "$patch_name patch applied successfully with git apply"
+	# 		else
+	# 			log_error "$patch_name patch failed with git apply"
+	# 			cp "$patch_file" "${patch_name}.failed.patch"
+	# 			log_info "Failed patch saved as ${patch_name}.failed.patch for manual review"
+	# 		fi
+	# 	else
+	# 		if patch -p1 $patch_args < "$patch_file"; then
+	# 			log_success "$patch_name patch applied successfully"
+	# 		else
+	# 			log_error "$patch_name patch failed"
+	# 			cp "$patch_file" "${patch_name}.failed.patch"
+	# 			log_info "Failed patch saved as ${patch_name}.failed.patch for manual review"
+	# 		fi
+	# 	fi
+	# }
+
+	apply_patch() {
+		local source=$1
+		local patch_name=$2
+		local patch_args="${3:-}"
+		local patch_file=""
+
+		# Determine patch source type
+		if [[ "$source" =~ ^https?:// ]]; then
+			patch_file="${patch_name}.patch"
+			if wget -q "$source" -O "$patch_file"; then
+				log_info "Downloaded $patch_name patch from URL"
+			else
+				log_warning "Failed to download $patch_name patch"
+				return
+			fi
+		elif [ -f "$source" ]; then
+			patch_file="$source"
+			patch_name="$(basename "$source" .patch)"
+			log_info "Applying local patch from file: $patch_file"
+		else
+			log_warning "Local patch not found: $source"
+			return
+		fi
+
+		# Apply the patch
+		if patch -p1 ${patch_args} < "$patch_file" 2>/dev/null; then
+			log_success "$patch_name patch applied successfully"
+		else
+			log_error "$patch_name patch failed"
+			cp "$patch_file" "${patch_name}.failed.patch"
+			log_info "Failed patch saved as ${patch_name}.failed.patch for manual review"
+		fi
+	}
+
+	git_apply_patch() {
+		local source=$1
+		local patch_file=""
+
+		if [ -f "$source" ]; then
+			patch_file="$source"
+			patch_name="$(basename "$source" .patch)"
+			log_info "Applying local patch from file: $patch_file"
+		else
+			log_warning "Local patch not found: $source"
+			return
+		fi
+
+		# Apply the patch
+		if git apply "$patch_file" 2>/dev/null; then
+			log_success "$patch_name patch applied successfully"
+		else
+			log_error "$patch_name patch failed"
+			cp "$patch_file" "${patch_name}.failed.patch"
+			log_info "Failed patch saved as ${patch_name}.failed.patch for manual review"
+		fi
+	}
+
+
+	# # Function to apply a patch
+    # apply_patch() {
+        # local patch_url=$1
+        # local patch_name=$2
+        # local patch_args="${3:-}"
         
-        if wget -q "$patch_url" -O "${patch_name}.patch" 2>/dev/null; then
-            log_info "Applying $patch_name patch..."
-            if patch -p1 ${patch_args} < "${patch_name}.patch" 2>/dev/null; then
-                log_success "$patch_name patch applied successfully"
-            else
-                # log_warning "$patch_name patch failed - checking for partial application..."
-                # # Try to apply with fuzzy matching
-                # if patch -p1 --fuzz=3 < "${patch_name}.patch" 2>/dev/null; then
-                #     log_success "$patch_name patch applied with fuzzy matching"
-                # else
-                    log_error "$patch_name patch failed"
-                    # Save the failed patch for manual inspection
-                    cp "${patch_name}.patch" "${patch_name}.failed.patch"
-                    log_info "Failed patch saved as ${patch_name}.failed.patch for manual review"
-                # fi
-            fi
-            rm -f "${patch_name}.patch"
-        else
-            log_warning "Failed to download $patch_name patch"
-        fi
-    }
+        # if wget -q "$patch_url" -O "${patch_name}.patch" 2>/dev/null; then
+            # log_info "Applying $patch_name patch..."
+            # if patch -p1 ${patch_args} < "${patch_name}.patch" 2>/dev/null; then
+                # log_success "$patch_name patch applied successfully"
+            # else
+                # # log_warning "$patch_name patch failed - checking for partial application..."
+                # # # Try to apply with fuzzy matching
+                # # if patch -p1 --fuzz=3 < "${patch_name}.patch" 2>/dev/null; then
+                # #     log_success "$patch_name patch applied with fuzzy matching"
+                # # else
+                    # log_error "$patch_name patch failed"
+                    # # Save the failed patch for manual inspection
+                    # cp "${patch_name}.patch" "${patch_name}.failed.patch"
+                    # log_info "Failed patch saved as ${patch_name}.failed.patch for manual review"
+                # # fi
+            # fi
+            # # rm -f "${patch_name}.patch"
+        # else
+            # log_warning "Failed to download $patch_name patch"
+        # fi
+    # }
     
     # Function to configure a suckless tool
     configure_suckless_tool() {
@@ -1232,43 +1354,48 @@ if prompt_continue "Configure and patch suckless tools?"; then
 			;;
                 
             "dmenu")
+				# apply_patch "https://tools.suckless.org/dmenu/patches/xresources/dmenu-xresources-4.9.diff" "xresources"
                 apply_patch "https://tools.suckless.org/dmenu/patches/center/dmenu-center-20240616-36c3d68.diff" "center"
-                # Disable centered dmenu by default (use -c)
-                sed -i 's/\(^static int centered = \)1\(;.*\)/\10\2/' config.def.h
                 apply_patch "https://tools.suckless.org/dmenu/patches/fuzzymatch/dmenu-fuzzymatch-5.3.diff" "fuzzymatch" "--fuzz=3"
 				apply_patch "https://tools.suckless.org/dmenu/patches/fuzzyhighlight/dmenu-fuzzyhighlight-5.3.diff" "fuzzyhighlight" "--fuzz=3"
+				# Note: this manual patch should already disable the centered dmenu
+			    git_apply_patch "$PATCHES_DIR/dmenu/dmenu-xresources-combined.diff" "xresources"
+                # Disable centered dmenu by default (use -c)
+                # sed -i 's/\(^static int centered = \)1\(;.*\)/\10\2/' config.def.h
 			;;
                 
             "dwm")
                 local dmenu_configured=false
 
                 apply_patch "https://dwm.suckless.org/patches/center/dwm-center-6.2.diff" "center"
+                git_apply_patch "$PATCHES_DIR/dwm/dwm-fix-dmenucmd.diff" "dmenucmd"
+				# apply_patch "https://dwm.suckless.org/patches/xresources/dwm-xresources-20210827-138b405.diff" "xresources" "--fuzz=3"
 
-                cp config.def.h /tmp/config.def.h.tmp
+                # cp config.def.h /tmp/config.def.h.tmp
                 
                 # Add -i for case-insensitive matching in dmenu
-                sed -i '
-                    # Match one-line definition with both start and };
-                    /^static.*dmenucmd\[\][[:space:]]*=/ {
-                        /};/ {
-                            /-i/! s/\("dmenu[^"]*"\)/\1, "-i"/
-                            n
-                        }
-                    }
-                    # Match multi-line dmenucmd[] arrays
-                    /^static.*dmenucmd\[\][[:space:]]*=/,/};/ {
-                        /-i/! s/\("dmenu[^"]*"\)/\1, "-i"/
-                    }
-                ' config.def.h
+                # sed -i '
+                #     # Match one-line definition with both start and };
+                #     /^static.*dmenucmd\[\][[:space:]]*=/ {
+                #         /};/ {
+                #             /-i/! s/\("dmenu[^"]*"\)/\1, "-i"/
+                #             n
+                #         }
+                #     }
+                #     # Match multi-line dmenucmd[] arrays
+                #     /^static.*dmenucmd\[\][[:space:]]*=/,/};/ {
+                #         /-i/! s/\("dmenu[^"]*"\)/\1, "-i"/
+                #     }
+                # ' config.def.h
 
-                # Check if the substitution was made
-                if ! cmp -s config.def.h /tmp/config.def.h.tmp; then
-                    log_success "Added -i flag to dmenu_run command"
-                    dmenu_configured=true
-                else
-                    log_warning "Failed to modify dmenu_run command"
-                fi
-                rm -f /tmp/config.def.h.tmp
+                # # Check if the substitution was made
+                # if ! cmp -s config.def.h /tmp/config.def.h.tmp; then
+                #     log_success "Added -i flag to dmenu_run command"
+                #     dmenu_configured=true
+                # else
+                #     log_warning "Failed to modify dmenu_run command"
+                # fi
+                # rm -f /tmp/config.def.h.tmp
 			;;
 
 			"slstatus")
@@ -1280,8 +1407,8 @@ if prompt_continue "Configure and patch suckless tools?"; then
 				sed -i '/static const struct arg args\[\] = {/,/};/c\
 static const struct arg args[] = {\
 	/* function format          argument */\
-	{ cpu_perc, " CPU %s%%", NULL },\
-	{ ram_perc, " RAM %s%%", NULL },\
+	{ cpu_perc, " CPU %2s%%", NULL },\
+	{ ram_perc, " RAM %2s%%", NULL },\
     { battery_state, " %s", "BAT0" },\
     { battery_perc, " %s%%", "BAT0" },\
 	{ temp, " %s°C", "/sys/class/thermal/thermal_zone0/temp" },\
@@ -1345,36 +1472,98 @@ static const struct arg args[] = {\
     # Create basic Xresources for suckless tools
     create_xresources() {
         log_info "Creating basic Xresources configuration..."
-        cat >> "$HOME/.Xresources" << 'EOF'
+        cat > "$HOME/.Xresources" << 'EOF'
+! Suckless tools configuration with Xresources support
 
-! Suckless tools configuration
-st.font: JetBrains Mono:pixelsize=14
-dmenu.font: JetBrains Mono:pixelsize=14
-dwm.font: JetBrains Mono:pixelsize=14
+! Font configuration
+st.font: JetBrains Mono:pixelsize=14:antialias=true:hinting=true
+dmenu.font: JetBrains Mono:pixelsize=14:antialias=true:hinting=true
+dwm.font: JetBrains Mono:pixelsize=14:antialias=true:hinting=true
 
-! Gruvbox colors
+! DWM specific Xresources
+dwm.normbgcolor: #282828
+dwm.normfgcolor: #ebdbb2
+dwm.selbgcolor: #458588
+dwm.selfgcolor: #ebdbb2
+dwm.normbordercolor: #504945
+dwm.selbordercolor: #83a598
+
+! dmenu specific Xresources
+! Normal item
+dmenu.foreground:     #ebdbb2
+dmenu.background:     #282828
+
+! Selected item
+dmenu.selforeground:  #282828
+dmenu.selbackground:  #fe8019
+
+! Highlighted match (unselected)
+dmenu.hiforeground:   #fabd2f
+dmenu.hibackground:   #282828
+
+! Highlighted match (selected)
+dmenu.hiselforeground: #282828
+dmenu.hiselbackground: #fabd2f
+
+! Output (e.g., for dmenu -l)
+dmenu.outforeground:  #83a598
+dmenu.outbackground:  #3c3836
+
+! General terminal colors (Gruvbox theme)
 *.background: #282828
 *.foreground: #ebdbb2
+*.cursorColor: #ebdbb2
+
+! Black
 *.color0: #282828
 *.color8: #928374
+
+! Red
 *.color1: #cc241d
 *.color9: #fb4934
+
+! Green
 *.color2: #98971a
 *.color10: #b8bb26
+
+! Yellow
 *.color3: #d79921
 *.color11: #fabd2f
+
+! Blue
 *.color4: #458588
 *.color12: #83a598
+
+! Magenta
 *.color5: #b16286
 *.color13: #d3869b
+
+! Cyan
 *.color6: #689d6a
 *.color14: #8ec07c
+
+! White
 *.color7: #a89984
 *.color15: #ebdbb2
+
+! Additional st-specific configurations
+st.background: #282828
+st.foreground: #ebdbb2
+st.cursorColor: #ebdbb2
+st.alpha: 1.0
 EOF
         xrdb -merge "$HOME/.Xresources" 2>/dev/null || true
         log_success "Xresources configuration created"
     }
+
+        # Create a script to reload Xresources easily
+        cat > "$HOME/.local/bin/reload-xresources" << 'EOF'
+#!/bin/bash
+# Reload Xresources configuration
+xrdb -merge ~/.Xresources && echo "Xresources reloaded successfully"
+EOF
+        chmod +x "$HOME/.local/bin/reload-xresources" 2>/dev/null || true
+        log_info "Created reload-xresources script in ~/.local/bin/"
     
     # Configure each tool
     for tool in dwm dmenu st slstatus; do
@@ -1413,7 +1602,7 @@ if prompt_continue "Configure Mac keyboard layout (swap Alt and Cmd keys)?"; the
 fi
 
 # =============================================================================
-# SECTION -1: FINAL OWNERSHIP AND CLEANUP
+# SECTION 99: FINAL OWNERSHIP AND CLEANUP
 # =============================================================================
 
 if prompt_continue "Perform final ownership checks and cleanup?"; then
@@ -1433,7 +1622,7 @@ fi
 
 
 # =============================================================================
-# COMPLETION SUMMARY
+# OUTRO 
 # =============================================================================
 
 log_section "BOOTSTRAP COMPLETED SUCCESSFULLY!"
