@@ -518,12 +518,14 @@ if prompt_continue "Build Vim from source?"; then
         --enable-python3interp=yes \
         --enable-perlinterp=yes \
         --enable-luainterp=yes \
-        --enable-gui=gtk3 \
+        --enable-gui=no \
         --enable-cscope \
         --enable-terminal \
         --with-x \
         --enable-clipboard \
-        --prefix="$HOME/.local"
+        --prefix="$HOME/.local" \
+        --disable-xsmp \
+        --disable-xsmp-interact
 
     build_and_install "Vim" "make -j$(nproc)" "make install" true
 
