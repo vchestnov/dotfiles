@@ -1346,6 +1346,7 @@ if prompt_continue "Configure and patch suckless tools?"; then
                 apply_patch "https://dwm.suckless.org/patches/center/dwm-center-6.2.diff" "center"
                 git_apply_patch "$PATCHES_DIR/dwm/dwm-fix-dmenucmd.diff" "dmenucmd"
                 git_apply_patch "$PATCHES_DIR/dwm/dwm-xrdb-patch.diff" "xrdb"
+                git_apply_patch "$PATCHES_DIR/dwm/dwm-config-fixes.diff" "config"
 				# apply_patch "https://dwm.suckless.org/patches/xresources/dwm-xresources-20210827-138b405.diff" "xresources" "--fuzz=3"
 
                 # cp config.def.h /tmp/config.def.h.tmp
