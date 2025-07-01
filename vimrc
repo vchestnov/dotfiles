@@ -36,7 +36,7 @@ Plug 'vim-airline/vim-airline-themes'
 
 " Plug 'restore_view.vim'
 Plug 'jpalardy/vim-slime'
-"Plug 'konfekt/fastfold'
+Plug 'konfekt/fastfold'
 "Plug 'lervag/vimtex'
 
 Plug 'wellle/targets.vim'
@@ -540,3 +540,24 @@ set wildmode=full
 set suffixes=.aux,.log,.dvi,.bak,.bbl,.blg,.out,.toc,.fdb_latexmk,.fls,.synctex.gz,.pdf
 " Add extensions to be checked when searching for files
 set suffixesadd=.tex,.bib,.sty
+
+" Enable custom folding for shell scripts
+augroup ShellScriptFolds
+	autocmd!
+	autocmd FileType sh setlocal foldmethod=expr
+	autocmd FileType sh setlocal foldexpr=FoldShellSectionHeaders(v:lnum)
+	autocmd FileType sh setlocal foldtext=getline(v:foldstart)
+	autocmd FileType sh setlocal foldlevel=0
+augroup END
+
+function! FoldShellSectionHeaders(lnum)
+  let line = getline(a:lnum)
+
+  " If the line matches the SECTION header, it's a new fold level
+  if line =~ '^# \(SECTION \d\+:\|INTRO\|SUMMARY\|OUTRO\)'
+    return '>1'
+  endif
+
+  " Otherwise, use previous fold level
+  return '='
+endfunction
