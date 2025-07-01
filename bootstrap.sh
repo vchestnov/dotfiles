@@ -233,7 +233,11 @@ if prompt_continue "Update system and install build dependencies?"; then
         vlc \
         geeqie \
         android-file-transfer \
-        gnome-screenshot
+        gnome-screenshot \
+        ffmpeg \
+        libxcb-cursor0 \
+        lm-sensors \
+        rename
 
     log_success "System packages and build dependencies installed"
 fi
@@ -871,6 +875,9 @@ EOF
 export GTK_IM_MODULE=none
 export QT_IM_MODULE=none
 export XMODIFIERS=
+
+xrandr --newmode "2560x1440_60.00"  312.25  2560 2752 3024 3488  1440 1443 1448 1493 -hsync +vsync
+xrandr --addmode HDMI-1 "2560x1440_60.00"
 EOF
 
     log_success "~/.xprofile updated to disable IBus"
@@ -1387,8 +1394,8 @@ static const struct arg args[] = {\
 	{ cpu_perc, " CPU %2s%%", NULL },\
 	{ ram_perc, " RAM %2s%%", NULL },\
     { battery_state, " %s", "BAT0" },\
-    { battery_perc, " %s%%", "BAT0" },\
-	{ temp, " %s°C", "/sys/class/thermal/thermal_zone0/temp" },\
+    { battery_perc, "%s%%", "BAT0" },\
+	{ temp, " %s°C", "/sys/class/thermal/thermal_zone2/temp" },\
     { datetime, " %s", "%b %d %H:%M:%S" },\
 };' config.def.h
 			;;
@@ -1831,6 +1838,44 @@ if prompt_continue "Install media software?"; then
 		spotify-client
 
     log_info "Installing media software from repositories..."
+fi
+
+# =============================================================================
+# SECTION 24: MACBOOK FUNCTION KEYS
+# =============================================================================
+
+if prompt_continue "Configure MacBook function keys (F1-F12) to work without Fn key?"; then
+    log_section "MACBOOK FUNCTION KEYS CONFIGURATION"
+    
+    log_info "Configuring function keys to work without Fn key..."
+    refresh_sudo
+    
+    # Check if hid_apple module is available
+    if [ -f /sys/module/hid_apple/parameters/fnmode ]; then
+        current_fnmode=$(cat /sys/module/hid_apple/parameters/fnmode)
+        log_info "Current fnmode setting: $current_fnmode"
+        
+        # Set fnmode to 2 immediately
+        echo 2 | sudo tee /sys/module/hid_apple/parameters/fnmode > /dev/null
+        sudo update-initramfs -u -k all
+        log_info "Set fnmode to 2 for current session"
+        
+        # Make the change permanent via GRUB
+        if grep -q "hid_apple.fnmode" /etc/default/grub; then
+            log_info "Updating existing hid_apple.fnmode parameter in GRUB..."
+            sudo sed -i 's/hid_apple\.fnmode=[0-9]/hid_apple.fnmode=2/g' /etc/default/grub
+        else
+            log_info "Adding hid_apple.fnmode parameter to GRUB..."
+            sudo sed -i 's/GRUB_CMDLINE_LINUX_DEFAULT="\([^"]*\)"/GRUB_CMDLINE_LINUX_DEFAULT="\1 hid_apple.fnmode=2"/' /etc/default/grub
+        fi
+        
+        # Update GRUB
+        sudo update-grub
+        log_success "Function keys configured - F1-F12 will work without Fn key after reboot"
+        log_info "Note: Use Fn+F1-F12 for media functions (brightness, volume, etc.)"
+    else
+        log_info "hid_apple module not found - this fix may not be needed on this system"
+    fi
 fi
 
 # =============================================================================
