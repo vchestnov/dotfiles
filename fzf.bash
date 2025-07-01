@@ -1,7 +1,7 @@
 # Setup fzf
 # ---------
-if [[ ! "$PATH" == */usr/local/opt/fzf/bin* ]]; then
-  PATH="${PATH:+${PATH}:}/usr/local/opt/fzf/bin"
+if [[ ! "$PATH" == */home/seva/.local/src/fzf/bin* ]]; then
+  PATH="${PATH:+${PATH}:}/home/seva/.local/src/fzf/bin"
 fi
 
 eval "$(fzf --bash)"

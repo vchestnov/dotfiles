@@ -16,7 +16,8 @@ HISTCONTROL=ignoreboth
 shopt -s histappend
 
 # for setting history length see HISTSIZE and HISTFILESIZE in bash(1)
-HISTSIZE=1000
+# HISTSIZE=1000
+HISTSIZE=-1
 #HISTFILESIZE=2000
 HISTFILESIZE=-1
 
@@ -198,16 +199,17 @@ if [[ $(hostname) = amps ]]; then
     [ -f ~/.fzf.bash ] && source ~/.fzf.bash
 fi
 
-if [[ $(hostname) = thinkpad ]]; then
-    export FERMATPATH="$HOME/soft/ferl6/fer64"
+if [[ $(hostname) = mac ]]; then
+    # export FERMATPATH="$HOME/soft/ferl6/fer64"
     # source "$HOME/soft/OpenXM/rc/dot.bashrc"
 
     # http://blog.joncairns.com/2013/12/understanding-ssh-agent-and-ssh-add/
-    source ~/soft/ssh-find-agent/ssh-find-agent.sh
+    # source ~/soft/ssh-find-agent/ssh-find-agent.sh
+    source "$HOME/.local/src/ssh-find-agent/ssh-find-agent.sh"
     # set_ssh_agent_socket
     ssh-add -l >&/dev/null || ssh-find-agent -a || eval $(ssh-agent) > /dev/null
 
-    [ -f ~/soft/fzf.bash ] && source ~/soft/fzf.bash
+    [ -f ~/.fzf.bash ] && source ~/.fzf.bash
     . "$HOME/.cargo/env"
 
     if type rg &> /dev/null; then
@@ -251,3 +253,73 @@ fi
 # [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
 
 alias gnomecc='XDG_CURRENT_DESKTOP=GNOME gnome-control-center'
+
+# Custom aliases for development environment
+alias v='vim'
+alias nv='nvim'
+alias vf='vifm'
+alias za='zathura'
+alias rg='rg --smart-case'
+alias fd='fd --hidden'
+
+# fzf integration
+export FZF_DEFAULT_COMMAND='fd --type f --hidden --follow --exclude .git'
+export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_COMMAND"
+export FZF_ALT_C_COMMAND='fd --type d --hidden --follow --exclude .git'
+
+# fzf functions
+fv() {
+    local file
+    file=$(fzf --preview 'head -100 {}') && [ -n "$file" ] && vim "$file"
+}
+
+fnv() {
+    local file
+    file=$(fzf --preview 'head -100 {}') && [ -n "$file" ] && nvim "$file"
+}
+
+# Git shortcuts
+alias gs='git status'
+alias ga='git add'
+alias gc='git commit'
+alias gp='git push'
+alias gl='git log --oneline --graph'
+
+# Theme switching aliases
+alias theme-dark='theme-switch dark'
+alias theme-light='theme-switch light'
+alias theme-toggle='if grep -q "#282828" ~/.Xresources 2>/dev/null; then theme-switch light; else theme-switch dark; fi'
+
+# Check current theme
+theme-status() {
+    if grep -q "#282828" ~/.Xresources 2>/dev/null; then
+        echo "Current theme: dark"
+    elif grep -q "#fbf1c7" ~/.Xresources 2>/dev/null; then
+        echo "Current theme: light"
+    else
+        echo "Theme not detected or custom theme in use"
+    fi
+}
+
+# Quick suckless rebuilds
+rebuild-st() {
+    cd ~/.local/src/st && make clean && make -j$(nproc) && sudo make install
+}
+
+rebuild-dmenu() {
+    cd ~/.local/src/dmenu && make clean && make -j$(nproc) && sudo make install
+}
+
+rebuild-dwm() {
+    cd ~/.local/src/dwm && make clean && make -j$(nproc) && sudo make install
+}
+
+rebuild-slstatus() {
+    cd ~/.local/src/slstatus && make clean && make -j$(nproc) && sudo make install
+}
+
+rebuild-suckless() {
+    rebuild-st && rebuild-dmenu && rebuild-dwm && rebuild-slstatus
+    echo "All suckless tools rebuilt. Restart dwm to see changes."
+}
+export PATH="/home/seva/.local/bin:$PATH"
