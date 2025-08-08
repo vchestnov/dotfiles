@@ -1,0 +1,78 @@
+! Suckless tools configuration with Xresources support
+
+! Font configuration
+st.font: JetBrains Mono:pixelsize=14:antialias=true:hinting=true
+dmenu.font: JetBrains Mono:pixelsize=14:antialias=true:hinting=true
+dwm.font: JetBrains Mono:pixelsize=14:antialias=true:hinting=true
+
+! DWM specific Xresources
+dwm.normbgcolor: #282828
+dwm.normfgcolor: #ebdbb2
+dwm.selbgcolor: #fe8019
+dwm.selfgcolor: #282828
+dwm.normbordercolor: #504945
+dwm.selbordercolor: #fe8019
+
+! dmenu specific Xresources
+! Normal item
+dmenu.foreground:     #ebdbb2
+dmenu.background:     #282828
+
+! Selected item
+dmenu.selforeground:  #282828
+dmenu.selbackground:  #fe8019
+
+! Highlighted match (unselected)
+dmenu.hiforeground:   #fabd2f
+dmenu.hibackground:   #282828
+
+! Highlighted match (selected)
+dmenu.hiselforeground: #282828
+dmenu.hiselbackground: #fabd2f
+
+! Output (e.g., for dmenu -l)
+dmenu.outforeground:  #83a598
+dmenu.outbackground:  #3c3836
+
+! General terminal colors (Gruvbox theme)
+*.background: #282828
+*.foreground: #ebdbb2
+*.cursorColor: #ebdbb2
+
+! Black
+*.color0: #282828
+*.color8: #928374
+
+! Red
+*.color1: #cc241d
+*.color9: #fb4934
+
+! Green
+*.color2: #98971a
+*.color10: #b8bb26
+
+! Yellow
+*.color3: #d79921
+*.color11: #fabd2f
+
+! Blue
+*.color4: #458588
+*.color12: #83a598
+
+! Magenta
+*.color5: #b16286
+*.color13: #d3869b
+
+! Cyan
+*.color6: #689d6a
+*.color14: #8ec07c
+
+! White
+*.color7: #a89984
+*.color15: #ebdbb2
+
+! Additional st-specific configurations
+st.background: #282828
+st.foreground: #ebdbb2
+st.cursorColor: #ebdbb2
+st.alpha: 1.0

@@ -25,6 +25,11 @@ HISTFILESIZE=-1
 # update the values of LINES and COLUMNS.
 shopt -s checkwinsize
 
+# Source profile if not already sourced
+if [ -n "$BASH_VERSION" ] && [ -f "$HOME/.profile" ]; then
+    . "$HOME/.profile"
+fi
+
 # If set, the pattern "**" used in a pathname expansion context will
 # match all files and zero or more directories and subdirectories.
 #shopt -s globstar
@@ -134,9 +139,9 @@ fi
 
 #export INFOPATH="$HOME/software/texlive/2018/texmf-dist/doc/info:$INFOPATH"
 
-export PATH="/usr/local/texlive/2024/bin/x86_64-linux:$PATH"
-export MANPATH="/usr/local/texlive/2024/texmf-dist/doc/man:$MANPATH"
-export INFOPATH="/usr/local/texlive/2024/texmf-dist/doc/info:$INFOPATH"
+# export PATH="/usr/local/texlive/2024/bin/x86_64-linux:$PATH"
+# export MANPATH="/usr/local/texlive/2024/texmf-dist/doc/man:$MANPATH"
+# export INFOPATH="/usr/local/texlive/2024/texmf-dist/doc/info:$INFOPATH"
 
 # TOPCOM
 export PATH="/home/seva/soft/topcom/install/bin:$PATH"
@@ -210,7 +215,7 @@ if [[ $(hostname) = mac ]]; then
     ssh-add -l >&/dev/null || ssh-find-agent -a || eval $(ssh-agent) > /dev/null
 
     [ -f ~/.fzf.bash ] && source ~/.fzf.bash
-    . "$HOME/.cargo/env"
+    . "$CARGO_HOME/env"
 
     if type rg &> /dev/null; then
       export FZF_DEFAULT_COMMAND='rg --files'
@@ -323,3 +328,10 @@ rebuild-suckless() {
     echo "All suckless tools rebuilt. Restart dwm to see changes."
 }
 export PATH="/home/seva/.local/bin:$PATH"
+
+# Scientific software environment
+source $HOME/soft/scientific-env.sh
+
+# TeX Live environment
+source $HOME/soft/texlive-env.sh
+

@@ -109,12 +109,12 @@ if ! grep -q "Ubuntu 24.04" /etc/os-release 2>/dev/null; then
     fi
 fi
 
-# Check internet connectivity
-log_info "Checking internet connectivity..."
-if ! ping -c 1 github.com &>/dev/null; then
-    log_error "No internet connection detected. Please check your connection."
-    exit 1
-fi
+# # Check internet connectivity
+# log_info "Checking internet connectivity..."
+# if ! ping -c 1 github.com &>/dev/null; then
+#     log_error "No internet connection detected. Please check your connection."
+#     exit 1
+# fi
 
 # Check disk space (need at least 2GB free)
 available_space=$(df / | awk 'NR==2 {print $4}')
@@ -138,6 +138,62 @@ refresh_sudo() {
 }
 
 log_success "Pre-flight checks completed"
+
+# =============================================================================
+# UTILITY FUNCTIONS FOR BUILDING
+# =============================================================================
+
+# Function to clone or update git repository
+clone_or_update() {
+    local repo_url=$1
+    local dest_dir=$2
+    local branch=${3:-master}
+    
+    if [ -d "$dest_dir" ]; then
+        log_info "Updating $(basename "$dest_dir")..."
+        cd "$dest_dir"
+        git fetch origin
+        git reset --hard "origin/$branch"
+    else
+        log_info "Cloning $(basename "$dest_dir")..."
+        git clone "$repo_url" "$dest_dir"
+        cd "$dest_dir"
+        if [ "$branch" != "master" ] && [ "$branch" != "main" ]; then
+            git checkout "$branch"
+        fi
+    fi
+    
+    # Ensure proper ownership after git operations
+    log_info "Ensuring proper ownership of $(basename "$dest_dir")..."
+    chown -R "$USER:$(id -gn)" "$dest_dir"
+}
+
+# Function to build and install with proper ownership
+build_and_install() {
+    local project_name=$1
+    local build_cmd=${2:-"make -j$(nproc)"}
+    local install_cmd=${3:-"make install"}
+    local install_to_local=${4:-true}
+    
+    log_info "Building $project_name..."
+    
+    # Build as user
+    eval "$build_cmd"
+    
+    # Install with appropriate permissions
+    if [ "$install_to_local" = true ]; then
+        # Install to user's local directory
+        eval "$install_cmd"
+        log_info "Installed $project_name to user's local directory"
+    else
+        # Install system-wide with sudo
+        refresh_sudo
+        sudo $install_cmd
+        log_info "Installed $project_name system-wide"
+    fi
+}
+
+
 
 # =============================================================================
 # SECTION 1: DIRECTORY SETUP
@@ -237,7 +293,19 @@ if prompt_continue "Update system and install build dependencies?"; then
         ffmpeg \
         libxcb-cursor0 \
         lm-sensors \
-        rename
+        rename \
+        python3-full \
+        libreoffice \
+        acpi \
+        picom \
+        meson \
+        libgtk-3-dev \
+        libgirara-dev \
+        libsqlite3-dev \
+        libsynctex-dev \
+        libjson-glib-dev \
+        libdjvulibre-dev \
+        ncal
 
     log_success "System packages and build dependencies installed"
 fi
@@ -447,60 +515,6 @@ EOF
 fi
 
 # =============================================================================
-# UTILITY FUNCTIONS FOR BUILDING
-# =============================================================================
-
-# Function to clone or update git repository
-clone_or_update() {
-    local repo_url=$1
-    local dest_dir=$2
-    local branch=${3:-master}
-    
-    if [ -d "$dest_dir" ]; then
-        log_info "Updating $(basename "$dest_dir")..."
-        cd "$dest_dir"
-        git fetch origin
-        git reset --hard "origin/$branch"
-    else
-        log_info "Cloning $(basename "$dest_dir")..."
-        git clone "$repo_url" "$dest_dir"
-        cd "$dest_dir"
-        if [ "$branch" != "master" ] && [ "$branch" != "main" ]; then
-            git checkout "$branch"
-        fi
-    fi
-    
-    # Ensure proper ownership after git operations
-    log_info "Ensuring proper ownership of $(basename "$dest_dir")..."
-    chown -R "$USER:$(id -gn)" "$dest_dir"
-}
-
-# Function to build and install with proper ownership
-build_and_install() {
-    local project_name=$1
-    local build_cmd=${2:-"make -j$(nproc)"}
-    local install_cmd=${3:-"make install"}
-    local install_to_local=${4:-true}
-    
-    log_info "Building $project_name..."
-    
-    # Build as user
-    eval "$build_cmd"
-    
-    # Install with appropriate permissions
-    if [ "$install_to_local" = true ]; then
-        # Install to user's local directory
-        eval "$install_cmd"
-        log_info "Installed $project_name to user's local directory"
-    else
-        # Install system-wide with sudo
-        refresh_sudo
-        sudo $install_cmd
-        log_info "Installed $project_name system-wide"
-    fi
-}
-
-# =============================================================================
 # SECTION 7: VIM FROM SOURCE
 # =============================================================================
 
@@ -582,7 +596,7 @@ if prompt_continue "Install Rust and Rust-based tools (fzf, ripgrep, fd)?"; then
 fi
 
 # =============================================================================
-# SECTION pre9: NUCLEAR OPTION: WIPE ALL SUCKLESS TOOLS
+# SECTION 9: pre NUCLEAR OPTION: WIPE ALL SUCKLESS TOOLS
 # =============================================================================
 
 # Nuclear option - wipe all suckless tools and start completely fresh
@@ -831,8 +845,18 @@ if prompt_continue "Configure dwm desktop session?"; then
     # Create session startup script with keyboard config
     sudo tee /usr/local/bin/dwm-session > /dev/null << 'EOF'
 #!/bin/sh
+
+# Source ~/.profile to load XDG environment and other exports
+[ -f "$HOME/.profile" ] && . "$HOME/.profile"
+
 # Load X resources
-[ -f ~/.Xresources ] && xrdb -merge ~/.Xresources
+[ -f ~/.config/X11/Xresources ] && xrdb -merge ~/.config/X11/Xresources
+
+# Add ~/.local/bin to PATH only if not already present
+case ":$PATH:" in
+  *:"$HOME/.local/bin":*) ;;
+  *) export PATH="$HOME/.local/bin:$PATH" ;;
+esac
 
 # Keyboard configuration:
 # repeat rate and key maps
@@ -1875,6 +1899,270 @@ if prompt_continue "Configure MacBook function keys (F1-F12) to work without Fn 
         log_info "Note: Use Fn+F1-F12 for media functions (brightness, volume, etc.)"
     else
         log_info "hid_apple module not found - this fix may not be needed on this system"
+    fi
+fi
+
+# =============================================================================
+# SECTION 25: SCIENTIFIC SOFTWARE (GMP, FLINT, FINITEFLOW)
+# =============================================================================
+if prompt_continue "Install scientific software (GMP, FLINT, FiniteFlow)?"; then
+    log_section "SCIENTIFIC SOFTWARE INSTALLATION"
+
+    # Ensure required directories exist
+    mkdir -p "$HOME/soft"
+    mkdir -p "$SRC_DIR"
+
+    # # Install system dependencies
+    # log_info "Installing system dependencies..."
+    # sudo apt-get update
+    # sudo apt-get install -y build-essential cmake wget
+
+    # Install GMP from source
+    log_info "Installing GMP from source..."
+    GMP_VERSION="6.3.0"
+    GMP_URL="https://gmplib.org/download/gmp/gmp-${GMP_VERSION}.tar.xz"
+
+    cd "$SRC_DIR"
+    wget "$GMP_URL" -O "gmp-${GMP_VERSION}.tar.xz"
+    tar -xf "gmp-${GMP_VERSION}.tar.xz"
+    cd "gmp-${GMP_VERSION}"
+
+    ./configure --prefix="$HOME/soft/gmp" --enable-cxx
+    build_and_install "GMP" "make -j$(nproc)" "make install" true
+    log_success "GMP installed to $HOME/soft/gmp"
+
+    # Update environment for subsequent builds
+    export PKG_CONFIG_PATH="$HOME/soft/gmp/lib/pkgconfig:$PKG_CONFIG_PATH"
+    export LD_LIBRARY_PATH="$HOME/soft/gmp/lib:$LD_LIBRARY_PATH"
+
+    # Install FLINT-FiniteFlow-Dep (lightweight version)
+    log_info "Installing FLINT-FiniteFlow-Dep..."
+    clone_or_update "https://github.com/peraro/flint-finiteflow-dep.git" "$SRC_DIR/flint-finiteflow-dep"
+    cd "$SRC_DIR/flint-finiteflow-dep"
+    
+    cmake -DCMAKE_PREFIX_PATH="$HOME/soft/gmp" \
+          -DCMAKE_INSTALL_PREFIX="$HOME/soft/flint-finiteflow-dep" \
+          .
+    build_and_install "FLINT-FiniteFlow-Dep" "make -j$(nproc)" "make install" true
+    log_success "FLINT-FiniteFlow-Dep installed to $HOME/soft/flint-finiteflow-dep"
+    
+    # Update environment for FiniteFlow build
+    export PKG_CONFIG_PATH="$HOME/soft/flint-finiteflow-dep/lib/pkgconfig:$PKG_CONFIG_PATH"
+    export LD_LIBRARY_PATH="$HOME/soft/flint-finiteflow-dep/lib:$LD_LIBRARY_PATH"
+    
+    # Install FiniteFlow
+    log_info "Installing FiniteFlow..."
+    clone_or_update "https://github.com/peraro/finiteflow.git" "$HOME/dev/finiteflow"
+    cd "$HOME/dev/finiteflow"
+    
+    cmake -DCMAKE_INSTALL_PREFIX="$HOME/soft/finiteflow" \
+          -DCMAKE_PREFIX_PATH="$HOME/soft/gmp;$HOME/soft/flint-finiteflow-dep" \
+          .
+    build_and_install "FiniteFlow" "make -j$(nproc)" "make install" true
+    log_success "FiniteFlow installed to $HOME/soft/finiteflow"
+
+    # Create environment setup script
+    log_info "Creating environment setup script..."
+    cat > "$HOME/soft/scientific-env.sh" << 'EOF'
+#!/bin/bash
+# Scientific software environment setup
+export PATH="$HOME/soft/gmp/bin:$HOME/soft/flint-finiteflow-dep/bin:$HOME/soft/finiteflow/bin:$PATH"
+export PKG_CONFIG_PATH="$HOME/soft/gmp/lib/pkgconfig:$HOME/soft/flint-finiteflow-dep/lib/pkgconfig:$HOME/soft/finiteflow/lib/pkgconfig:$PKG_CONFIG_PATH"
+export LD_LIBRARY_PATH="$HOME/soft/gmp/lib:$HOME/soft/flint-finiteflow-dep/lib:$HOME/soft/finiteflow/lib:$LD_LIBRARY_PATH"
+export CPATH="$HOME/soft/gmp/include:$HOME/soft/flint-finiteflow-dep/include:$HOME/soft/finiteflow/include:$CPATH"
+export LIBRARY_PATH="$HOME/soft/gmp/lib:$HOME/soft/flint-finiteflow-dep/lib:$HOME/soft/finiteflow/lib:$LIBRARY_PATH"
+EOF
+    
+    chmod +x "$HOME/soft/scientific-env.sh"
+    
+    # Add to shell profile if not already present
+    if ! grep -q "scientific-env.sh" "$HOME/.bashrc"; then
+        echo "" >> "$HOME/.bashrc"
+        echo "# Scientific software environment" >> "$HOME/.bashrc"
+        echo "source \$HOME/soft/scientific-env.sh" >> "$HOME/.bashrc"
+        log_info "Added scientific software environment to .bashrc"
+    fi
+    
+    log_success "Scientific software installation complete!"
+    log_info "Environment setup script created at: $HOME/soft/scientific-env.sh"
+    log_info "To use the software in current session, run: source $HOME/soft/scientific-env.sh"
+    log_info "The environment will be automatically loaded in new terminal sessions."
+fi
+
+# =============================================================================
+# SECTION 26: TEXLIVE INSTALLATION
+# =============================================================================
+if prompt_continue "Install TeX Live?"; then
+    log_section "TEXLIVE INSTALLATION"
+    
+    # Install system dependencies
+    log_info "Installing system dependencies..."
+    sudo apt-get update
+    sudo apt-get install -y wget perl-tk fontconfig
+    
+    # Download TeX Live installer
+    log_info "Downloading TeX Live installer..."
+    cd "$SRC_DIR"
+    wget -O install-tl-unx.tar.gz "https://mirror.ctan.org/systems/texlive/tlnet/install-tl-unx.tar.gz"
+    tar -xzf install-tl-unx.tar.gz
+    
+    # Find the extracted directory (it's usually named install-tl-YYYYMMDD)
+    INSTALL_DIR=$(find . -maxdepth 1 -type d -name "install-tl-*" | head -1)
+    if [ -z "$INSTALL_DIR" ]; then
+        log_error "Could not find TeX Live installer directory"
+        return 1
+    fi
+    cd "$INSTALL_DIR"
+    
+    # Create installation profile for automated installation
+    log_info "Creating TeX Live installation profile..."
+    cat > texlive.profile << 'EOF'
+# TeX Live installation profile
+# This profile installs TeX Live to $HOME/soft/texlive
+selected_scheme scheme-full
+TEXDIR $HOME/soft/texlive/2025
+TEXMFCONFIG $HOME/.texlive2025/texmf-config  
+TEXMFHOME $HOME/texmf
+TEXMFLOCAL $HOME/soft/texlive/texmf-local
+TEXMFSYSCONFIG $HOME/soft/texlive/2025/texmf-config
+TEXMFSYSVAR $HOME/soft/texlive/2025/texmf-var
+TEXMFVAR $HOME/.texlive2025/texmf-var
+binary_x86_64-linux 1
+instopt_adjustpath 0
+instopt_adjustrepo 1
+instopt_letter 0
+instopt_portable 0
+instopt_write18_restricted 1
+tlpdbopt_autobackup 1
+tlpdbopt_backupdir tlpkg/backups
+tlpdbopt_create_formats 1
+tlpdbopt_desktop_integration 1
+tlpdbopt_file_assocs 1
+tlpdbopt_generate_updmap 0
+tlpdbopt_install_docfiles 1
+tlpdbopt_install_srcfiles 1
+tlpdbopt_post_code 1
+tlpdbopt_sys_bin /usr/local/bin
+tlpdbopt_sys_info /usr/local/share/info
+tlpdbopt_sys_man /usr/local/share/man
+tlpdbopt_w32_multi_user 1
+EOF
+    
+    # Replace $HOME with actual path in profile
+    sed -i "s|\$HOME|$HOME|g" texlive.profile
+    
+    # Run automated installation
+    log_info "Running TeX Live installation (this may take a while)..."
+    ./install-tl --profile=texlive.profile
+    
+    if [ $? -eq 0 ]; then
+        log_success "TeX Live installed successfully"
+        
+        # Create environment setup script
+        log_info "Creating TeX Live environment setup..."
+        cat > "$HOME/soft/texlive-env.sh" << 'EOF'
+#!/bin/bash
+# TeX Live environment setup
+export PATH="$HOME/soft/texlive/2025/bin/x86_64-linux:$PATH"
+export MANPATH="$HOME/soft/texlive/2025/texmf-dist/doc/man:$MANPATH"
+export INFOPATH="$HOME/soft/texlive/2025/texmf-dist/doc/info:$INFOPATH"
+EOF
+        
+        chmod +x "$HOME/soft/texlive-env.sh"
+        
+        # Add to shell profile if not already present
+        if ! grep -q "texlive-env.sh" "$HOME/.bashrc"; then
+            echo "" >> "$HOME/.bashrc"
+            echo "# TeX Live environment" >> "$HOME/.bashrc"
+            echo "source \$HOME/soft/texlive-env.sh" >> "$HOME/.bashrc"
+            log_info "Added TeX Live environment to .bashrc"
+        fi
+        
+        # Test installation
+        log_info "Testing TeX Live installation..."
+        source "$HOME/soft/texlive-env.sh"
+        
+        if command -v pdflatex &> /dev/null; then
+            log_success "TeX Live installation verified - pdflatex is available"
+        else
+            log_warning "TeX Live installation may have issues - pdflatex not found in PATH"
+        fi
+        
+        # Clean up installer
+        log_info "Cleaning up installer files..."
+        cd "$SRC_DIR"
+        rm -rf install-tl-* texlive.profile
+        
+        log_success "TeX Live installation complete!"
+        log_info "Environment setup script created at: $HOME/soft/texlive-env.sh"
+        log_info "To use TeX Live in current session, run: source $HOME/soft/texlive-env.sh"
+        
+    else
+        log_error "TeX Live installation failed"
+        return 1
+    fi
+fi
+
+# =============================================================================
+# SECTION 27: krita and write
+# =============================================================================
+if prompt_continue "Install krita and write?"; then
+    log_section "KRITA AND WRITE INSTALLATION"
+fi
+
+# =============================================================================
+# SECTION 28: SINGULAR COMPUTER ALGEBRA SYSTEM
+# =============================================================================
+if prompt_continue "Install Singular Computer Algebra System?"; then
+    log_section "SINGULAR COMPUTER ALGEBRA SYSTEM INSTALLATION"
+    
+    # Check if Singular is already installed
+    if command -v Singular &> /dev/null; then
+        CURRENT_VERSION=$(Singular --version 2>&1 | head -1 | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+' || echo "unknown")
+        log_info "Singular is already installed (version: $CURRENT_VERSION)"
+        if ! prompt_continue "Reinstall/update Singular?"; then
+            log_info "Skipping Singular installation"
+        else
+            INSTALL_SINGULAR=true
+        fi
+    else
+        INSTALL_SINGULAR=true
+    fi
+    
+    if [ "$INSTALL_SINGULAR" = true ]; then
+        log_info "Installing Singular from official repository..."
+        
+        refresh_sudo
+        
+        # Add GPG key
+        log_info "Adding Singular repository GPG key..."
+        wget -q ftp://jim.mathematik.uni-kl.de/repo/extra/gpg -O - | sudo apt-key add -
+        
+        # Add repository for Ubuntu 24.04
+        log_info "Adding Singular repository for Ubuntu 24.04..."
+        echo "deb https://www.singular.uni-kl.de/ftp/repo/ubuntu24 noble main" | sudo tee /etc/apt/sources.list.d/singular.list
+        
+        # Update and install
+        log_info "Updating package list and installing Singular..."
+        sudo apt-get update
+        sudo apt-get install -y singular41
+        
+        # Verify installation
+        log_info "Verifying Singular installation..."
+        if command -v Singular &> /dev/null; then
+			# Simple test that Singular can run and quit
+            # if echo "quit;" | Singular > /dev/null 2>&1; then
+			if Singular -c "quit;" > /dev/null 2>&1; then
+                log_success "Singular installation verified and working"
+            else
+                log_warning "Singular is installed but may have issues running"
+            fi
+            # VERSION=$(Singular --version -c "quit;" 2>&1 | head -1 || echo "Version check failed")
+            # log_success "Singular installation verified: $VERSION"
+        else
+            log_error "Singular installation verification failed"
+            log_info "Try running 'sudo apt-get install -f' to fix any dependency issues"
+        fi
     fi
 fi
 

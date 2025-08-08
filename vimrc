@@ -153,6 +153,10 @@ function! SwitchColorscheme(scheme)
     hi DiffText   ctermfg=231   ctermbg=54
   elseif a:scheme ==# 'gruvbox'
     set background=light
+    " hi Visual ctermfg=235 ctermbg=214
+    " Alternative lighter options:
+    " hi Visual ctermfg=235 ctermbg=223  " Even lighter background
+    hi Visual ctermfg=235 ctermbg=229  " Very light background
   elseif a:scheme ==# 'solarized'
     set background=light
   endif
@@ -561,3 +565,8 @@ function! FoldShellSectionHeaders(lnum)
   " Otherwise, use previous fold level
   return '='
 endfunction
+
+set viminfo+=n$XDG_STATE_HOME/vim/viminfo
+set directory=$XDG_CACHE_HOME/vim/swap//
+set backupdir=$XDG_CACHE_HOME/vim/backup//
+set undodir=$XDG_CACHE_HOME/vim/undo//
