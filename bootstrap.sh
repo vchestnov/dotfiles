@@ -305,7 +305,9 @@ if prompt_continue "Update system and install build dependencies?"; then
         libsynctex-dev \
         libjson-glib-dev \
         libdjvulibre-dev \
-        ncal
+        ncal \
+        qpdf \
+        pipx
 
     log_success "System packages and build dependencies installed"
 fi
@@ -2163,6 +2165,197 @@ if prompt_continue "Install Singular Computer Algebra System?"; then
             log_error "Singular installation verification failed"
             log_info "Try running 'sudo apt-get install -f' to fix any dependency issues"
         fi
+    fi
+fi
+
+# =============================================================================
+# SECTION 29: ZATHURA PDF VIEWER (SOURCE BUILD)
+# =============================================================================
+if prompt_continue "Build zathura PDF viewer from source (fixes link opening issues)?"; then
+    log_section "ZATHURA PDF VIEWER (SOURCE BUILD)"
+    
+    # Check if zathura is already installed
+    if command -v zathura >/dev/null 2>&1; then
+        log_info "Zathura already installed: $(zathura --version 2>/dev/null | head -1)"
+        if ! prompt_continue "Rebuild zathura from source (recommended for Ubuntu 24.04)?"; then
+            log_info "Skipping zathura build"
+        else
+            BUILD_ZATHURA=true
+        fi
+    else
+        BUILD_ZATHURA=true
+    fi
+    
+    if [ "$BUILD_ZATHURA" = true ]; then
+        refresh_sudo
+        
+        log_info "Installing build dependencies..."
+        sudo apt update
+        sudo apt install -y \
+            build-essential \
+            meson \
+            ninja-build \
+            pkg-config \
+            libgtk-3-dev \
+            libgirara-dev \
+            libpoppler-glib-dev \
+            libcairo2-dev \
+            libglib2.0-dev \
+            libmagic-dev \
+            libsynctex-dev \
+            libsqlite3-dev \
+            libjson-glib-dev \
+            libdjvulibre-dev
+        
+        # Remove conflicting system packages
+        log_info "Removing system zathura packages..."
+        sudo apt remove -y zathura zathura-* 2>/dev/null || true
+        sudo apt autoremove -y
+        
+        # Create temporary build directory
+        BUILD_DIR="$(mktemp -d)"
+        cd "$BUILD_DIR"
+        
+        # Build girara (required dependency)
+        log_info "Building girara from source..."
+        if clone_or_update "https://github.com/pwmt/girara.git" "$BUILD_DIR/girara" "develop"; then
+            cd "$BUILD_DIR/girara"
+            if meson setup build && cd build && ninja; then
+                sudo ninja install
+                log_success "Girara built and installed"
+            else
+                log_error "Failed to build girara"
+                cd "$HOME"
+                rm -rf "$BUILD_DIR"
+                return 1
+            fi
+        else
+            log_error "Failed to clone girara repository"
+            return 1
+        fi
+        
+        # Build zathura
+        log_info "Building zathura from source..."
+        if clone_or_update "https://github.com/pwmt/zathura.git" "$BUILD_DIR/zathura" "develop"; then
+            cd "$BUILD_DIR/zathura"
+            git submodule update --init --recursive
+            if meson setup build -Dseccomp=disabled && cd build && ninja; then
+                sudo ninja install
+                log_success "Zathura built and installed"
+            else
+                log_error "Failed to build zathura"
+                cd "$HOME"
+                rm -rf "$BUILD_DIR"
+                return 1
+            fi
+        else
+            log_error "Failed to clone zathura repository"
+            return 1
+        fi
+        
+        # Build PDF plugin
+        log_info "Building PDF plugin..."
+        if clone_or_update "https://github.com/pwmt/zathura-pdf-poppler.git" "$BUILD_DIR/zathura-pdf-poppler" "develop"; then
+            cd "$BUILD_DIR/zathura-pdf-poppler"
+            if meson setup build && cd build && ninja; then
+                sudo ninja install
+                log_success "PDF plugin built and installed"
+            else
+                log_error "Failed to build PDF plugin"
+                cd "$HOME"
+                rm -rf "$BUILD_DIR"
+                return 1
+            fi
+        else
+            log_error "Failed to clone PDF plugin repository"
+            return 1
+        fi
+        
+        # Build DjVu plugin
+        log_info "Building DjVu plugin..."
+        if clone_or_update "https://github.com/pwmt/zathura-djvu.git" "$BUILD_DIR/zathura-djvu" "develop"; then
+            cd "$BUILD_DIR/zathura-djvu"
+            if meson setup build && cd build && ninja; then
+                sudo ninja install
+                log_success "DjVu plugin built and installed"
+            else
+                log_warning "Failed to build DjVu plugin (PDF support will still work)"
+            fi
+        else
+            log_warning "Failed to clone DjVu plugin repository (PDF support will still work)"
+        fi
+        
+        # Update library cache
+        log_info "Updating library cache..."
+        sudo ldconfig
+        
+        # Configure zathura
+        log_info "Configuring zathura..."
+        mkdir -p "$HOME/.config/zathura"
+        cat > "$HOME/.config/zathura/zathurarc" << 'EOF'
+set database sqlite
+set selection-clipboard clipboard
+set link-zoom true
+EOF
+        
+        # Add GTK warning suppression to bashrc if not already present
+        if ! grep -q "NO_AT_BRIDGE" "$HOME/.bashrc" 2>/dev/null; then
+            log_info "Adding GTK warning suppression to .bashrc..."
+            echo "" >> "$HOME/.bashrc"
+            echo "# Suppress GTK accessibility bridge warning" >> "$HOME/.bashrc"
+            echo "export NO_AT_BRIDGE=1" >> "$HOME/.bashrc"
+        fi
+        
+        # Cleanup
+        cd "$HOME"
+        rm -rf "$BUILD_DIR"
+        
+        # Verification
+        log_info "Verifying zathura installation..."
+        if command -v zathura >/dev/null 2>&1; then
+            ZATHURA_VERSION=$(zathura --version 2>/dev/null | head -1)
+            log_success "Zathura installed successfully: $ZATHURA_VERSION"
+            
+            # Test if plugins are loaded
+            if zathura --version 2>/dev/null | grep -q "pdf"; then
+                log_success "PDF plugin loaded successfully"
+            else
+                log_warning "PDF plugin may not be loaded properly"
+            fi
+            
+            log_info "Zathura configuration created at ~/.config/zathura/zathurarc"
+            log_info "GTK warning suppression added to ~/.bashrc"
+            log_info "Note: Source ~/.bashrc or restart shell to apply environment changes"
+        else
+            log_error "Zathura installation verification failed"
+            return 1
+        fi
+    fi
+fi
+
+# =============================================================================
+# SECTION 30: PYTHON DEVELOPMENT TOOLS
+# =============================================================================
+if prompt_continue "Install Python development tools (Poetry)?"; then
+    log_section "PYTHON DEVELOPMENT TOOLS INSTALLATION"
+
+    # Ensure pipx paths are configured in the user's environment
+    log_info "Ensuring pipx paths are configured..."
+    pipx ensurepath
+    
+    # Add pipx bin dir to current session's PATH to find poetry later
+    export PATH="$PATH:$HOME/.local/bin"
+
+    # Install Poetry if it's not already installed
+    if ! command -v poetry &> /dev/null; then
+        log_info "Installing Poetry using pipx..."
+        pipx install poetry
+        log_success "Poetry installed successfully."
+    else
+        log_warning "Poetry is already installed, skipping installation."
+        # Optionally, you could upgrade it
+        # log_info "Upgrading Poetry..."
+        # pipx upgrade poetry
     fi
 fi
 
