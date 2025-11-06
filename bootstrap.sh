@@ -307,7 +307,8 @@ if prompt_continue "Update system and install build dependencies?"; then
         libdjvulibre-dev \
         ncal \
         qpdf \
-        pipx
+        pipx \
+        brightnessctl
 
     log_success "System packages and build dependencies installed"
 fi
