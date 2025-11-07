@@ -164,6 +164,152 @@ endfunction
 
 command! -nargs=1 Colorcall :call SwitchColorscheme(<q-args>)
 
+" --- Greyscale toggle: a dark, high-contrast, red-free variant for grayscale compositors ---
+let g:greyscale_mode = 0
+let g:greyscale_prev_scheme = ''
+
+function! s:ApplyHighlights(dict) abort
+  for [grp, spec] in items(a:dict)
+    execute 'hi' grp spec
+  endfor
+endfunction
+
+" Hand-picked cterm grays + attrs. Focus on contrast, not hue.
+let s:gray_overrides = {
+\ 'Normal':         'ctermfg=252 ctermbg=none',
+\ 'Comment':        'ctermfg=244 cterm=NONE',
+\ 'Identifier':     'ctermfg=252 cterm=bold',
+\ 'Function':       'ctermfg=255 cterm=bold',
+\ 'Statement':      'ctermfg=252 cterm=bold',
+\ 'Type':           'ctermfg=253 cterm=bold',
+\ 'Special':        'ctermfg=254',
+\ 'Underlined':     'ctermfg=252 cterm=underline',
+\ 'Todo':           'ctermfg=235 ctermbg=229 cterm=bold',
+\ 'MatchParen':     'ctermfg=231 ctermbg=242 cterm=bold',
+\ 'CursorLine':     'ctermbg=236',
+\ 'CursorColumn':   'ctermbg=236',
+\ 'LineNr':         'ctermfg=244',
+\ 'CursorLineNr':   'ctermfg=252 cterm=bold',
+\ 'VertSplit':      'ctermfg=238 ctermbg=none',
+\ 'StatusLine':     'ctermfg=252 ctermbg=236 cterm=bold',
+\ 'StatusLineNC':   'ctermfg=246 ctermbg=235',
+\ 'Pmenu':          'ctermfg=252 ctermbg=236',
+\ 'PmenuSel':       'ctermfg=235 ctermbg=252 cterm=bold',
+\ 'Search':         'ctermfg=235 ctermbg=250 cterm=bold',
+\ 'IncSearch':      'ctermfg=252 ctermbg=238 cterm=reverse',
+\ 'Visual':         'ctermfg=252 ctermbg=238',
+\ 'Directory':      'ctermfg=252 cterm=bold',
+\ 'Title':          'ctermfg=255 cterm=bold',
+\ 'Error':          'ctermfg=231 ctermbg=235 cterm=bold,underline',
+\ 'ErrorMsg':       'ctermfg=231 ctermbg=235 cterm=bold,underline',
+\ 'WarningMsg':     'ctermfg=231 ctermbg=238 cterm=bold',
+\ 'MoreMsg':        'ctermfg=252 cterm=bold',
+\ 'Question':       'ctermfg=252 cterm=bold',
+\ 'Folded':         'ctermfg=248 ctermbg=237',
+\ 'SignColumn':     'ctermbg=235',
+\ 'DiffAdd':        'ctermfg=none ctermbg=236',
+\ 'DiffChange':     'ctermfg=none ctermbg=237',
+\ 'DiffDelete':     'ctermfg=250 ctermbg=235',
+\ 'DiffText':       'ctermfg=231 ctermbg=240 cterm=bold',
+\ }
+
+" If you use LSP/diagnostics, make errors pop without red hue:
+let s:diag_overrides = {
+\ 'DiagnosticError':   'ctermfg=231 ctermbg=235 cterm=bold,underline',
+\ 'DiagnosticWarn':    'ctermfg=231 ctermbg=238 cterm=bold',
+\ 'DiagnosticInfo':    'ctermfg=252',
+\ 'DiagnosticHint':    'ctermfg=246',
+\ 'DiagnosticUnderlineError': 'cterm=underline',
+\ 'DiagnosticUnderlineWarn':  'cterm=underline',
+\ }
+
+" function! GreyscaleOn() abort
+"   if g:greyscale_mode | return | endif
+"   let g:greyscale_prev_scheme = exists('g:colors_name') ? g:colors_name : ''
+"   set background=dark
+"   " Start from molokai (solid dark base), then override with grayscale-safe defs.
+"   " Use your helper so your molokai tweaks apply first:
+"   if exists(':Colorcall')
+"     silent! execute 'Colorcall molokai'
+"   else
+"     silent! colorscheme molokai
+"   endif
+"   call s:ApplyHighlights(s:gray_overrides)
+"   call s:ApplyHighlights(s:diag_overrides)
+"   let g:greyscale_mode = 1
+"   echo 'Greyscale mode: ON'
+" endfunction
+
+function! GreyscaleOff() abort
+  if !g:greyscale_mode | return | endif
+  " Restore previous scheme (and your custom per-scheme tweaks)
+  if !empty(g:greyscale_prev_scheme) && exists(':Colorcall')
+    execute 'Colorcall ' . g:greyscale_prev_scheme
+  elseif !empty(g:greyscale_prev_scheme)
+    execute 'colorscheme ' . g:greyscale_prev_scheme
+  else
+    " Fallback to your default path:
+    if exists(':Colorcall')
+      execute 'Colorcall molokai'
+    else
+      colorscheme molokai
+    endif
+  endif
+  let g:greyscale_mode = 0
+  echo 'Greyscale mode: OFF'
+endfunction
+
+command! GreyscaleOn  call GreyscaleOn()
+command! GreyscaleOff call GreyscaleOff()
+
+function! GreyscaleToggle() abort
+  if get(g:, 'greyscale_mode', 0)
+    call GreyscaleOff()
+  else
+    call GreyscaleOn()
+  endif
+endfunction
+command! GreyscaleToggle call GreyscaleToggle()
+
+" Handy mapping
+nnoremap <leader>tg :GreyscaleToggle<CR>
+
+" Brighter punctuation/operators
+let s:gray_symbol_overrides = {}
+let s:gray_symbol_overrides.Operator    = 'ctermfg=255 cterm=bold'  " = + - * etc.
+let s:gray_symbol_overrides.Delimiter   = 'ctermfg=253 cterm=bold'  " ; , ( ) { } etc.
+let s:gray_symbol_overrides.SpecialChar = 'ctermfg=254 cterm=bold'  " ! @ # % ^ & etc.
+let s:gray_symbol_overrides.NonText     = 'ctermfg=240'
+let s:gray_symbol_overrides.SpecialKey  = 'ctermfg=240'
+
+" Re-define GreyscaleOn to include the new symbol overrides
+function! GreyscaleOn() abort
+  if g:greyscale_mode | return | endif
+  let g:greyscale_prev_scheme = exists('g:colors_name') ? g:colors_name : ''
+  set background=dark
+  if exists(':Colorcall')
+    silent! execute 'Colorcall molokai'
+  else
+    silent! colorscheme molokai
+  endif
+  call s:ApplyHighlights(s:gray_overrides)
+  call s:ApplyHighlights(s:gray_symbol_overrides)
+  call s:ApplyHighlights(s:diag_overrides)
+  let g:greyscale_mode = 1
+  echo 'Greyscale mode: ON'
+endfunction
+
+" --- Clean autocmd: no inline if/endif, so no trailing characters error ---
+function! s:MaybeGreyscale() abort
+  if exists('$PICOM_GREYSCALE') && $PICOM_GREYSCALE ==# '1'
+    call GreyscaleOn()
+  endif
+endfunction
+
+augroup GreyscaleAuto
+  autocmd!
+  autocmd VimEnter * call s:MaybeGreyscale()
+augroup END
 
 let mapleader=" "
 " vim-commentary Settings
