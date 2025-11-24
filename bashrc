@@ -129,58 +129,7 @@ fi
 
 alias zathura='zathura --fork'
 
-# export PATH="$PATH:$HOME/soft/julia/julia-1.7.2/bin"
-
-if [ -z "$LD_LIBRARY_PATH" ]; then
-    export LD_LIBRARY_PATH="/usr/local/lib"
-else
-    export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/local/lib"
-fi
-
-## TeXLive 2022
-#export PATH="$HOME/software/texlive/2018/bin/x86_64-linux:$PATH"
-#export MANPATH="$HOME/software/texlive/2018/texmf-dist/doc/man:$MANPATH"
-
-#export INFOPATH="$HOME/software/texlive/2018/texmf-dist/doc/info:$INFOPATH"
-
-# export PATH="/usr/local/texlive/2024/bin/x86_64-linux:$PATH"
-# export MANPATH="/usr/local/texlive/2024/texmf-dist/doc/man:$MANPATH"
-# export INFOPATH="/usr/local/texlive/2024/texmf-dist/doc/info:$INFOPATH"
-
-# # TOPCOM
-# export PATH="/home/seva/soft/topcom/install/bin:$PATH"
-# export LD_LIBRARY_PATH="/home/seva/soft/topcom/install/lib:$LD_LIBRARY_PATH"
-# export CPATH="$CPATH:/home/seva/soft/topcom/install/include"
-
-# export LD_LIBRARY_PATH="/home/seva/soft/finiteflow/build/lib:$LD_LIBRARY_PATH"
-
-# source "$HOME/soft/OpenXM/rc/dot.bashrc"
-# FORM
-# export FORMPATH="$HOME/soft/form/color:$FORMPATH"
-#export PATH="$HOME/software/form/bin:$PATH"
-## Minos
-#export PATH="$HOME/software/minos/bin:$PATH"
-## QGRAF
-#export PATH="$HOME/software/qgraf/bin:$PATH"
-### ginacnum
-##export PATH="$HOME/dev/ginac/ginacnum/bin:$PATH"
-
-# # Krita
-# export PATH="$HOME/software/krita/bin:$PATH"
-# # Blender
-# export PATH="$HOME/software/blender/:$PATH"
-
-# export HYPERINTDIR="$HOME/dev/maple/hyperint/"
-
-## pySecDec
-#export SECDEC_CONTRIB=/home/sevasan/software/pySecDec-1.4.5/
-##export PYTHONPATH=/home/sevasan/software/pySecDec-1.4.5/pySecDec-1.4.5:$PYTHONPATH
-#export PYTHONPATH=/home/sevasan/software/secdec:$PYTHONPATH
-
-# # FireFly flags and libs
-# FF_CFLAGS=$(pkg-config --cflags firefly)
-# FF_LIBS=$(pkg-config --libs firefly)
-# FF_ROOT_DIR="$HOME/software/firefly"
+export LD_LIBRARY_PATH="${LD_LIBRARY_PATH:+$LD_LIBRARY_PATH:}/usr/local/lib"
 
 export NNN_NOWAIT=1
 
@@ -227,46 +176,28 @@ if [[ $(hostname) = mac ]]; then
 fi
 
 if [[ $(hostname) = thinkpad ]]; then
-    # export FERMATPATH="$HOME/soft/ferl6/fer64"
     # source "$HOME/soft/OpenXM/rc/dot.bashrc"
 
     # http://blog.joncairns.com/2013/12/understanding-ssh-agent-and-ssh-add/
-    # source ~/soft/ssh-find-agent/ssh-find-agent.sh
-    echo source "$HOME/.local/src/ssh-find-agent/ssh-find-agent.sh"
     source "$HOME/.local/src/ssh-find-agent/ssh-find-agent.sh"
-    # set_ssh_agent_socket
-    # ssh-add -l >&/dev/null || ssh-find-agent -a || eval $(ssh-agent) > /dev/null
     ssh-find-agent -a \
         || ssh-add -l \
         || eval $(ssh-agent)
 
-    # 1. Prefer whatever ssh-find-agent thinks is the right agent
-    if ssh-find-agent -a >/dev/null 2>&1; then
-        echo "DEBUG: ssh-find-agent -a SUCCEEDED, using $SSH_AUTH_SOCK"
+    # # 1. Prefer whatever ssh-find-agent thinks is the right agent
+    # if ssh-find-agent -a >/dev/null 2>&1; then
+    #     echo "DEBUG: ssh-find-agent -a SUCCEEDED, using $SSH_AUTH_SOCK"
 
-    # 2. If that fails but we already have some agent with keys, keep it
-    elif ssh-add -l >/dev/null 2>&1; then
-        echo "DEBUG: ssh-add -l SUCCEEDED, using $SSH_AUTH_SOCK"
+    # # 2. If that fails but we already have some agent with keys, keep it
+    # elif ssh-add -l >/dev/null 2>&1; then
+    #     echo "DEBUG: ssh-add -l SUCCEEDED, using $SSH_AUTH_SOCK"
 
-    # 3. Otherwise, start a fresh ssh-agent
-    else
-        echo "DEBUG: starting new ssh-agent"
-        eval "$(ssh-agent -s)" >/dev/null
-        echo "DEBUG: new SSH_AUTH_SOCK=$SSH_AUTH_SOCK"
-    fi
-
-    # # Debug version of the ssh-agent logic
-    # if ssh-add -l >/dev/null 2>&1; then
-    #     echo "DEBUG: ssh-add -l SUCCEEDED (agent reachable, maybe keys already loaded)"
-    # elif ssh-find-agent -a >/dev/null 2>&1; then
-    #     echo "DEBUG: ssh-find-agent -a SUCCEEDED (found an existing agent)"
-    #     echo "DEBUG: SSH_AUTH_SOCK after ssh-find-agent: $SSH_AUTH_SOCK"
+    # # 3. Otherwise, start a fresh ssh-agent
     # else
-    #     echo "DEBUG: both ssh-add and ssh-find-agent FAILED, starting new ssh-agent"
+    #     echo "DEBUG: starting new ssh-agent"
     #     eval "$(ssh-agent -s)" >/dev/null
-    #     echo "DEBUG: started ssh-agent, SSH_AUTH_SOCK=$SSH_AUTH_SOCK"
+    #     echo "DEBUG: new SSH_AUTH_SOCK=$SSH_AUTH_SOCK"
     # fi
-
 
     [ -f ~/.fzf.bash ] && source ~/.fzf.bash
     . "$CARGO_HOME/env"
@@ -276,36 +207,6 @@ if [[ $(hostname) = thinkpad ]]; then
       export FZF_DEFAULT_OPTS='-m --height 50% --border'
     fi
 fi
-
-# FiniteFlow python API
-# export PYTHONPATH=$PYTHONPATH:/path/to/finiteflow/pythonapi
-
-
-# export PATH="$PATH:$HOME/soft/mambaforge/bin"
-
-# # >>> conda initialize >>>
-# # !! Contents within this block are managed by 'conda init' !!
-# __conda_setup="$('/home/seva/soft/mambaforge/bin/conda' 'shell.bash' 'hook' 2> /dev/null)"
-# if [ $? -eq 0 ]; then
-#     eval "$__conda_setup"
-# else
-#     if [ -f "/home/seva/soft/mambaforge/etc/profile.d/conda.sh" ]; then
-#         . "/home/seva/soft/mambaforge/etc/profile.d/conda.sh"
-#     else
-#         export PATH="/home/seva/soft/mambaforge/bin:$PATH"
-#     fi
-# fi
-# unset __conda_setup
-
-# if [ -f "/home/seva/soft/mambaforge/etc/profile.d/mamba.sh" ]; then
-#     . "/home/seva/soft/mambaforge/etc/profile.d/mamba.sh"
-# fi
-# # <<< conda initialize <<<
-
-# export _JAVA_AWT_WM_NONREPARENTING=1
-# alias jd2='jd2 &'
-
-# export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 
 # export NVM_DIR="$HOME/.config/nvm"
 # [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
@@ -359,29 +260,6 @@ theme-status() {
         echo "Theme not detected or custom theme in use"
     fi
 }
-
-# # Quick suckless rebuilds
-# rebuild-st() {
-#     cd ~/.local/src/st && make clean && make -j$(nproc) && sudo make install
-# }
-
-# rebuild-dmenu() {
-#     cd ~/.local/src/dmenu && make clean && make -j$(nproc) && sudo make install
-# }
-
-# rebuild-dwm() {
-#     cd ~/.local/src/dwm && make clean && make -j$(nproc) && sudo make install
-# }
-
-# rebuild-slstatus() {
-#     cd ~/.local/src/slstatus && make clean && make -j$(nproc) && sudo make install
-# }
-
-# rebuild-suckless() {
-#     rebuild-st && rebuild-dmenu && rebuild-dwm && rebuild-slstatus
-#     echo "All suckless tools rebuilt. Restart dwm to see changes."
-# }
-# export PATH="/home/seva/.local/bin:$PATH"
 
 # Scientific software environment
 source $XDG_CONFIG_HOME/scientific-env.sh

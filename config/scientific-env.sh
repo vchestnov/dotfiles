@@ -17,3 +17,6 @@ export LIBRARY_PATH="$HOME/.local/lib${LIBRARY_PATH:+:$LIBRARY_PATH}"
 
 # Convenience: location of cloned research repos (Mathematica tools, Blade, AMFlow, etc.)
 export SCIENCE_REPOS_DIR="$HOME/soft"
+
+# # FiniteFlow python API
+# export PYTHONPATH="$PYTHONPATH:$HOME/.local"
