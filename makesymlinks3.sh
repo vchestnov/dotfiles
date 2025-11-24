@@ -6,9 +6,9 @@
 ############################
 
 ########## Variables
-dir=~/dotfiles                    # dotfiles directory
-private_dir=~/dotfiles/private    # private dotfiles directory
-olddir=~/.config/dotfiles_old     # old dotfiles backup directory
+dir="$HOME/dotfiles"
+private_dir="$HOME/dotfiles/dotfiles-private"
+olddir="$HOME/.config/dotfiles_old"
 
 # XDG Base Directory variables
 export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
@@ -123,7 +123,7 @@ if [[ "$(uname)" != "Darwin" ]] && [[ ${#private_xdg_state_files[@]} -gt 0 ]]; t
     for entry in "${private_xdg_state_files[@]}"; do
         source_name="${entry%%:*}"
         target_path="${entry##*:}"
-        backup_path="$olddir/private/$(basename "$target_path")"
+        backup_path="$olddir/dotfiles-private/$(basename "$target_path")"
         
         backup_and_link "$private_dir/$source_name" "$target_path" "$backup_path"
     done

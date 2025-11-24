@@ -19,3 +19,4 @@ export WGET_HSTS_FILE="$XDG_STATE_HOME/wget/hsts"
 if [ -f "$HOME/.profile.local" ]; then
     . "$HOME/.profile.local"
 fi
+. "$CARGO_HOME/env"

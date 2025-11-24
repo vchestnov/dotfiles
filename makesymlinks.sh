@@ -18,7 +18,7 @@ if [[ "$(uname)" == "Darwin" ]]; then
     private_files=""
 else
     # list of dotfiles in ~/dotfiles/
-    files="vimrc vim gitignore_global gitconfig xinitrc xsession bashrc zshrc tmux.conf fzf.bash"
+    files="vimrc vim gitignore_global gitconfig xinitrc xsession Xresources bashrc zshrc tmux.conf fzf.bash"
 
     # private dotfiles in ~/dotfiles/private
     private_files="bash_history"

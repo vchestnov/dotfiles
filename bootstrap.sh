@@ -8,7 +8,7 @@
 # INTRO
 # =============================================================================
 
-set -e  # Exit on any error
+set -Eeuo pipefail # Exit on error, undefined var; fail pipelines
 
 # Colors for output
 RED='\033[0;31m'
@@ -144,28 +144,83 @@ log_success "Pre-flight checks completed"
 # =============================================================================
 
 # Function to clone or update git repository
-clone_or_update() {
-    local repo_url=$1
-    local dest_dir=$2
-    local branch=${3:-master}
+# clone_or_update() {
+#     local repo_url=$1
+#     local dest_dir=$2
+#     local branch=${3:-master}
     
-    if [ -d "$dest_dir" ]; then
-        log_info "Updating $(basename "$dest_dir")..."
+#     if [ -d "$dest_dir" ]; then
+#         log_info "Updating $(basename "$dest_dir")..."
+#         cd "$dest_dir"
+#         git fetch origin
+#         git reset --hard "origin/$branch"
+#     else
+#         log_info "Cloning $(basename "$dest_dir")..."
+#         git clone "$repo_url" "$dest_dir"
+#         cd "$dest_dir"
+#         if [ "$branch" != "master" ] && [ "$branch" != "main" ]; then
+#             git checkout "$branch"
+#         fi
+#     fi
+    
+#     # Ensure proper ownership after git operations
+#     log_info "Ensuring proper ownership of $(basename "$dest_dir")..."
+#     chown -R "$USER:$(id -gn)" "$dest_dir"
+# }
+
+clone_or_update() {
+    local repo_url="$1"
+    local dest_dir="$2"
+    local branch="${3:-}"   # optional branch
+
+    if [ -d "$dest_dir/.git" ]; then
+        log_info "Updating existing repository in $dest_dir"
         cd "$dest_dir"
-        git fetch origin
-        git reset --hard "origin/$branch"
+
+        # Make sure origin URL is up to date (if we change from HTTPS to SSH etc.)
+        git remote set-url origin "$repo_url" 2>/dev/null || true
+
+        # If no branch specified, detect default branch from remote
+        if [[ -z "$branch" ]]; then
+            branch=$(git remote show origin 2>/dev/null \
+                        | awk '/HEAD branch/ {print $NF}')
+
+            # Fallback to main/master if detection failed 
+            if [[ -z "$branch" ]]; then
+                if git ls-remote --heads origin main &>/dev/null; then
+                    branch="main"
+                elif git ls-remote --heads origin master &>/dev/null; then
+                    branch="master"
+                else
+                    log_warning "Could not determine default branch for $repo_url; using 'main' as fallback."
+                    branch="main"
+                fi
+            fi
+        fi
+
+        # Fetch and checkout the chosen branch
+        git fetch --all --prune
+
+        if [[ -n "$branch" ]]; then
+            # Try to checkout existing local branch, otherwise create tracking branch
+            if ! git checkout "$branch" 2>/dev/null; then
+                git checkout -b "$branch" "origin/$branch" 2>/dev/null || true
+            fi
+            git pull origin "$branch" || true
+        else
+            # Should not really happen, but keep a conservative fallback
+            git pull || true
+        fi
     else
-        log_info "Cloning $(basename "$dest_dir")..."
-        git clone "$repo_url" "$dest_dir"
-        cd "$dest_dir"
-        if [ "$branch" != "master" ] && [ "$branch" != "main" ]; then
-            git checkout "$branch"
+        log_info "Cloning new repository from $repo_url into $dest_dir"
+        if [[ -n "$branch" ]]; then
+            git clone --branch "$branch" "$repo_url" "$dest_dir" || return 1
+        else
+            git clone "$repo_url" "$dest_dir" || return 1
         fi
     fi
-    
-    # Ensure proper ownership after git operations
-    log_info "Ensuring proper ownership of $(basename "$dest_dir")..."
-    chown -R "$USER:$(id -gn)" "$dest_dir"
+
+    return 0
 }
 
 # Function to build and install with proper ownership
@@ -221,6 +276,8 @@ build_and_install() {
     log_success "Directory structure created"
 # fi
 
+# : <<'END_DEBUG'
+
 # =============================================================================
 # SECTION 2: SYSTEM PACKAGES
 # =============================================================================
@@ -239,7 +296,7 @@ if prompt_continue "Update system and install build dependencies?"; then
         git \
         curl \
         wget \
-        pkg-config \
+        pkg-c $CONFIG_FILESonfig \
         autoconf \
         automake \
         libtool \
@@ -308,7 +365,9 @@ if prompt_continue "Update system and install build dependencies?"; then
         ncal \
         qpdf \
         pipx \
-        brightnessctl
+        brightnessctl \
+        libxcb-xtest0 \
+        pavucontrol
 
     log_success "System packages and build dependencies installed"
 fi
@@ -549,14 +608,17 @@ if prompt_continue "Build Vim from source?"; then
 
     build_and_install "Vim" "make -j$(nproc)" "make install" true
 
+    : "${XDG_CACHE_HOME:=$HOME/.cache}";
+    mkdir -p "$XDG_CACHE_HOME/vim/"{swap,undo,backup}
+
     log_success "Vim installed with terminal and xclip support"
 fi
 
 # =============================================================================
-# SECTION 8: RUST TOOLS (FZF, RIPGREP, FD)
+# SECTION 8: RUST TOOLS (FZF, RIPGREP, FD, BAT)
 # =============================================================================
 
-if prompt_continue "Install Rust and Rust-based tools (fzf, ripgrep, fd)?"; then
+if prompt_continue "Install Rust and Rust-based tools (fzf, ripgrep, fd, bat)?"; then
     log_section "RUST TOOLS INSTALLATION"
     
     # Install Rust if needed
@@ -571,7 +633,7 @@ if prompt_continue "Install Rust and Rust-based tools (fzf, ripgrep, fd)?"; then
     log_info "Installing fzf..."
     clone_or_update "https://github.com/junegunn/fzf.git" "$SRC_DIR/fzf"
     cd "$SRC_DIR/fzf"
-    make
+    make install
     cp bin/fzf "$BIN_DIR/"
 
     # Install fzf shell integration
@@ -596,6 +658,24 @@ if prompt_continue "Install Rust and Rust-based tools (fzf, ripgrep, fd)?"; then
     cp target/release/fd "$BIN_DIR/"
 
     log_success "fd installed"
+
+	# Install bat from git 
+	log_info "Installing bat..."
+
+	if [ ! -d "$SRC_DIR/bat" ]; then
+		git clone https://github.com/sharkdp/bat.git "$SRC_DIR/bat"
+		cd "$SRC_DIR/bat"
+		cargo build --release
+		cp target/release/bat "$BIN_DIR"
+	else
+		echo "bat already installed, pulling latest changes..."
+		cd "$SRC_DIR/bat"
+		git pull
+		cargo build --release
+		cp target/release/bat "$BIN_DIR"
+	fi
+
+	log_success "bat installed"
 fi
 
 # =============================================================================
@@ -789,6 +869,10 @@ if prompt_continue "Install vifm (file manager) and zathura (PDF viewer)?"; then
 
     log_success "vifm installed"
 
+    log_info "Installing colors for vifm..."
+    clone_or_update "https://github.com/vifm/vifm-colors" "$HOME/.config/vifm/colors"
+    log_success "Colors for vifm installed"
+
     # Install zathura and plugins
     log_info "Installing zathura..."
     sudo apt install -y zathura zathura-pdf-poppler zathura-ps zathura-djvu
@@ -865,7 +949,7 @@ esac
 # repeat rate and key maps
 xset r rate 300 50
 setxkbmap "us,ru" -option "grp:caps_toggle"
-setxkbmap -option altwin:swap_lalt_lwin
+# setxkbmap -option altwin:swap_lalt_lwin
 
 # Set black desktop background
 xsetroot -solid black
@@ -1377,9 +1461,9 @@ if prompt_continue "Configure and patch suckless tools?"; then
                 local dmenu_configured=false
 
                 apply_patch "https://dwm.suckless.org/patches/center/dwm-center-6.2.diff" "center"
-                git_apply_patch "$PATCHES_DIR/dwm/dwm-fix-dmenucmd.diff" "dmenucmd"
-                git_apply_patch "$PATCHES_DIR/dwm/dwm-xrdb-patch.diff" "xrdb"
-                git_apply_patch "$PATCHES_DIR/dwm/dwm-config-fixes.diff" "config"
+                apply_patch "$PATCHES_DIR/dwm/dwm-fix-dmenucmd.diff" "dmenucmd"
+                apply_patch "$PATCHES_DIR/dwm/dwm-xrdb-patch.diff" "xrdb" "--fuzz=3"
+                apply_patch "$PATCHES_DIR/dwm/dwm-config-fixes.diff" "config" "--fuzz=3"
 				# apply_patch "https://dwm.suckless.org/patches/xresources/dwm-xresources-20210827-138b405.diff" "xresources" "--fuzz=3"
 
                 # cp config.def.h /tmp/config.def.h.tmp
@@ -1728,7 +1812,7 @@ if prompt_continue "Install messengers (telegram, slack, signal, zulip)?"; then
         
         # Get the actual download URL from Slack's download page
         log_info "Parsing Slack download page for current version..."
-        SLACK_DOWNLOAD_URL=$(curl -s "https://slack.com/downloads/instructions/linux?build=deb" | \
+        SLACK_DOWNLOAD_URL=$(curl -s "https://slack.com/intl/en-gb/downloads/instructions/linux?build=deb" | \
                            grep -o 'https://downloads\.slack-edge\.com[^"]*\.deb' | \
                            head -1)
         
@@ -1908,19 +1992,35 @@ fi
 # =============================================================================
 # SECTION 25: SCIENTIFIC SOFTWARE (GMP, FLINT, FINITEFLOW)
 # =============================================================================
+
+END_DEBUG
+
 if prompt_continue "Install scientific software (GMP, FLINT, FiniteFlow)?"; then
     log_section "SCIENTIFIC SOFTWARE INSTALLATION"
 
+    SCI_PREFIX="$HOME/.local"
+    SCI_ENV_PATH="$HOME/.config/scientific-env.sh"
+    SCI_REPOS_DIR="$HOME/soft"
+
     # Ensure required directories exist
-    mkdir -p "$HOME/soft"
     mkdir -p "$SRC_DIR"
+    mkdir -p "$SCI_PREFIX"
+    mkdir -p "$(dirname "$SCI_ENV_PATH")"
+    mkdir -p "$SCI_REPOS_DIR"
 
-    # # Install system dependencies
-    # log_info "Installing system dependencies..."
-    # sudo apt-get update
-    # sudo apt-get install -y build-essential cmake wget
+    # Helper to clone repos into common directory
+    clone_sci_repo() {
+        local name=$1
+        local url=$2
+        local dest="$SCI_REPOS_DIR/$name"
 
-    # Install GMP from source
+        log_info "Setting up repo: $name"
+		clone_or_update "$url" "$dest"
+    }
+
+    # ========================================
+    # GMP
+    # ========================================
     log_info "Installing GMP from source..."
     GMP_VERSION="6.3.0"
     GMP_URL="https://gmplib.org/download/gmp/gmp-${GMP_VERSION}.tar.xz"
@@ -1930,65 +2030,185 @@ if prompt_continue "Install scientific software (GMP, FLINT, FiniteFlow)?"; then
     tar -xf "gmp-${GMP_VERSION}.tar.xz"
     cd "gmp-${GMP_VERSION}"
 
-    ./configure --prefix="$HOME/soft/gmp" --enable-cxx
+    ./configure --prefix="$SCI_PREFIX" --enable-cxx
     build_and_install "GMP" "make -j$(nproc)" "make install" true
-    log_success "GMP installed to $HOME/soft/gmp"
+    log_success "GMP installed to $SCI_PREFIX"
 
     # Update environment for subsequent builds
-    export PKG_CONFIG_PATH="$HOME/soft/gmp/lib/pkgconfig:$PKG_CONFIG_PATH"
-    export LD_LIBRARY_PATH="$HOME/soft/gmp/lib:$LD_LIBRARY_PATH"
+    export PKG_CONFIG_PATH="$SCI_PREFIX/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+    export LD_LIBRARY_PATH="$SCI_PREFIX/lib:${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
-    # Install FLINT-FiniteFlow-Dep (lightweight version)
-    log_info "Installing FLINT-FiniteFlow-Dep..."
+    # ========================================
+    # FLINT-FiniteFlow-dep
+    # ========================================
+    log_info "Installing FLINT-FiniteFlow-dep..."
     clone_or_update "https://github.com/peraro/flint-finiteflow-dep.git" "$SRC_DIR/flint-finiteflow-dep"
     cd "$SRC_DIR/flint-finiteflow-dep"
     
-    cmake -DCMAKE_PREFIX_PATH="$HOME/soft/gmp" \
-          -DCMAKE_INSTALL_PREFIX="$HOME/soft/flint-finiteflow-dep" \
+    cmake -DCMAKE_PREFIX_PATH="$SCI_PREFIX" \
+          -DCMAKE_INSTALL_PREFIX="$SCI_PREFIX" \
           .
-    build_and_install "FLINT-FiniteFlow-Dep" "make -j$(nproc)" "make install" true
-    log_success "FLINT-FiniteFlow-Dep installed to $HOME/soft/flint-finiteflow-dep"
+    build_and_install "FLINT-FiniteFlow-dep" "make -j$(nproc)" "make install" true
+    log_success "FLINT-FiniteFlow-dep installed to $SCI_PREFIX"
     
     # Update environment for FiniteFlow build
-    export PKG_CONFIG_PATH="$HOME/soft/flint-finiteflow-dep/lib/pkgconfig:$PKG_CONFIG_PATH"
-    export LD_LIBRARY_PATH="$HOME/soft/flint-finiteflow-dep/lib:$LD_LIBRARY_PATH"
+    export PKG_CONFIG_PATH="$SCI_PREFIX/lib/pkgconfig:$PKG_CONFIG_PATH"
+    export LD_LIBRARY_PATH="$SCI_PREFIX/lib:$LD_LIBRARY_PATH"
     
-    # Install FiniteFlow
-    log_info "Installing FiniteFlow..."
-    clone_or_update "https://github.com/peraro/finiteflow.git" "$HOME/dev/finiteflow"
-    cd "$HOME/dev/finiteflow"
+    # ========================================
+    # FiniteFlow
+    # ========================================
+    log_info "Installing FiniteFlow (dev sources in ~/dev/finiteflow)..."
+
+    FINITEFLOW_DEV_DIR="$HOME/dev/finiteflow"
+    mkdir -p "$HOME/dev"
+
+    clone_or_update "https://github.com/peraro/finiteflow.git" "$FINITEFLOW_DEV_DIR"
+    cd "$FINITEFLOW_DEV_DIR"
+
+    # If there was a previous build, clean it up first
+    if [ -f CMakeCache.txt ] || [ -d CMakeFiles ] || [ -f Makefile ]; then
+        log_info "Previous FiniteFlow build detected; cleaning up..."
+
+        if [ -f Makefile ]; then
+            # Try make clean; don't abort on failure
+            if ! make clean; then
+                log_warning "make clean failed for FiniteFlow (continuing anyway)..."
+            fi
+
+            # Try make uninstall if target exists; don't abort on failure
+            if grep -q "^uninstall:" Makefile 2>/dev/null; then
+                if ! make uninstall; then
+                    log_warning "make uninstall failed for FiniteFlow (continuing anyway)..."
+                fi
+            else
+                log_info "No uninstall target in FiniteFlow Makefile; skipping make uninstall."
+            fi
+        fi
+
+        # Remove CMake cache and related build files
+        rm -f CMakeCache.txt
+        rm -rf CMakeFiles
+        rm -f cmake_install.cmake
+        rm -f install_manifest.txt
+        rm -f Makefile
+
+        log_info "Removed previous FiniteFlow CMake cache and build artifacts."
+    fi
     
-    cmake -DCMAKE_INSTALL_PREFIX="$HOME/soft/finiteflow" \
-          -DCMAKE_PREFIX_PATH="$HOME/soft/gmp;$HOME/soft/flint-finiteflow-dep" \
+    cmake -DCMAKE_INSTALL_PREFIX="$SCI_PREFIX" \
+          -DCMAKE_PREFIX_PATH="$SCI_PREFIX" \
           .
     build_and_install "FiniteFlow" "make -j$(nproc)" "make install" true
-    log_success "FiniteFlow installed to $HOME/soft/finiteflow"
+    log_success "FiniteFlow installed to $SCI_PREFIX; sources are in $FINITEFLOW_DEV_DIR"
 
-    # Create environment setup script
+    # ========================================
+    # Extra tools 
+    # ========================================
+    log_section "CLONING EXTRA SCIENTIFIC PACKAGES"
+    log_info "All extra packages will live in: $SCI_REPOS_DIR"
+
+    # FiniteFlow MathTools 
+    clone_sci_repo "finiteflow-mathtools" "https://github.com/peraro/finiteflow-mathtools.git"
+
+    # CALICO 
+    clone_sci_repo "calico" "https://github.com/fontana-g/calico.git"
+
+    # LiteRed2 + Libra 
+    clone_sci_repo "LiteRed2" "https://github.com/rnlg/LiteRed2.git"
+    clone_sci_repo "Libra"    "https://github.com/rnlg/Libra.git"
+
+    # Blade / AMFlow / CalcLoop 
+    if ! clone_sci_repo "blade" "https://gitee.com/multiloop-pku/blade.git"; then
+        log_warning "Skipping repo blade"
+    fi
+    clone_sci_repo "amflow"   "https://gitlab.com/multiloop-pku/amflow.git"
+    clone_sci_repo "calcloop" "https://gitlab.com/multiloop-pku/calcloop.git"
+
+    # BaikovLetter
+    clone_sci_repo "Baikovletter" "https://github.com/windfolgen/Baikovletter.git"
+
+    # BaikovPackage
+    clone_sci_repo "BaikovPackage" "https://github.com/HjalteFrellesvig/BaikovPackage.git"
+
+    # INITIAL 
+    clone_sci_repo "INITIAL" "https://github.com/UT-team/INITIAL.git"
+
+    # NeatIBP 
+    clone_sci_repo "NeatIBP" "https://github.com/yzhphy/NeatIBP.git"
+
+    # Alibrary 
+    clone_sci_repo "alibrary" "https://github.com/magv/alibrary.git"
+
+    # RationalizeRoots 
+    clone_sci_repo "rationalizeroots" "https://github.com/marcobesier/rationalizeroots.git"
+
+    # Azurite 
+    clone_sci_repo "azurite" "https://bitbucket.org/yzhphy/azurite.git"
+
+    # DlogBasis 
+    clone_sci_repo "DlogBasis" "https://github.com/pascalwasser/DlogBasis.git"
+
+    # Private FiniteFlow external packages 
+    if ! clone_sci_repo "ff_ext_packages" "git@github.com:peraro/ff_ext_packages.git"; then
+        log_warning "Skipping private repo ff_ext_packages (SSH keys not configured or access denied)."
+    fi
+
+    log_success "Extra scientific packages cloned into $SCI_REPOS_DIR"
+    log_info "Consult each repository's README for Mathematica / workflow-specific setup."
+
+    # ========================================
+    # Environment setup script
+    # ========================================
     log_info "Creating environment setup script..."
-    cat > "$HOME/soft/scientific-env.sh" << 'EOF'
+    cat > "$SCI_ENV_PATH" << 'EOF'
 #!/bin/bash
-# Scientific software environment setup
-export PATH="$HOME/soft/gmp/bin:$HOME/soft/flint-finiteflow-dep/bin:$HOME/soft/finiteflow/bin:$PATH"
-export PKG_CONFIG_PATH="$HOME/soft/gmp/lib/pkgconfig:$HOME/soft/flint-finiteflow-dep/lib/pkgconfig:$HOME/soft/finiteflow/lib/pkgconfig:$PKG_CONFIG_PATH"
-export LD_LIBRARY_PATH="$HOME/soft/gmp/lib:$HOME/soft/flint-finiteflow-dep/lib:$HOME/soft/finiteflow/lib:$LD_LIBRARY_PATH"
-export CPATH="$HOME/soft/gmp/include:$HOME/soft/flint-finiteflow-dep/include:$HOME/soft/finiteflow/include:$CPATH"
-export LIBRARY_PATH="$HOME/soft/gmp/lib:$HOME/soft/flint-finiteflow-dep/lib:$HOME/soft/finiteflow/lib:$LIBRARY_PATH"
+# Scientific software environment setup (GMP, FLINT deps, FiniteFlow)
+# All installed under: $HOME/.local
+
+# Binaries (FiniteFlow may provide executables here)
+export PATH="$HOME/.local/bin${PATH:+:$PATH}"
+
+# pkg-config files for GMP, FLINT deps, FiniteFlow
+export PKG_CONFIG_PATH="$HOME/.local/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+
+# Runtime library search path (for dlopen / shared libs)
+export LD_LIBRARY_PATH="$HOME/.local/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+
+# Headers and link-time library path for compilers
+export CPATH="$HOME/.local/include${CPATH:+:$CPATH}"
+export LIBRARY_PATH="$HOME/.local/lib${LIBRARY_PATH:+:$LIBRARY_PATH}"
+
+# Convenience: location of cloned research repos (Mathematica tools, Blade, AMFlow, etc.)
+export SCIENCE_REPOS_DIR="$HOME/soft"
 EOF
+
+    #cat > "$HOME/soft/scientific-env.sh" << 'EOF'
+##!/bin/bash
+## Scientific software environment setup
+#export PATH="$HOME/soft/gmp/bin:$HOME/soft/flint-finiteflow-dep/bin:$HOME/soft/finiteflow/bin:$PATH"
+#export PKG_CONFIG_PATH="$HOME/soft/gmp/lib/pkgconfig:$HOME/soft/flint-finiteflow-dep/lib/pkgconfig:$HOME/soft/finiteflow/lib/pkgconfig:$PKG_CONFIG_PATH"
+#export LD_LIBRARY_PATH="$HOME/soft/gmp/lib:$HOME/soft/flint-finiteflow-dep/lib:$HOME/soft/finiteflow/lib:$LD_LIBRARY_PATH"
+#export CPATH="$HOME/soft/gmp/include:$HOME/soft/flint-finiteflow-dep/include:$HOME/soft/finiteflow/include:$CPATH"
+#export LIBRARY_PATH="$HOME/soft/gmp/lib:$HOME/soft/flint-finiteflow-dep/lib:$HOME/soft/finiteflow/lib:$LIBRARY_PATH"
+#EOF
     
-    chmod +x "$HOME/soft/scientific-env.sh"
+    # chmod +x "$HOME/soft/scientific-env.sh"
+    chmod +x "$SCI_ENV_PATH"
     
     # Add to shell profile if not already present
     if ! grep -q "scientific-env.sh" "$HOME/.bashrc"; then
-        echo "" >> "$HOME/.bashrc"
-        echo "# Scientific software environment" >> "$HOME/.bashrc"
-        echo "source \$HOME/soft/scientific-env.sh" >> "$HOME/.bashrc"
+        {
+            echo "" 
+            echo "# Scientific software environment"
+            echo "source \"$SCI_ENV_PATH\""
+        } >> "$HOME/.bashrc"
         log_info "Added scientific software environment to .bashrc"
     fi
     
     log_success "Scientific software installation complete!"
-    log_info "Environment setup script created at: $HOME/soft/scientific-env.sh"
-    log_info "To use the software in current session, run: source $HOME/soft/scientific-env.sh"
+    log_info "Environment setup script created at: $SCI_ENV_PATH"
+    log_info "To use the software in current session, run: source \"$SCI_ENV_PATH\""
     log_info "The environment will be automatically loaded in new terminal sessions."
 fi
 
@@ -2019,17 +2239,24 @@ if prompt_continue "Install TeX Live?"; then
     
     # Create installation profile for automated installation
     log_info "Creating TeX Live installation profile..."
-    cat > texlive.profile << 'EOF'
+    cat > texlive.profile << EOF
 # TeX Live installation profile
 # This profile installs TeX Live to $HOME/soft/texlive
 selected_scheme scheme-full
+# Install tree (per-user)
 TEXDIR $HOME/soft/texlive/2025
-TEXMFCONFIG $HOME/.texlive2025/texmf-config  
-TEXMFHOME $HOME/texmf
-TEXMFLOCAL $HOME/soft/texlive/texmf-local
+
+# Per-user config/cache → XDG
+TEXMFCONFIG $XDG_CONFIG_HOME/texlive/texmf-config
+TEXMFVAR    $XDG_CACHE_HOME/texlive/texmf-var
+
+# User data tree (where your own sty/cls live)
+TEXMFHOME   $XDG_DATA_HOME/texmf
+
+# System-like trees kept under your TEXDIR (no root needed)
 TEXMFSYSCONFIG $HOME/soft/texlive/2025/texmf-config
-TEXMFSYSVAR $HOME/soft/texlive/2025/texmf-var
-TEXMFVAR $HOME/.texlive2025/texmf-var
+TEXMFSYSVAR    $HOME/soft/texlive/2025/texmf-var
+TEXMFLOCAL     $HOME/soft/texlive/texmf-local
 binary_x86_64-linux 1
 instopt_adjustpath 0
 instopt_adjustrepo 1
@@ -2056,7 +2283,9 @@ EOF
     
     # Run automated installation
     log_info "Running TeX Live installation (this may take a while)..."
-    ./install-tl --profile=texlive.profile
+    ./install-tl --repository=https://mirror.ox.ac.uk/sites/ctan.org/systems/texlive/tlnet \
+                 --profile=texlive.profile \
+                 --no-interaction
     
     if [ $? -eq 0 ]; then
         log_success "TeX Live installed successfully"
@@ -2066,9 +2295,9 @@ EOF
         cat > "$HOME/soft/texlive-env.sh" << 'EOF'
 #!/bin/bash
 # TeX Live environment setup
-export PATH="$HOME/soft/texlive/2025/bin/x86_64-linux:$PATH"
-export MANPATH="$HOME/soft/texlive/2025/texmf-dist/doc/man:$MANPATH"
-export INFOPATH="$HOME/soft/texlive/2025/texmf-dist/doc/info:$INFOPATH"
+export PATH="$HOME/soft/texlive/2025/bin/x86_64-linux${PATH:+:$PATH}"
+export MANPATH="$HOME/soft/texlive/2025/texmf-dist/doc/man${MANPATH:+:$MANPATH}"
+export INFOPATH="$HOME/soft/texlive/2025/texmf-dist/doc/info${INFOPATH:+:$INFOPATH}"
 EOF
         
         chmod +x "$HOME/soft/texlive-env.sh"

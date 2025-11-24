@@ -30,6 +30,8 @@ if [ -n "$BASH_VERSION" ] && [ -f "$HOME/.profile" ]; then
     . "$HOME/.profile"
 fi
 
+HISTFILE="$XDG_STATE_HOME/bash/history"
+
 # If set, the pattern "**" used in a pathname expansion context will
 # match all files and zero or more directories and subdirectories.
 #shopt -s globstar
@@ -127,7 +129,7 @@ fi
 
 alias zathura='zathura --fork'
 
-export PATH="$PATH:$HOME/soft/julia/julia-1.7.2/bin"
+# export PATH="$PATH:$HOME/soft/julia/julia-1.7.2/bin"
 
 if [ -z "$LD_LIBRARY_PATH" ]; then
     export LD_LIBRARY_PATH="/usr/local/lib"
@@ -145,17 +147,16 @@ fi
 # export MANPATH="/usr/local/texlive/2024/texmf-dist/doc/man:$MANPATH"
 # export INFOPATH="/usr/local/texlive/2024/texmf-dist/doc/info:$INFOPATH"
 
-# TOPCOM
-export PATH="/home/seva/soft/topcom/install/bin:$PATH"
-export LD_LIBRARY_PATH="/home/seva/soft/topcom/install/lib:$LD_LIBRARY_PATH"
-CPATH="$CPATH:/home/seva/soft/topcom/install/include"
-export CPATH
+# # TOPCOM
+# export PATH="/home/seva/soft/topcom/install/bin:$PATH"
+# export LD_LIBRARY_PATH="/home/seva/soft/topcom/install/lib:$LD_LIBRARY_PATH"
+# export CPATH="$CPATH:/home/seva/soft/topcom/install/include"
 
-export LD_LIBRARY_PATH="/home/seva/soft/finiteflow/build/lib:$LD_LIBRARY_PATH"
+# export LD_LIBRARY_PATH="/home/seva/soft/finiteflow/build/lib:$LD_LIBRARY_PATH"
 
 # source "$HOME/soft/OpenXM/rc/dot.bashrc"
 # FORM
-export FORMPATH="$HOME/soft/form/color:$FORMPATH"
+# export FORMPATH="$HOME/soft/form/color:$FORMPATH"
 #export PATH="$HOME/software/form/bin:$PATH"
 ## Minos
 #export PATH="$HOME/software/minos/bin:$PATH"
@@ -215,6 +216,57 @@ if [[ $(hostname) = mac ]]; then
     source "$HOME/.local/src/ssh-find-agent/ssh-find-agent.sh"
     # set_ssh_agent_socket
     ssh-add -l >&/dev/null || ssh-find-agent -a || eval $(ssh-agent) > /dev/null
+
+    [ -f ~/.fzf.bash ] && source ~/.fzf.bash
+    . "$CARGO_HOME/env"
+
+    if type rg &> /dev/null; then
+      export FZF_DEFAULT_COMMAND='rg --files'
+      export FZF_DEFAULT_OPTS='-m --height 50% --border'
+    fi
+fi
+
+if [[ $(hostname) = thinkpad ]]; then
+    # export FERMATPATH="$HOME/soft/ferl6/fer64"
+    # source "$HOME/soft/OpenXM/rc/dot.bashrc"
+
+    # http://blog.joncairns.com/2013/12/understanding-ssh-agent-and-ssh-add/
+    # source ~/soft/ssh-find-agent/ssh-find-agent.sh
+    echo source "$HOME/.local/src/ssh-find-agent/ssh-find-agent.sh"
+    source "$HOME/.local/src/ssh-find-agent/ssh-find-agent.sh"
+    # set_ssh_agent_socket
+    # ssh-add -l >&/dev/null || ssh-find-agent -a || eval $(ssh-agent) > /dev/null
+    ssh-find-agent -a \
+        || ssh-add -l \
+        || eval $(ssh-agent)
+
+    # 1. Prefer whatever ssh-find-agent thinks is the right agent
+    if ssh-find-agent -a >/dev/null 2>&1; then
+        echo "DEBUG: ssh-find-agent -a SUCCEEDED, using $SSH_AUTH_SOCK"
+
+    # 2. If that fails but we already have some agent with keys, keep it
+    elif ssh-add -l >/dev/null 2>&1; then
+        echo "DEBUG: ssh-add -l SUCCEEDED, using $SSH_AUTH_SOCK"
+
+    # 3. Otherwise, start a fresh ssh-agent
+    else
+        echo "DEBUG: starting new ssh-agent"
+        eval "$(ssh-agent -s)" >/dev/null
+        echo "DEBUG: new SSH_AUTH_SOCK=$SSH_AUTH_SOCK"
+    fi
+
+    # # Debug version of the ssh-agent logic
+    # if ssh-add -l >/dev/null 2>&1; then
+    #     echo "DEBUG: ssh-add -l SUCCEEDED (agent reachable, maybe keys already loaded)"
+    # elif ssh-find-agent -a >/dev/null 2>&1; then
+    #     echo "DEBUG: ssh-find-agent -a SUCCEEDED (found an existing agent)"
+    #     echo "DEBUG: SSH_AUTH_SOCK after ssh-find-agent: $SSH_AUTH_SOCK"
+    # else
+    #     echo "DEBUG: both ssh-add and ssh-find-agent FAILED, starting new ssh-agent"
+    #     eval "$(ssh-agent -s)" >/dev/null
+    #     echo "DEBUG: started ssh-agent, SSH_AUTH_SOCK=$SSH_AUTH_SOCK"
+    # fi
+
 
     [ -f ~/.fzf.bash ] && source ~/.fzf.bash
     . "$CARGO_HOME/env"
@@ -308,32 +360,31 @@ theme-status() {
     fi
 }
 
-# Quick suckless rebuilds
-rebuild-st() {
-    cd ~/.local/src/st && make clean && make -j$(nproc) && sudo make install
-}
+# # Quick suckless rebuilds
+# rebuild-st() {
+#     cd ~/.local/src/st && make clean && make -j$(nproc) && sudo make install
+# }
 
-rebuild-dmenu() {
-    cd ~/.local/src/dmenu && make clean && make -j$(nproc) && sudo make install
-}
+# rebuild-dmenu() {
+#     cd ~/.local/src/dmenu && make clean && make -j$(nproc) && sudo make install
+# }
 
-rebuild-dwm() {
-    cd ~/.local/src/dwm && make clean && make -j$(nproc) && sudo make install
-}
+# rebuild-dwm() {
+#     cd ~/.local/src/dwm && make clean && make -j$(nproc) && sudo make install
+# }
 
-rebuild-slstatus() {
-    cd ~/.local/src/slstatus && make clean && make -j$(nproc) && sudo make install
-}
+# rebuild-slstatus() {
+#     cd ~/.local/src/slstatus && make clean && make -j$(nproc) && sudo make install
+# }
 
-rebuild-suckless() {
-    rebuild-st && rebuild-dmenu && rebuild-dwm && rebuild-slstatus
-    echo "All suckless tools rebuilt. Restart dwm to see changes."
-}
-export PATH="/home/seva/.local/bin:$PATH"
+# rebuild-suckless() {
+#     rebuild-st && rebuild-dmenu && rebuild-dwm && rebuild-slstatus
+#     echo "All suckless tools rebuilt. Restart dwm to see changes."
+# }
+# export PATH="/home/seva/.local/bin:$PATH"
 
 # Scientific software environment
-source $HOME/soft/scientific-env.sh
+source $XDG_CONFIG_HOME/scientific-env.sh
 
 # TeX Live environment
-source $HOME/soft/texlive-env.sh
-
+source $XDG_CONFIG_HOME/texlive-env.sh
