@@ -276,7 +276,7 @@ build_and_install() {
     log_success "Directory structure created"
 # fi
 
-# : <<'END_DEBUG'
+: <<'END_DEBUG'
 
 # =============================================================================
 # SECTION 2: SYSTEM PACKAGES
@@ -367,7 +367,8 @@ if prompt_continue "Update system and install build dependencies?"; then
         pipx \
         brightnessctl \
         libxcb-xtest0 \
-        pavucontrol
+        pavucontrol \
+        libboost-all-dev
 
     log_success "System packages and build dependencies installed"
 fi
@@ -2054,7 +2055,48 @@ if prompt_continue "Install scientific software (GMP, FLINT, FiniteFlow)?"; then
     # Update environment for FiniteFlow build
     export PKG_CONFIG_PATH="$SCI_PREFIX/lib/pkgconfig:$PKG_CONFIG_PATH"
     export LD_LIBRARY_PATH="$SCI_PREFIX/lib:$LD_LIBRARY_PATH"
-    
+
+    # ========================================
+    # QD (Quad-Double Arithmetic Library)
+    # ========================================
+    log_info "Installing QD (Quad-Double library)..."
+
+    cd "$SRC_DIR"
+    clone_or_update "https://github.com/scibuilder/QD.git" "$SRC_DIR/QD"
+    cd "$SRC_DIR/QD"
+
+    # If there was a previous build, clean it up first
+    if [ -f Makefile ]; then
+        log_info "Previous QD build detected; cleaning up..."
+
+        if ! make clean; then
+            log_warning "make clean failed for QD (continuing anyway)..."
+        fi
+
+        # Try make uninstall if the target exists; don't abort on failure
+        if grep -q "^uninstall:" Makefile 2>/dev/null; then
+            if ! make uninstall; then
+                log_warning "make uninstall failed for QD (continuing anyway)..."
+            fi
+        else
+            log_info "No uninstall target in QD Makefile; skipping make uninstall."
+        fi
+    fi
+
+    # Reset tracked files to a clean state
+    git checkout . 2>/dev/null || true
+
+    # Configure with an absolute prefix 
+    log_info "Configuring QD with prefix: $SCI_PREFIX"
+    ./configure --prefix="$SCI_PREFIX" || {
+        log_error "QD configure failed"
+        exit 1
+    }
+
+    # Build and install using your helper
+    build_and_install "QD" "make -j$(nproc)" "make install" true
+    log_success "QD installed to $SCI_PREFIX (libs in $SCI_PREFIX/lib, headers in $SCI_PREFIX/include)"
+        
     # ========================================
     # FiniteFlow
     # ========================================
