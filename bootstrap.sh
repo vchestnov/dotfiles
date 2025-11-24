@@ -368,7 +368,8 @@ if prompt_continue "Update system and install build dependencies?"; then
         brightnessctl \
         libxcb-xtest0 \
         pavucontrol \
-        libboost-all-dev
+        libboost-all-dev \
+        pass
 
     log_success "System packages and build dependencies installed"
 fi
@@ -1994,8 +1995,6 @@ fi
 # SECTION 25: SCIENTIFIC SOFTWARE (GMP, FLINT, FINITEFLOW)
 # =============================================================================
 
-END_DEBUG
-
 if prompt_continue "Install scientific software (GMP, FLINT, FiniteFlow)?"; then
     log_section "SCIENTIFIC SOFTWARE INSTALLATION"
 
@@ -2606,8 +2605,9 @@ EOF
 fi
 
 # =============================================================================
-# SECTION 30: PYTHON DEVELOPMENT TOOLS
+# SECTION 30: PYTHON TOOLS
 # =============================================================================
+
 if prompt_continue "Install Python development tools (Poetry)?"; then
     log_section "PYTHON DEVELOPMENT TOOLS INSTALLATION"
 
@@ -2618,7 +2618,9 @@ if prompt_continue "Install Python development tools (Poetry)?"; then
     # Add pipx bin dir to current session's PATH to find poetry later
     export PATH="$PATH:$HOME/.local/bin"
 
-    # Install Poetry if it's not already installed
+    # ========================================
+    # Poetry 
+    # ========================================
     if ! command -v poetry &> /dev/null; then
         log_info "Installing Poetry using pipx..."
         pipx install poetry
@@ -2629,7 +2631,227 @@ if prompt_continue "Install Python development tools (Poetry)?"; then
         # log_info "Upgrading Poetry..."
         # pipx upgrade poetry
     fi
+
+    # ========================================
+    # Arxivterminal 
+    # ========================================
+    log_info "Installing arxivterminal fork..."
+
+    ARXIVTERMINAL_DEV_DIR="$HOME/dev/arxivterminal"
+    mkdir -p "$HOME/dev"
+
+    clone_or_update "https://github.com/vchestnov/arxivterminal.git" "$ARXIVTERMINAL_DEV_DIR"
+    cd "$ARXIVTERMINAL_DEV_DIR"
+
+    poetry install
+
+    pipx install --force "$ARXIVTERMINAL_DEV_DIR"
+
+    log_success "arxivterminal installed via pipx. Command available as 'arxiv'."
 fi
+
+# =============================================================================
+# SECTION 31: PASS PASSWORD STORE & GIT CREDENTIAL HELPER
+# =============================================================================
+
+END_DEBUG
+
+if prompt_continue "Configure pass-based password store and Git credential helper (for Overleaf tokens, etc.)?"; then
+    log_section "PASS & GIT CREDENTIAL HELPER SETUP"
+
+    # Install pass and GnuPG
+    log_info "Installing pass (password-store) and GnuPG..."
+    refresh_sudo
+    sudo apt install -y pass gnupg
+
+    # Configure XDG-style password store directory
+    PASSWORD_STORE_DIR_DEFAULT="$HOME/.local/share/password-store"
+    export PASSWORD_STORE_DIR="$PASSWORD_STORE_DIR_DEFAULT"
+
+    if [ ! -d "$PASSWORD_STORE_DIR" ]; then
+        log_info "Creating password-store directory at $PASSWORD_STORE_DIR"
+        mkdir -p "$PASSWORD_STORE_DIR"
+    fi
+
+    # Persist PASSWORD_STORE_DIR and GPG_TTY to bashrc
+    if ! grep -q "PASSWORD_STORE_DIR" "$HOME/.bashrc" 2>/dev/null; then
+        log_info "Adding PASSWORD_STORE_DIR and GPG_TTY exports to .bashrc..."
+        cat >> "$HOME/.bashrc" << 'EOF'
+
+# pass (password-store) location and GnuPG TTY configuration
+export PASSWORD_STORE_DIR="$HOME/.local/share/password-store"
+# Ensure GnuPG can talk to the correct TTY when using pass
+if [ -t 1 ]; then
+    export GPG_TTY="$(tty)"
+fi
+EOF
+    else
+        log_info "PASSWORD_STORE_DIR already configured in .bashrc"
+    fi
+
+    # Ensure local bin directory exists (should already be created earlier)
+    if [ ! -d "$BIN_DIR" ]; then
+        log_info "Creating bin directory at $BIN_DIR"
+        mkdir -p "$BIN_DIR"
+    fi
+
+    # Install git-credential-pass helper script
+    if [ ! -x "$BIN_DIR/git-credential-pass" ]; then
+        log_info "Installing git-credential-pass helper to $BIN_DIR..."
+        cat > "$BIN_DIR/git-credential-pass" << 'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+action=${1:-}
+
+protocol=
+host=
+path=
+username=
+password=
+
+# Read credential fields from stdin
+while IFS='=' read -r key value; do
+    [[ -z "${key}" ]] && break
+    case "$key" in
+        protocol) protocol=$value ;;
+        host)     host=$value ;;
+        path)     path=$value ;;
+        username) username=$value ;;
+        password) password=$value ;;
+    esac
+done
+
+# Map host/path to a pass entry name, e.g. git/git.overleaf.com/<project-id>
+store_name="git/${host}${path:+/$path}"
+
+case "$action" in
+    get)
+        # Try to retrieve existing password from pass
+        if pass show "$store_name" >/dev/null 2>&1; then
+            password=$(pass show "$store_name" | head -n1)
+            : "${username:=overleaf}"
+            echo "username=${username}"
+            echo "password=${password}"
+        fi
+        ;;
+
+    store)
+        # If already stored, do nothing
+        if pass show "$store_name" >/dev/null 2>&1; then
+            exit 0
+        fi
+        : "${username:=overleaf}"
+        printf '%s\n' "$password" | pass insert -m "$store_name" >/dev/null
+        ;;
+
+    erase)
+        pass rm -f "$store_name" >/dev/null 2>&1 || true
+        ;;
+
+    *)
+        # Unknown action; silently ignore
+        exit 0
+        ;;
+esac
+EOF
+        chmod +x "$BIN_DIR/git-credential-pass"
+        chown "$USER:$(id -gn)" "$BIN_DIR/git-credential-pass" 2>/dev/null || true
+        log_success "git-credential-pass installed"
+    else
+        log_info "git-credential-pass already present at $BIN_DIR/git-credential-pass"
+    fi
+
+    # Configure Git to use git-credential-pass
+    log_info "Configuring Git to use git-credential-pass as credential helper..."
+    git config --global credential.helper pass
+
+    # Check whether pass is initialized; if not, warn the user
+    if ! pass ls >/dev/null 2>&1; then
+        log_warning "pass is not initialized yet."
+        log_warning "Run 'gpg --full-generate-key' (if needed) and then:"
+        log_warning "  pass init <your-gpg-id>"
+        log_warning "before using the Git credential helper."
+    else
+        log_info "pass appears to be initialized; credentials will be stored encrypted."
+    fi
+
+    log_success "pass and Git credential helper setup complete"
+fi
+
+# =============================================================================
+# SECTION 32: GPG TERMINAL PINENTRY (for pass, git-credential-pass)
+# =============================================================================
+if prompt_continue "Configure GnuPG to use terminal (curses) pinentry instead of GUI pop-ups?"; then
+    log_section "GPG TERMINAL PINENTRY SETUP"
+
+    GNUPG_DIR="$HOME/.gnupg"
+    AGENT_CONF="$GNUPG_DIR/gpg-agent.conf"
+
+    log_info "Ensuring ~/.gnupg exists and has correct permissions..."
+    mkdir -p "$GNUPG_DIR"
+    chmod 700 "$GNUPG_DIR"
+
+    # Install pinentry-curses if missing
+    if ! command -v pinentry-curses >/dev/null 2>&1; then
+        log_info "Installing pinentry-curses..."
+        refresh_sudo
+        sudo apt install -y pinentry-curses
+    else
+        log_info "pinentry-curses is already installed."
+    fi
+
+    # Write or update gpg-agent.conf
+    if [ -f "$AGENT_CONF" ]; then
+        if grep -q "pinentry-curses" "$AGENT_CONF"; then
+            log_info "gpg-agent.conf already configured for pinentry-curses."
+        else
+            log_warning "gpg-agent.conf exists but does not specify pinentry-curses."
+            log_warning "Appending pinentry settings..."
+            cat >> "$AGENT_CONF" << 'EOF'
+
+# Use terminal-based pinentry
+pinentry-program /usr/bin/pinentry-curses
+
+# Cache passphrase for 2 hours
+default-cache-ttl 7200
+max-cache-ttl 7200
+EOF
+        fi
+    else
+        log_info "Creating gpg-agent.conf with terminal pinentry settings..."
+        cat > "$AGENT_CONF" << 'EOF'
+# Use terminal-based pinentry
+pinentry-program /usr/bin/pinentry-curses
+
+# Cache GPG passphrase for 2 hours
+default-cache-ttl 7200
+max-cache-ttl 7200
+EOF
+    fi
+
+    # Add GPG_TTY to .bashrc if missing
+    if ! grep -q "GPG_TTY" "$HOME/.bashrc" 2>/dev/null; then
+        log_info "Adding GPG_TTY export to .bashrc..."
+        cat >> "$HOME/.bashrc" << 'EOF'
+
+# GnuPG: ensure terminal pinentry works correctly
+if [ -t 1 ]; then
+    export GPG_TTY="$(tty)"
+fi
+EOF
+    else
+        log_info "GPG_TTY already configured in .bashrc."
+    fi
+
+    # Restart gpg-agent
+    log_info "Restarting gpg-agent..."
+    gpgconf --kill gpg-agent || true
+
+    log_success "GPG terminal pinentry configured."
+    log_success "Future GPG/pass prompts will appear directly in the terminal."
+fi
+
 
 # =============================================================================
 # SECTION 99: FINAL OWNERSHIP AND CLEANUP

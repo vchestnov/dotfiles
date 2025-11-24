@@ -6,7 +6,7 @@
     email = vchestnov@gmail.com
 [credential]
     ; helper = cache --timeout=3600
-    helper = cache --timeout=10200
+	helper = pass
 [branch]
     autosetupmerge = always
 [alias]
