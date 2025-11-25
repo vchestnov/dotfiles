@@ -1,0 +1,9 @@
+# Disable IBus to prevent conflicts with setxkbmap
+export GTK_IM_MODULE=none
+export QT_IM_MODULE=none
+export XMODIFIERS=
+# export GTK_THEME=Yaru-dark
+# export GTK_APPLICATION_PREFER_DARK_THEME=1
+
+xrandr --newmode "2560x1440_60.00"  312.25  2560 2752 3024 3488  1440 1443 1448 1493 -hsync +vsync
+xrandr --addmode HDMI-1 "2560x1440_60.00"
