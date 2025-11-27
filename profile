@@ -15,8 +15,13 @@ export JUPYTER_CONFIG_DIR="$XDG_CONFIG_HOME/jupyter"
 export PYTHONSTARTUP="$XDG_CONFIG_HOME/python/pythonrc"
 export WGET_HSTS_FILE="$XDG_STATE_HOME/wget/hsts"
 
+# Disable IBus to prevent conflicts with setxkbmap
+export GTK_IM_MODULE=none
+export QT_IM_MODULE=none
+export XMODIFIERS=
+
 # Source existing profile content if it exists
-if [ -f "$HOME/.profile.local" ]; then
-    . "$HOME/.profile.local"
-fi
-. "$CARGO_HOME/env"
+[ -f "$HOME/.profile.local" ] && . "$HOME/.profile.local"
+
+# Rust (XDG) environment
+[ -f "$CARGO_HOME/env" ] && . "$CARGO_HOME/env"

@@ -1,3 +1,2 @@
 #!/bin/bash
-
-exec dwm
+exec /usr/local/bin/dwm-session

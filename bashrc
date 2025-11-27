@@ -296,6 +296,9 @@ source $XDG_CONFIG_HOME/texlive-env.sh
 
 export PASSWORD_STORE_DIR="$XDG_DATA_HOME/password-store"
 
+# Suppress GTK accessibility bridge warning
+export NO_AT_BRIDGE=1
+
 # GnuPG: ensure terminal pinentry works correctly
 if [ -t 1 ]; then
     export GPG_TTY="$(tty)"

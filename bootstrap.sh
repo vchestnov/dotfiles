@@ -398,7 +398,7 @@ if prompt_continue "Set up clean home directory structure?"; then
 
     # Update user-dirs configuration to point to our structure
     mkdir -p "$HOME/.config"
-    cat > "$HOME/.config/user-dirs.dirs" << 'EOF'
+    tee "$HOME/.config/user-dirs.dirs" > /dev/null << 'EOF'
 XDG_DESKTOP_DIR="$HOME/docs"
 XDG_DOWNLOAD_DIR="$HOME/docs/downloads"
 XDG_TEMPLATES_DIR="$HOME/docs"
@@ -490,7 +490,7 @@ if prompt_continue "Install fonts and configure fontconfig?"; then
     mkdir -p "$HOME/.config/fontconfig"
 
     # Create fontconfig configuration to handle emoji properly
-    cat > "$HOME/.config/fontconfig/fonts.conf" << 'EOF'
+    tee "$HOME/.config/fontconfig/fonts.conf" > /dev/null << 'EOF'
 <?xml version="1.0"?>
 <!DOCTYPE fontconfig SYSTEM "fonts.dtd">
 <fontconfig>
@@ -708,7 +708,7 @@ if prompt_continue "Build dwm (dynamic window manager)?"; then
     fi
 
     # Popular dwm patches info
-    cat > patches_info.txt << 'EOF'
+    tee patches_info.txt > /dev/null << 'EOF'
 Popular dwm patches to consider:
 1. pertag - Per-tag settings
 2. gaps - Gaps between windows
@@ -752,7 +752,7 @@ if prompt_continue "Build dmenu?"; then
     fi
 
     # Popular dmenu patches info
-    cat > patches_info.txt << 'EOF'
+    tee patches_info.txt > /dev/null << 'EOF'
 Popular dmenu patches to consider:
 1. center - Center dmenu on screen
 2. fuzzymatch - Fuzzy matching
@@ -790,7 +790,7 @@ if prompt_continue "Build st (simple terminal)?"; then
     fi
 
     # Popular st patches info
-    cat > patches_info.txt << 'EOF'
+    tee patches_info.txt > /dev/null << 'EOF'
 Popular st patches to consider:
 1. scrollback - Scrollback with mouse/keyboard
 2. font2 - Fallback font support (less needed now with proper fontconfig)
@@ -828,7 +828,7 @@ if prompt_continue "Build slstatus (status monitor)?"; then
         cp config.def.h config.h
     fi
     # Popular slstatus patches and configuration info
-    cat > patches_info.txt << 'EOF'
+    tee patches_info.txt > /dev/null << 'EOF'
 Popular slstatus patches and configuration tips:
 1. Custom modules - Add custom status modules
 2. Colors - Colored status text (works with dwm statuscolors patch)
@@ -939,13 +939,14 @@ if prompt_continue "Configure dwm desktop session?"; then
 [ -f "$HOME/.profile" ] && . "$HOME/.profile"
 
 # Load X resources
-[ -f ~/.config/X11/Xresources ] && xrdb -merge ~/.config/X11/Xresources
+[ -f "$HOME/.config/X11/Xresources" ] && xrdb -merge "$HOME/.config/X11/Xresources"
 
 # Add ~/.local/bin to PATH only if not already present
 case ":$PATH:" in
   *:"$HOME/.local/bin":*) ;;
-  *) export PATH="$HOME/.local/bin:$PATH" ;;
+  *) PATH="$HOME/.local/bin:$PATH" ;;
 esac
+export PATH
 
 # Keyboard configuration:
 # repeat rate and key maps
@@ -961,6 +962,9 @@ xset s off -dpms
 
 # Start background services 
 slstatus &
+
+# xrandr --newmode "2560x1440_60.00"  312.25  2560 2752 3024 3488  1440 1443 1448 1493 -hsync +vsync
+# xrandr --addmode HDMI-1 "2560x1440_60.00"
 
 # Start dwm
 exec dwm
@@ -981,117 +985,11 @@ DesktopNames=dwm
 EOF
 
     log_success "dwm desktop entry created"
-
-    log_info "Disabling IBus for reliable keyboard layout switching..."
-    tee ~/.xprofile > /dev/null << 'EOF'
-# Disable IBus to prevent conflicts with setxkbmap
-export GTK_IM_MODULE=none
-export QT_IM_MODULE=none
-export XMODIFIERS=
-
-xrandr --newmode "2560x1440_60.00"  312.25  2560 2752 3024 3488  1440 1443 1448 1493 -hsync +vsync
-xrandr --addmode HDMI-1 "2560x1440_60.00"
-EOF
-
-    log_success "~/.xprofile updated to disable IBus"
-    
 fi
 
 # =============================================================================
-# SECTION 16: SHELL CONFIGURATION
+# SECTION 16:
 # =============================================================================
-
-if prompt_continue "Set up enhanced shell configuration with theme support?"; then
-    log_section "ENHANCED SHELL CONFIGURATION"
-    
-    # Create useful aliases and functions
-    log_info "Setting up shell aliases and functions..."
-    cat >> ~/.bashrc << 'EOF'
-
-# Custom aliases for development environment
-alias v='vim'
-alias nv='nvim'
-alias vf='vifm'
-alias za='zathura'
-alias rg='rg --smart-case'
-alias fd='fd --hidden'
-
-# fzf integration
-export FZF_DEFAULT_COMMAND='fd --type f --hidden --follow --exclude .git'
-export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_COMMAND"
-export FZF_ALT_C_COMMAND='fd --type d --hidden --follow --exclude .git'
-
-# fzf functions
-fv() {
-    local file
-    file=$(fzf --preview 'head -100 {}') && [ -n "$file" ] && vim "$file"
-}
-
-fnv() {
-    local file
-    file=$(fzf --preview 'head -100 {}') && [ -n "$file" ] && nvim "$file"
-}
-
-# Git shortcuts
-alias gs='git status'
-alias ga='git add'
-alias gc='git commit'
-alias gp='git push'
-alias gl='git log --oneline --graph'
-
-# Theme switching aliases
-alias theme-dark='theme-switch dark'
-alias theme-light='theme-switch light'
-alias theme-toggle='if grep -q "#282828" ~/.Xresources 2>/dev/null; then theme-switch light; else theme-switch dark; fi'
-
-# Check current theme
-theme-status() {
-    if grep -q "#282828" ~/.Xresources 2>/dev/null; then
-        echo "Current theme: dark"
-    elif grep -q "#fbf1c7" ~/.Xresources 2>/dev/null; then
-        echo "Current theme: light"
-    else
-        echo "Theme not detected or custom theme in use"
-    fi
-}
-
-# Quick suckless rebuilds
-rebuild-st() {
-    cd ~/.local/src/st && make clean && make -j$(nproc) && sudo make install
-}
-
-rebuild-dmenu() {
-    cd ~/.local/src/dmenu && make clean && make -j$(nproc) && sudo make install
-}
-
-rebuild-dwm() {
-    cd ~/.local/src/dwm && make clean && make -j$(nproc) && sudo make install
-}
-
-rebuild-slstatus() {
-    cd ~/.local/src/slstatus && make clean && make -j$(nproc) && sudo make install
-}
-
-rebuild-suckless() {
-    rebuild-st && rebuild-dmenu && rebuild-dwm && rebuild-slstatus
-    echo "All suckless tools rebuilt. Restart dwm to see changes."
-}
-EOF
-
-    log_success "Enhanced shell configuration updated"
-    log_success "Shell configuration updated"
-
-    # Create .bash_profile (just source .bashrc, no auto-start)
-    cat > "$HOME/.bash_profile" << 'EOF'
-# Source .bashrc if it exists
-[[ -f ~/.bashrc ]] && . ~/.bashrc
-EOF
-
-    # Ensure all config files have proper ownership
-    chown "$USER:$(id -gn)" "$HOME/.xinitrc" "$HOME/.bash_profile" "$HOME/.Xresources" "$HOME/.bashrc"
-
-    log_success "Configuration files created"
-fi
 
 # =============================================================================
 # SECTION 17: FIX TOUCHPAD CLICK GESTURES
@@ -1210,6 +1108,9 @@ if prompt_continue "Install and setup dotfiles from GitHub?"; then
         log_info "Creating directory for private dotfiles (bash history)"
         mkdir -p $DOTFILES_DIR/private
     fi
+
+    # Ensure all config files have proper ownership
+    chown "$USER:$(id -gn)" "$HOME/.bash_profile"
     
     log_success "Dotfiles setup completed"
 fi
@@ -1238,7 +1139,7 @@ if prompt_continue "Install ssh-find-agent for SSH agent management?"; then
     # Add ssh-find-agent configuration to bashrc if not already present
     if ! grep -q "ssh-find-agent" "$HOME/.bashrc"; then
         log_info "Adding ssh-find-agent configuration to .bashrc..."
-        cat >> "$HOME/.bashrc" << 'EOF'
+        tee -a "$HOME/.bashrc" > /dev/null << 'EOF'
 
 # SSH agent management with ssh-find-agent
 if command -v ssh-find-agent >/dev/null 2>&1; then
@@ -1251,7 +1152,7 @@ EOF
     # Create a helper function for easy SSH agent management
     if ! grep -q "ssh_agent_start" "$HOME/.bashrc"; then
         log_info "Adding SSH agent helper functions to .bashrc..."
-        cat >> "$HOME/.bashrc" << 'EOF'
+        tee -a "$HOME/.bashrc" > /dev/null << 'EOF'
 
 # SSH agent helper functions
 ssh_agent_start() {
@@ -1568,8 +1469,14 @@ static const struct arg args[] = {\
 
     # Create basic Xresources for suckless tools
     create_xresources() {
+        # If user manages .Xresources via dotfiles (symlink), do not overwrite
+        if [ -L "$HOME/.Xresources" ]; then
+            log_info "~/.Xresources is a symlink (likely managed by dotfiles); skipping default Xresources creation."
+            return
+        fi
+
         log_info "Creating basic Xresources configuration..."
-        cat > "$HOME/.Xresources" << 'EOF'
+        tee "$HOME/.Xresources" > /dev/null << 'EOF'
 ! Suckless tools configuration with Xresources support
 
 ! Font configuration
@@ -1654,7 +1561,7 @@ EOF
     }
 
         # Create a script to reload Xresources easily
-        cat > "$HOME/.local/bin/reload-xresources" << 'EOF'
+        tee "$HOME/.local/bin/reload-xresources" > /dev/null << 'EOF'
 #!/bin/bash
 # Reload Xresources configuration
 xrdb -merge ~/.Xresources && echo "Xresources reloaded successfully"
@@ -2256,7 +2163,7 @@ if prompt_continue "Install scientific software (GMP, FLINT, FiniteFlow)?"; then
     # Environment setup script
     # ========================================
     log_info "Creating environment setup script..."
-    cat > "$SCI_ENV_PATH" << 'EOF'
+    tee "$SCI_ENV_PATH" > /dev/null << 'EOF'
 #!/bin/bash
 # Scientific software environment setup (GMP, FLINT deps, FiniteFlow)
 # All installed under: $HOME/.local
@@ -2337,7 +2244,7 @@ if prompt_continue "Install TeX Live?"; then
     
     # Create installation profile for automated installation
     log_info "Creating TeX Live installation profile..."
-    cat > texlive.profile << EOF
+    tee texlive.profile > /dev/null << EOF
 # TeX Live installation profile
 # This profile installs TeX Live to $HOME/soft/texlive
 selected_scheme scheme-full
@@ -2390,7 +2297,7 @@ EOF
         
         # Create environment setup script
         log_info "Creating TeX Live environment setup..."
-        cat > "$HOME/soft/texlive-env.sh" << 'EOF'
+        tee "$HOME/soft/texlive-env.sh" > /dev/null << 'EOF'
 #!/bin/bash
 # TeX Live environment setup
 export PATH="$HOME/soft/texlive/2025/bin/x86_64-linux${PATH:+:$PATH}"
@@ -2620,7 +2527,7 @@ if prompt_continue "Build zathura PDF viewer from source (fixes link opening iss
         # Configure zathura
         log_info "Configuring zathura..."
         mkdir -p "$HOME/.config/zathura"
-        cat > "$HOME/.config/zathura/zathurarc" << 'EOF'
+        tee "$HOME/.config/zathura/zathurarc" > /dev/null << 'EOF'
 set database sqlite
 set selection-clipboard clipboard
 set link-zoom true
@@ -2733,7 +2640,7 @@ if prompt_continue "Configure pass-based password store and Git credential helpe
     # Persist PASSWORD_STORE_DIR and GPG_TTY to bashrc
     if ! grep -q "PASSWORD_STORE_DIR" "$HOME/.bashrc" 2>/dev/null; then
         log_info "Adding PASSWORD_STORE_DIR and GPG_TTY exports to .bashrc..."
-        cat >> "$HOME/.bashrc" << 'EOF'
+        tee -a "$HOME/.bashrc" > /dev/null << 'EOF'
 
 # pass (password-store) location and GnuPG TTY configuration
 export PASSWORD_STORE_DIR="$HOME/.local/share/password-store"
@@ -2755,7 +2662,7 @@ EOF
     # Install git-credential-pass helper script
     if [ ! -x "$BIN_DIR/git-credential-pass" ]; then
         log_info "Installing git-credential-pass helper to $BIN_DIR..."
-        cat > "$BIN_DIR/git-credential-pass" << 'EOF'
+        tee "$BIN_DIR/git-credential-pass" > /dev/null << 'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 
@@ -2865,7 +2772,7 @@ if prompt_continue "Configure GnuPG to use terminal (curses) pinentry instead of
         else
             log_warning "gpg-agent.conf exists but does not specify pinentry-curses."
             log_warning "Appending pinentry settings..."
-            cat >> "$AGENT_CONF" << 'EOF'
+            tee -a "$AGENT_CONF" > /dev/null << 'EOF'
 
 # Use terminal-based pinentry
 pinentry-program /usr/bin/pinentry-curses
@@ -2877,7 +2784,7 @@ EOF
         fi
     else
         log_info "Creating gpg-agent.conf with terminal pinentry settings..."
-        cat > "$AGENT_CONF" << 'EOF'
+        tee "$AGENT_CONF" > /dev/null << 'EOF'
 # Use terminal-based pinentry
 pinentry-program /usr/bin/pinentry-curses
 
@@ -2890,7 +2797,7 @@ EOF
     # Add GPG_TTY to .bashrc if missing
     if ! grep -q "GPG_TTY" "$HOME/.bashrc" 2>/dev/null; then
         log_info "Adding GPG_TTY export to .bashrc..."
-        cat >> "$HOME/.bashrc" << 'EOF'
+        tee -a "$HOME/.bashrc" > /dev/null << 'EOF'
 
 # GnuPG: ensure terminal pinentry works correctly
 if [ -t 1 ]; then
@@ -2992,7 +2899,7 @@ echo
 log_success "Your Ubuntu 24.04 development environment is ready!"
 
 # Create a script status file
-cat > "$HOME/.bootstrap_status" << EOF
+tee "$HOME/.bootstrap_status" > /dev/null << EOF
 Bootstrap completed on: $(date)
 Sections completed: All sections completed successfully
 Last run: $(date +%Y-%m-%d_%H:%M:%S)
