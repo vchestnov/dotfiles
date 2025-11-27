@@ -19,14 +19,16 @@
     "soft/calcloop",
     "soft/calico",
     "soft/DlogBasis",
+    (* "soft/Fermatica/source", *)
     "soft/ff_ext_packages/packages",
     "soft/finiteflow-mathtools/packages",
     "soft/ff_feyntools/packages",
     "soft/INITIAL",
-    "soft/Libra",
-    "soft/Litered2/Source",
+    (* "soft/Libra/Source", *)
+    (* "soft/LiteRed2/Source", *)
     "soft/NeatIBP",
     "soft/rationalizeroots",
+    "soft/Effortless",
     Nothing
 } // Map[RightComposition[
     ToFileName[$HomeDirectory, #]&,

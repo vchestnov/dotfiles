@@ -276,7 +276,7 @@ build_and_install() {
     log_success "Directory structure created"
 # fi
 
-: <<'END_DEBUG'
+# : <<'END_DEBUG'
 
 # =============================================================================
 # SECTION 2: SYSTEM PACKAGES
@@ -1995,6 +1995,8 @@ fi
 # SECTION 25: SCIENTIFIC SOFTWARE (GMP, FLINT, FINITEFLOW)
 # =============================================================================
 
+END_DEBUG
+
 if prompt_continue "Install scientific software (GMP, FLINT, FiniteFlow)?"; then
     log_section "SCIENTIFIC SOFTWARE INSTALLATION"
 
@@ -2144,6 +2146,51 @@ if prompt_continue "Install scientific software (GMP, FLINT, FiniteFlow)?"; then
     log_success "FiniteFlow installed to $SCI_PREFIX; sources are in $FINITEFLOW_DEV_DIR"
 
     # ========================================
+    # Fermat
+    # ========================================
+    log_info "Installing Fermat..."
+
+    FERMAT_URL="https://home.bway.net/lewis/fermat64/Ferl7.tar.gz"
+    FERMAT_SRC_DIR="$SRC_DIR"
+    FERMAT_LINK_TARGET="$SCI_PREFIX/bin/fer64"
+
+    mkdir -p "$FERMAT_SRC_DIR"
+    cd "$FERMAT_SRC_DIR"
+
+    fermat_ok=1
+
+    # Download archive if not present (avoid repeated fetch)
+    if [ ! -f "Ferl7.tar.gz" ]; then
+        log_info "Downloading Fermat from $FERMAT_URL"
+        if ! wget -O Ferl7.tar.gz "$FERMAT_URL"; then
+            log_warning "Could not download Fermat! Skipping Fermat installation (network issue or mirror blocked?)."
+            fermat_ok=0
+        fi
+    fi
+
+    # Extract only if download (or existing tarball) is OK
+    if [ "$fermat_ok" -eq 1 ]; then
+        log_info "Extracting Fermat..."
+        if ! tar -xzf Ferl7.tar.gz; then
+            log_warning "Failed to extract Fermat archive! Skipping Fermat installation."
+            fermat_ok=0
+        fi
+    fi
+
+    # Find the Fermat binary somewhere under $FERMAT_SRC_DIR
+    if [ "$fermat_ok" -eq 1 ]; then
+        FER_BINARY="$FERMAT_SRC_DIR/Ferl7/fer64"
+
+        if [ -z "$FER_BINARY" ]; then
+            log_warning "Fermat binary not found after extraction! Skipping Fermat installation."
+        else
+            log_info "Linking Fermat binary ($FER_BINARY) to $FERMAT_LINK_TARGET"
+            ln -sf "$FER_BINARY" "$FERMAT_LINK_TARGET"
+            log_success "Fermat available as: $FERMAT_LINK_TARGET"
+        fi
+    fi
+
+    # ========================================
     # Extra tools 
     # ========================================
     log_section "CLONING EXTRA SCIENTIFIC PACKAGES"
@@ -2156,8 +2203,9 @@ if prompt_continue "Install scientific software (GMP, FLINT, FiniteFlow)?"; then
     clone_sci_repo "calico" "https://github.com/fontana-g/calico.git"
 
     # LiteRed2 + Libra 
-    clone_sci_repo "LiteRed2" "https://github.com/rnlg/LiteRed2.git"
-    clone_sci_repo "Libra"    "https://github.com/rnlg/Libra.git"
+    clone_sci_repo "LiteRed2"  "https://github.com/rnlg/LiteRed2.git"
+    clone_sci_repo "Libra"     "https://github.com/rnlg/Libra.git"
+    clone_sci_repo "Fermatica" "https://github.com/rnlg/Fermatica.git"
 
     # Blade / AMFlow / CalcLoop 
     if ! clone_sci_repo "blade" "https://gitee.com/multiloop-pku/blade.git"; then
@@ -2190,6 +2238,12 @@ if prompt_continue "Install scientific software (GMP, FLINT, FiniteFlow)?"; then
     # DlogBasis 
     clone_sci_repo "DlogBasis" "https://github.com/pascalwasser/DlogBasis.git"
 
+    # Effortless
+    clone_sci_repo "Effortless" "https://github.com/antonela-matijasic/Effortless.git"
+
+    # SOFIA
+    clone_sci_repo "SOFIA" "https://github.com/StrangeQuark007/SOFIA.git"
+
     # Private FiniteFlow external packages 
     if ! clone_sci_repo "ff_ext_packages" "git@github.com:peraro/ff_ext_packages.git"; then
         log_warning "Skipping private repo ff_ext_packages (SSH keys not configured or access denied)."
@@ -2207,21 +2261,24 @@ if prompt_continue "Install scientific software (GMP, FLINT, FiniteFlow)?"; then
 # Scientific software environment setup (GMP, FLINT deps, FiniteFlow)
 # All installed under: $HOME/.local
 
-# Binaries (FiniteFlow may provide executables here)
+# Binaries
 export PATH="$HOME/.local/bin${PATH:+:$PATH}"
 
-# pkg-config files for GMP, FLINT deps, FiniteFlow
+# pkg-config files
 export PKG_CONFIG_PATH="$HOME/.local/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
 
-# Runtime library search path (for dlopen / shared libs)
+# Runtime library search path
 export LD_LIBRARY_PATH="$HOME/.local/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
 # Headers and link-time library path for compilers
 export CPATH="$HOME/.local/include${CPATH:+:$CPATH}"
 export LIBRARY_PATH="$HOME/.local/lib${LIBRARY_PATH:+:$LIBRARY_PATH}"
 
-# Convenience: location of cloned research repos (Mathematica tools, Blade, AMFlow, etc.)
+# Convenience
 export SCIENCE_REPOS_DIR="$HOME/soft"
+
+# Fermat
+export FERMATPATH="$HOME/.local/bin/fer64"
 EOF
 
     #cat > "$HOME/soft/scientific-env.sh" << 'EOF'
