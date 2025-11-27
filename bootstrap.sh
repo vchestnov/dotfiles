@@ -2158,61 +2158,8 @@ if prompt_continue "Install scientific software (GMP, FLINT, FiniteFlow)?"; then
 
     log_success "Extra scientific packages cloned into $SCI_REPOS_DIR"
     log_info "Consult each repository's README for Mathematica / workflow-specific setup."
-
-    # ========================================
-    # Environment setup script
-    # ========================================
-    log_info "Creating environment setup script..."
-    tee "$SCI_ENV_PATH" > /dev/null << 'EOF'
-#!/bin/bash
-# Scientific software environment setup (GMP, FLINT deps, FiniteFlow)
-# All installed under: $HOME/.local
-
-# Binaries
-export PATH="$HOME/.local/bin${PATH:+:$PATH}"
-
-# pkg-config files
-export PKG_CONFIG_PATH="$HOME/.local/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
-
-# Runtime library search path
-export LD_LIBRARY_PATH="$HOME/.local/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-
-# Headers and link-time library path for compilers
-export CPATH="$HOME/.local/include${CPATH:+:$CPATH}"
-export LIBRARY_PATH="$HOME/.local/lib${LIBRARY_PATH:+:$LIBRARY_PATH}"
-
-# Convenience
-export SCIENCE_REPOS_DIR="$HOME/soft"
-
-# Fermat
-export FERMATPATH="$HOME/.local/bin/fer64"
-EOF
-
-    #cat > "$HOME/soft/scientific-env.sh" << 'EOF'
-##!/bin/bash
-## Scientific software environment setup
-#export PATH="$HOME/soft/gmp/bin:$HOME/soft/flint-finiteflow-dep/bin:$HOME/soft/finiteflow/bin:$PATH"
-#export PKG_CONFIG_PATH="$HOME/soft/gmp/lib/pkgconfig:$HOME/soft/flint-finiteflow-dep/lib/pkgconfig:$HOME/soft/finiteflow/lib/pkgconfig:$PKG_CONFIG_PATH"
-#export LD_LIBRARY_PATH="$HOME/soft/gmp/lib:$HOME/soft/flint-finiteflow-dep/lib:$HOME/soft/finiteflow/lib:$LD_LIBRARY_PATH"
-#export CPATH="$HOME/soft/gmp/include:$HOME/soft/flint-finiteflow-dep/include:$HOME/soft/finiteflow/include:$CPATH"
-#export LIBRARY_PATH="$HOME/soft/gmp/lib:$HOME/soft/flint-finiteflow-dep/lib:$HOME/soft/finiteflow/lib:$LIBRARY_PATH"
-#EOF
-    
-    # chmod +x "$HOME/soft/scientific-env.sh"
-    chmod +x "$SCI_ENV_PATH"
-    
-    # Add to shell profile if not already present
-    if ! grep -q "scientific-env.sh" "$HOME/.bashrc"; then
-        {
-            echo "" 
-            echo "# Scientific software environment"
-            echo "source \"$SCI_ENV_PATH\""
-        } >> "$HOME/.bashrc"
-        log_info "Added scientific software environment to .bashrc"
-    fi
     
     log_success "Scientific software installation complete!"
-    log_info "Environment setup script created at: $SCI_ENV_PATH"
     log_info "To use the software in current session, run: source \"$SCI_ENV_PATH\""
     log_info "The environment will be automatically loaded in new terminal sessions."
 fi
@@ -2295,35 +2242,11 @@ EOF
     if [ $? -eq 0 ]; then
         log_success "TeX Live installed successfully"
         
-        # Create environment setup script
-        log_info "Creating TeX Live environment setup..."
-        tee "$HOME/soft/texlive-env.sh" > /dev/null << 'EOF'
-#!/bin/bash
-# TeX Live environment setup
-export PATH="$HOME/soft/texlive/2025/bin/x86_64-linux${PATH:+:$PATH}"
-export MANPATH="$HOME/soft/texlive/2025/texmf-dist/doc/man${MANPATH:+:$MANPATH}"
-export INFOPATH="$HOME/soft/texlive/2025/texmf-dist/doc/info${INFOPATH:+:$INFOPATH}"
-EOF
-        
-        chmod +x "$HOME/soft/texlive-env.sh"
-        
-        # Add to shell profile if not already present
-        if ! grep -q "texlive-env.sh" "$HOME/.bashrc"; then
-            echo "" >> "$HOME/.bashrc"
-            echo "# TeX Live environment" >> "$HOME/.bashrc"
-            echo "source \$HOME/soft/texlive-env.sh" >> "$HOME/.bashrc"
-            log_info "Added TeX Live environment to .bashrc"
-        fi
-        
-        # Test installation
-        log_info "Testing TeX Live installation..."
-        source "$HOME/soft/texlive-env.sh"
-        
-        if command -v pdflatex &> /dev/null; then
-            log_success "TeX Live installation verified - pdflatex is available"
-        else
-            log_warning "TeX Live installation may have issues - pdflatex not found in PATH"
-        fi
+        # if command -v pdflatex &> /dev/null; then
+        #     log_success "TeX Live installation verified - pdflatex is available"
+        # else
+        #     log_warning "TeX Live installation may have issues - pdflatex not found in PATH"
+        # fi
         
         # Clean up installer
         log_info "Cleaning up installer files..."
@@ -2524,15 +2447,6 @@ if prompt_continue "Build zathura PDF viewer from source (fixes link opening iss
         log_info "Updating library cache..."
         sudo ldconfig
         
-        # Configure zathura
-        log_info "Configuring zathura..."
-        mkdir -p "$HOME/.config/zathura"
-        tee "$HOME/.config/zathura/zathurarc" > /dev/null << 'EOF'
-set database sqlite
-set selection-clipboard clipboard
-set link-zoom true
-EOF
-        
         # Add GTK warning suppression to bashrc if not already present
         if ! grep -q "NO_AT_BRIDGE" "$HOME/.bashrc" 2>/dev/null; then
             log_info "Adding GTK warning suppression to .bashrc..."
@@ -2637,93 +2551,17 @@ if prompt_continue "Configure pass-based password store and Git credential helpe
         mkdir -p "$PASSWORD_STORE_DIR"
     fi
 
-    # Persist PASSWORD_STORE_DIR and GPG_TTY to bashrc
-    if ! grep -q "PASSWORD_STORE_DIR" "$HOME/.bashrc" 2>/dev/null; then
-        log_info "Adding PASSWORD_STORE_DIR and GPG_TTY exports to .bashrc..."
-        tee -a "$HOME/.bashrc" > /dev/null << 'EOF'
-
-# pass (password-store) location and GnuPG TTY configuration
-export PASSWORD_STORE_DIR="$HOME/.local/share/password-store"
-# Ensure GnuPG can talk to the correct TTY when using pass
-if [ -t 1 ]; then
-    export GPG_TTY="$(tty)"
-fi
-EOF
-    else
-        log_info "PASSWORD_STORE_DIR already configured in .bashrc"
-    fi
-
     # Ensure local bin directory exists (should already be created earlier)
     if [ ! -d "$BIN_DIR" ]; then
         log_info "Creating bin directory at $BIN_DIR"
         mkdir -p "$BIN_DIR"
     fi
 
-    # Install git-credential-pass helper script
-    if [ ! -x "$BIN_DIR/git-credential-pass" ]; then
-        log_info "Installing git-credential-pass helper to $BIN_DIR..."
-        tee "$BIN_DIR/git-credential-pass" > /dev/null << 'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-
-action=${1:-}
-
-protocol=
-host=
-path=
-username=
-password=
-
-# Read credential fields from stdin
-while IFS='=' read -r key value; do
-    [[ -z "${key}" ]] && break
-    case "$key" in
-        protocol) protocol=$value ;;
-        host)     host=$value ;;
-        path)     path=$value ;;
-        username) username=$value ;;
-        password) password=$value ;;
-    esac
-done
-
-# Map host/path to a pass entry name, e.g. git/git.overleaf.com/<project-id>
-store_name="git/${host}${path:+/$path}"
-
-case "$action" in
-    get)
-        # Try to retrieve existing password from pass
-        if pass show "$store_name" >/dev/null 2>&1; then
-            password=$(pass show "$store_name" | head -n1)
-            : "${username:=overleaf}"
-            echo "username=${username}"
-            echo "password=${password}"
-        fi
-        ;;
-
-    store)
-        # If already stored, do nothing
-        if pass show "$store_name" >/dev/null 2>&1; then
-            exit 0
-        fi
-        : "${username:=overleaf}"
-        printf '%s\n' "$password" | pass insert -m "$store_name" >/dev/null
-        ;;
-
-    erase)
-        pass rm -f "$store_name" >/dev/null 2>&1 || true
-        ;;
-
-    *)
-        # Unknown action; silently ignore
-        exit 0
-        ;;
-esac
-EOF
-        chmod +x "$BIN_DIR/git-credential-pass"
-        chown "$USER:$(id -gn)" "$BIN_DIR/git-credential-pass" 2>/dev/null || true
-        log_success "git-credential-pass installed"
+    if [ -x "$BIN_DIR/git-credential-pass" ] || [ -L "$BIN_DIR/git-credential-pass" ]; then
+        log_info "git-credential-pass already installed at $BIN_DIR."
     else
-        log_info "git-credential-pass already present at $BIN_DIR/git-credential-pass"
+        log_info "Expecting git-credential-pass to be provided by your dotfiles (symlink)."
+        log_info "After running makesymlinks.sh, ensure ~/.local/bin/git-credential-pass exists and is executable."
     fi
 
     # Configure Git to use git-credential-pass
@@ -2763,49 +2601,6 @@ if prompt_continue "Configure GnuPG to use terminal (curses) pinentry instead of
         sudo apt install -y pinentry-curses
     else
         log_info "pinentry-curses is already installed."
-    fi
-
-    # Write or update gpg-agent.conf
-    if [ -f "$AGENT_CONF" ]; then
-        if grep -q "pinentry-curses" "$AGENT_CONF"; then
-            log_info "gpg-agent.conf already configured for pinentry-curses."
-        else
-            log_warning "gpg-agent.conf exists but does not specify pinentry-curses."
-            log_warning "Appending pinentry settings..."
-            tee -a "$AGENT_CONF" > /dev/null << 'EOF'
-
-# Use terminal-based pinentry
-pinentry-program /usr/bin/pinentry-curses
-
-# Cache passphrase for 2 hours
-default-cache-ttl 7200
-max-cache-ttl 7200
-EOF
-        fi
-    else
-        log_info "Creating gpg-agent.conf with terminal pinentry settings..."
-        tee "$AGENT_CONF" > /dev/null << 'EOF'
-# Use terminal-based pinentry
-pinentry-program /usr/bin/pinentry-curses
-
-# Cache GPG passphrase for 2 hours
-default-cache-ttl 7200
-max-cache-ttl 7200
-EOF
-    fi
-
-    # Add GPG_TTY to .bashrc if missing
-    if ! grep -q "GPG_TTY" "$HOME/.bashrc" 2>/dev/null; then
-        log_info "Adding GPG_TTY export to .bashrc..."
-        tee -a "$HOME/.bashrc" > /dev/null << 'EOF'
-
-# GnuPG: ensure terminal pinentry works correctly
-if [ -t 1 ]; then
-    export GPG_TTY="$(tty)"
-fi
-EOF
-    else
-        log_info "GPG_TTY already configured in .bashrc."
     fi
 
     # Restart gpg-agent

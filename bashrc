@@ -184,27 +184,12 @@ if [[ $(hostname) = thinkpad ]]; then
         || ssh-add -l \
         || eval $(ssh-agent)
 
-    # # 1. Prefer whatever ssh-find-agent thinks is the right agent
-    # if ssh-find-agent -a >/dev/null 2>&1; then
-    #     echo "DEBUG: ssh-find-agent -a SUCCEEDED, using $SSH_AUTH_SOCK"
-
-    # # 2. If that fails but we already have some agent with keys, keep it
-    # elif ssh-add -l >/dev/null 2>&1; then
-    #     echo "DEBUG: ssh-add -l SUCCEEDED, using $SSH_AUTH_SOCK"
-
-    # # 3. Otherwise, start a fresh ssh-agent
-    # else
-    #     echo "DEBUG: starting new ssh-agent"
-    #     eval "$(ssh-agent -s)" >/dev/null
-    #     echo "DEBUG: new SSH_AUTH_SOCK=$SSH_AUTH_SOCK"
-    # fi
-
-    [ -f ~/.fzf.bash ] && source ~/.fzf.bash
-    . "$CARGO_HOME/env"
+    [ -f "$XDG_CONFIG_HOME/fzf.bash" ] && . "$XDG_CONFIG_HOME/fzf.bash"
+    [ -f "$CARGO_HOME/env" ] && . "$CARGO_HOME/env"
 
     if type rg &> /dev/null; then
-      export FZF_DEFAULT_COMMAND='rg --files'
-      export FZF_DEFAULT_OPTS='-m --height 50% --border'
+        export FZF_DEFAULT_COMMAND='rg --files'
+        export FZF_DEFAULT_OPTS='-m --height 50% --border'
     fi
 fi
 
