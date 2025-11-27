@@ -1,0 +1,29 @@
+Host bastion-nav bastion
+    Hostname bastion-nav.difa.unibo.it
+    User     vsevolod.chestnov
+
+Host ophfe1 ophfe2
+    User      vsevolod.chestnov
+    ProxyJump bastion-nav
+
+Host github.com
+    User           git
+    IdentityFile   /home/seva/.ssh/thinkpad_x1
+    IdentitiesOnly yes
+
+Host oxford-gate gate.maths.ox.ac.uk gate
+    Hostname       gate.maths.ox.ac.uk
+    User           chestnov
+    IdentityFile   /home/seva/.ssh/oxford_math
+    IdentitiesOnly yes
+    ForwardAgent   yes
+
+Host fire-chief-ash vanisher nightcrawler cyclops shadowcat gambit quicksilver forge dazzler mystique polaris wolverine nocturne 
+    User      chestnov
+    ProxyJump oxford-gate
+
+Host oxford-git git.maths.ox.ac.uk
+    HostName       git.maths.ox.ac.uk
+    User           git
+    IdentityFile   /home/seva/.ssh/oxford_math
+    IdentitiesOnly yes
