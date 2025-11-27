@@ -261,6 +261,33 @@ theme-status() {
     fi
 }
 
+clean_bash_history() {
+    local src="$HOME/dotfiles/dotfiles-private/bash_history"
+    local tmp
+
+    # create temp file
+    tmp=$(mktemp) || { echo "Failed to create temp file"; return 1; }
+
+    # generate cleaned history
+    if sort -u "$src" > "$tmp"; then
+        if [ -s "$tmp" ]; then
+            # create backup
+            cp "$src" "$src.bak" || { echo "Backup failed, aborting."; rm -f "$tmp"; return 1; }
+            # replace original
+            mv "$tmp" "$src"
+            echo "History cleaned. Backup saved as $src.bak"
+        else
+            echo "Generated file is empty. Not replacing original."
+            rm -f "$tmp"
+            return 1
+        fi
+    else
+        echo "sort command failed."
+        rm -f "$tmp"
+        return 1
+    fi
+}
+
 # Scientific software environment
 source $XDG_CONFIG_HOME/scientific-env.sh
 
