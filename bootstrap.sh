@@ -1,14 +1,13 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -Eeuo pipefail # Exit on error, undefined var; fail pipelines
 
 # Ubuntu 24.04 Development Environment Bootstrap Script
 # This script installs and configures a minimal development environment
 # Enhanced with breaks and safepoints for safer execution
 
 # =============================================================================
-# INTRO
+# SETUP: tools
 # =============================================================================
-
-set -Eeuo pipefail # Exit on error, undefined var; fail pipelines
 
 # Colors for output
 RED='\033[0;31m'
@@ -88,86 +87,15 @@ handle_error() {
     exit $exit_code
 }
 
-# Set up error trap
-trap 'handle_error $LINENO' ERR
-
-# Pre-flight checks
-log_section "PRE-FLIGHT CHECKS"
-
-# Check if running as root
-if [[ $EUID -eq 0 ]]; then
-   log_error "This script should not be run as root or with sudo"
-   log_error "The script will prompt for sudo when needed for specific operations"
-   exit 1
-fi
-
-# Check Ubuntu version
-if ! grep -q "Ubuntu 24.04" /etc/os-release 2>/dev/null; then
-    log_warning "This script is designed for Ubuntu 24.04"
-    if ! prompt_continue "Continue anyway?"; then
-        exit 1
-    fi
-fi
-
-# # Check internet connectivity
-# log_info "Checking internet connectivity..."
-# if ! ping -c 1 github.com &>/dev/null; then
-#     log_error "No internet connection detected. Please check your connection."
-#     exit 1
-# fi
-
-# Check disk space (need at least 2GB free)
-available_space=$(df / | awk 'NR==2 {print $4}')
-if [ "$available_space" -lt 2097152 ]; then  # 2GB in KB
-    log_warning "Less than 2GB free space available. Consider freeing up space."
-    if ! prompt_continue "Continue anyway?"; then
-        exit 1
-    fi
-fi
-
-# Check if sudo is available and cache credentials
-log_info "Checking sudo access..."
-if ! sudo -n true 2>/dev/null; then
-    log_info "Please enter your password to cache sudo credentials:"
-    sudo -v
-fi
-
 # Function to ensure sudo credentials stay fresh
 refresh_sudo() {
     sudo -v
 }
 
-log_success "Pre-flight checks completed"
+# Set up error trap
+trap 'handle_error $LINENO' ERR
 
-# =============================================================================
-# UTILITY FUNCTIONS FOR BUILDING
-# =============================================================================
-
-# Function to clone or update git repository
-# clone_or_update() {
-#     local repo_url=$1
-#     local dest_dir=$2
-#     local branch=${3:-master}
-    
-#     if [ -d "$dest_dir" ]; then
-#         log_info "Updating $(basename "$dest_dir")..."
-#         cd "$dest_dir"
-#         git fetch origin
-#         git reset --hard "origin/$branch"
-#     else
-#         log_info "Cloning $(basename "$dest_dir")..."
-#         git clone "$repo_url" "$dest_dir"
-#         cd "$dest_dir"
-#         if [ "$branch" != "master" ] && [ "$branch" != "main" ]; then
-#             git checkout "$branch"
-#         fi
-#     fi
-    
-#     # Ensure proper ownership after git operations
-#     log_info "Ensuring proper ownership of $(basename "$dest_dir")..."
-#     chown -R "$USER:$(id -gn)" "$dest_dir"
-# }
-
+# Function to clone and build from git remote
 clone_or_update() {
     local repo_url="$1"
     local dest_dir="$2"
@@ -223,7 +151,7 @@ clone_or_update() {
     return 0
 }
 
-# Function to build and install with proper ownership
+# Function to build with make and proper ownership
 build_and_install() {
     local project_name=$1
     local build_cmd=${2:-"make -j$(nproc)"}
@@ -248,21 +176,149 @@ build_and_install() {
     fi
 }
 
-
-
 # =============================================================================
-# SECTION 1: DIRECTORY SETUP
+# SETUP: profile selection 
 # =============================================================================
 
-# if prompt_continue "Set up directory structure and PATH?"; then
+# You can call this script as:
+#   ./bootstrap.sh            # default profile: desktop
+#   ./bootstrap.sh server     # use server profile
+# or set BOOTSTRAP_PROFILE in the environment.
+
+BOOTSTRAP_PROFILE="${BOOTSTRAP_PROFILE:-desktop}"
+
+if [[ $# -gt 0 ]]; then
+    BOOTSTRAP_PROFILE="$1"
+    shift
+fi
+
+log_info "Using bootstrap profile: $BOOTSTRAP_PROFILE"
+
+# Default feature flags for desktop profile
+DO_CORE=1         # core directories, shell basics
+DO_DWM=1          # suckless stuff
+DO_GUI=1          # GUI desktop-only stuff
+DO_TEX=1          # TeX Live & tex-related env
+DO_GPG=1          # gpg-agent + pinentry tweaks
+DO_POETRY=1       # poetry / arxivterminal
+DO_RUST_TOOLS=1   # rustup + fzf, rg, fd, bat
+DO_SCI=1          # scientific stack (GMP, FLINT, FiniteFlow, etc.)
+DO_MAC=0          # Macbook-related tweaks
+DO_SINGULAR=1     # temp stub for Singular
+DO_EXPERIMENTAL=0 # dev stub
+DO_SYSTEM=1       # system packages from apt
+
+case "$BOOTSTRAP_PROFILE" in
+    desktop)
+        # defaults already represent desktop
+        ;;
+    server)
+        DO_DWM=0
+        DO_GUI=0
+        DO_TEX=0
+        DO_GPG=0
+        DO_POETRY=0
+        DO_SINGULAR=0
+        DO_SYSTEM=0
+        ;;
+    nothing)
+        DO_CORE=0
+        DO_DWM=0
+        DO_GUI=0
+        DO_TEX=0
+        DO_GPG=0
+        DO_POETRY=0
+        DO_RUST_TOOLS=0
+        DO_SCI=0
+        DO_MAC=0
+        DO_SINGULAR=0
+        DO_SOMETHING=0
+        DO_SYSTEM=0
+        ;;
+    *)
+        log_error "Unknown profile '$BOOTSTRAP_PROFILE'!"
+        exit 1
+        ;;
+esac
+
+# =============================================================================
+# SETUP: pre-flight checks
+# =============================================================================
+log_section "PRE-FLIGHT CHECKS"
+
+# Check if running as root
+if [[ $EUID -eq 0 ]]; then
+   log_error "This script should not be run as root or with sudo"
+   log_error "The script will prompt for sudo when needed for specific operations"
+   exit 1
+fi
+
+# # Check internet connectivity
+# log_info "Checking internet connectivity..."
+# if ! ping -c 1 github.com &>/dev/null; then
+#     log_error "No internet connection detected. Please check your connection."
+#     exit 1
+# fi
+
+if [[ "$BOOTSTRAP_PROFILE" == "desktop" ]]; then
+    # Check Ubuntu version
+    if ! grep -q "Ubuntu 24.04" /etc/os-release 2>/dev/null; then
+        log_warning "This script is designed for Ubuntu 24.04"
+        if ! prompt_continue "Continue anyway?"; then
+            exit 1
+        fi
+    fi
+
+    # Check disk space (need at least 2GB free)
+    available_space=$(df / | awk 'NR==2 {print $4}')
+    if [ "$available_space" -lt 2097152 ]; then  # 2GB in KB
+        log_warning "Less than 2GB free space available. Consider freeing up space."
+        if ! prompt_continue "Continue anyway?"; then
+            exit 1
+        fi
+    fi
+
+# # Check if sudo is available and cache credentials
+# log_info "Checking sudo access..."
+# if ! sudo -n true 2>/dev/null; then
+#     log_info "Please enter your password to cache sudo credentials:"
+#     sudo -v
+# fi
+
+    if command -v sudo >/dev/null 2>&1; then
+        log_info "Checking sudo access..."
+        if ! sudo -n true 2>/dev/null; then
+            log_info "Please enter your password to cache sudo credentials:"
+            sudo -v
+        fi
+    else
+        log_warning "sudo not found — skipping sudo warm-up."
+    fi
+else
+    log_info "Skipping some checks for profile: $BOOTSTRAP_PROFILE"
+fi
+
+log_success "Pre-flight checks completed"
+
+# =============================================================================
+# SETUP: build, src, and bin dirs 
+# =============================================================================
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BUILD_DIR="$HOME/.local/build"
+BIN_DIR="$HOME/.local/bin"
+SRC_DIR="$HOME/.local/src"
+
+# =============================================================================
+# SECTION 01: DIRECTORY SETUP
+# =============================================================================
+
+if \
+    (( DO_CORE )) && \
+    prompt_continue "Set up directory structure and PATH?" && \
+    : \
+; then
     log_section "DIRECTORY SETUP"
     
-    # Create directories
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    BUILD_DIR="$HOME/.local/build"
-    BIN_DIR="$HOME/.local/bin"
-    SRC_DIR="$HOME/.local/src"
-
     log_info "Creating directory structure..."
     mkdir -p "$BUILD_DIR" "$BIN_DIR" "$SRC_DIR"
 
@@ -274,15 +330,17 @@ build_and_install() {
     fi
 
     log_success "Directory structure created"
-# fi
-
-# : <<'END_DEBUG'
+fi
 
 # =============================================================================
-# SECTION 2: SYSTEM PACKAGES
+# SECTION 02: SYSTEM PACKAGES
 # =============================================================================
 
-if prompt_continue "Update system and install build dependencies?"; then
+if \
+    (( DO_SYSTEM )) && \
+    prompt_continue "Update system and install build dependencies?" && \
+    : \
+; then
     log_section "SYSTEM PACKAGES UPDATE"
     
     # Update system packages
@@ -375,10 +433,14 @@ if prompt_continue "Update system and install build dependencies?"; then
 fi
 
 # =============================================================================
-# SECTION 3: HOME DIRECTORY CLEANUP
+# SECTION 03: HOME DIRECTORY CLEANUP
 # =============================================================================
 
-if prompt_continue "Set up clean home directory structure?"; then
+if \
+    (( DO_CORE )) && \
+    prompt_continue "Set up clean home directory structure?" && \
+    : \
+; then
     log_section "HOME DIRECTORY CLEANUP"
     
     # Clean home directory setup
@@ -410,16 +472,22 @@ XDG_VIDEOS_DIR="$HOME/docs"
 EOF
 
     # Disable Ubuntu's automatic directory creation
-    echo "enabled=False" > "$HOME/.config/user-dirs.conf"
+    tee "$HOME/.config/user-dirs.conf" > /dev/null << 'EOF'
+enabled=False
+EOF
 
     log_success "Clean home directory structure created"
 fi
 
 # =============================================================================
-# SECTION 4: NAUTILUS REMOVAL
+# SECTION 04: NAUTILUS REMOVAL
 # =============================================================================
 
-if prompt_continue "Remove Ubuntu file manager (Nautilus)?"; then
+if \
+    (( DO_SYSTEM )) && \
+    prompt_continue "Remove Ubuntu file manager (Nautilus)?" && \
+    : \
+; then
     log_section "NAUTILUS REMOVAL"
     
     # Remove Ubuntu file manager (Nautilus)
@@ -432,10 +500,14 @@ if prompt_continue "Remove Ubuntu file manager (Nautilus)?"; then
 fi
 
 # =============================================================================
-# SECTION 5: MACBOOK AUDIO FIX
+# SECTION 05: MACBOOK AUDIO FIX
 # =============================================================================
 
-if prompt_continue "Disable MacBook Air startup sound?"; then
+if \
+    (( DO_MAC )) && \
+    prompt_continue "Disable MacBook Air startup sound?" \
+    : \
+; then
     log_section "MACBOOK AUDIO FIX"
 
     # MacBook Air startup sound disable
@@ -459,13 +531,15 @@ if prompt_continue "Disable MacBook Air startup sound?"; then
     fi
 fi
 
-# fi
-
 # =============================================================================
-# SECTION 6: FONT CONFIGURATION
+# SECTION 06: FONT CONFIGURATION
 # =============================================================================
 
-if prompt_continue "Install fonts and configure fontconfig?"; then
+if \
+	(( DO_SYSTEM )) && \
+	prompt_continue "Install fonts and configure fontconfig?" && \
+	: \
+; then
     log_section "FONT CONFIGURATION"
     
     # Font-based emoji crash fix - install proper fonts and configure fontconfig
@@ -579,10 +653,14 @@ EOF
 fi
 
 # =============================================================================
-# SECTION 7: VIM FROM SOURCE
+# SECTION 07: VIM FROM SOURCE
 # =============================================================================
 
-if prompt_continue "Build Vim from source?"; then
+if \
+	(( DO_CORE )) && \
+	prompt_continue "Build Vim from source?" && \
+	: \
+; then
     log_section "VIM INSTALLATION"
     
     # Build Vim from source with terminal and xclip support
@@ -617,10 +695,15 @@ if prompt_continue "Build Vim from source?"; then
 fi
 
 # =============================================================================
-# SECTION 8: RUST TOOLS (FZF, RIPGREP, FD, BAT)
+# SECTION 08: RUST TOOLS (FZF, RIPGREP, FD, BAT)
 # =============================================================================
 
-if prompt_continue "Install Rust and Rust-based tools (fzf, ripgrep, fd, bat)?"; then
+if \
+    (( DO_RUST_TOOLS )) && \
+    prompt_continue "Install Rust and Rust-based tools (fzf, ripgrep, fd, bat)?" && \
+    : \
+; then
+
     log_section "RUST TOOLS INSTALLATION"
     
     # Install Rust if needed
@@ -678,23 +761,33 @@ if prompt_continue "Install Rust and Rust-based tools (fzf, ripgrep, fd, bat)?";
 	fi
 
 	log_success "bat installed"
+else
+    log_info "Skipping Rust tools installation."
 fi
 
 # =============================================================================
-# SECTION 9: pre NUCLEAR OPTION: WIPE ALL SUCKLESS TOOLS
+# SECTION 09: pre NUCLEAR OPTION: WIPE ALL SUCKLESS TOOLS
 # =============================================================================
 
 # Nuclear option - wipe all suckless tools and start completely fresh
-if prompt_continue "Start completely fresh? (removes all existing suckless directories)"; then
+if \
+	(( DO_DWM )) && \
+	prompt_continue "Start completely fresh? (removes all existing suckless directories)" && \
+	: \
+; then
     log_info "Removing all existing suckless directories..."
     rm -rf "$SRC_DIR/dwm" "$SRC_DIR/dmenu" "$SRC_DIR/st" "$SRC_DIR/slstatus" "$SRC_DIR/slock"
 fi
 
 # =============================================================================
-# SECTION 9: SUCKLESS TOOLS (DWM)
+# SECTION 10: SUCKLESS TOOLS (DWM)
 # =============================================================================
 
-if prompt_continue "Build dwm (dynamic window manager)?"; then
+if \
+	(( DO_DWM )) && \
+	prompt_continue "Build dwm (dynamic window manager)?" && \
+	: \
+; then
     log_section "DWM INSTALLATION"
     
     # Build dwm
@@ -736,10 +829,14 @@ EOF
 fi
 
 # =============================================================================
-# SECTION 10: SUCKLESS TOOLS (DMENU)
+# SECTION 11: SUCKLESS TOOLS (DMENU)
 # =============================================================================
 
-if prompt_continue "Build dmenu?"; then
+if \
+	(( DO_DWM )) && \
+	prompt_continue "Build dmenu?" && \
+	: \
+; then
     log_section "DMENU INSTALLATION"
     
     # Build dmenu
@@ -774,10 +871,14 @@ EOF
 fi
 
 # =============================================================================
-# SECTION 11: SUCKLESS TOOLS (ST TERMINAL)
+# SECTION 12: SUCKLESS TOOLS (ST TERMINAL)
 # =============================================================================
 
-if prompt_continue "Build st (simple terminal)?"; then
+if \
+	(( DO_DWM )) && \
+	prompt_continue "Build st (simple terminal)?" && \
+	: \
+; then
     log_section "ST TERMINAL INSTALLATION"
     
     # Build st (simple terminal)
@@ -815,9 +916,13 @@ EOF
 fi
 
 # =============================================================================
-# SECTION 12: SUCKLESS TOOLS (SLSTATUS)
+# SECTION 13: SUCKLESS TOOLS (SLSTATUS)
 # =============================================================================
-if prompt_continue "Build slstatus (status monitor)?"; then
+if \
+	(( DO_DWM )) && \
+	prompt_continue "Build slstatus (status monitor)?" && \
+	: \
+; then
     log_section "SLSTATUS INSTALLATION"
     
     # Build slstatus
@@ -858,10 +963,14 @@ EOF
 fi
 
 # =============================================================================
-# SECTION 13: FILE MANAGER AND PDF VIEWER
+# SECTION 14: FILE MANAGER AND PDF VIEWER
 # =============================================================================
 
-if prompt_continue "Install vifm (file manager) and zathura (PDF viewer)?"; then
+if \
+	(( DO_SYSTEM )) && \
+	prompt_continue "Install vifm (file manager) and zathura (PDF viewer)?" && \
+	: \
+; then
     log_section "FILE MANAGER AND PDF VIEWER"
     
     # Install vifm
@@ -883,10 +992,14 @@ if prompt_continue "Install vifm (file manager) and zathura (PDF viewer)?"; then
 fi
 
 # =============================================================================
-# SECTION 14: NEOVIM SETUP
+# SECTION 15: NEOVIM SETUP
 # =============================================================================
 
-if prompt_continue "Install Neovim and kickstart.nvim?"; then
+if \
+	(( DO_SYSTEM )) && \
+	prompt_continue "Install Neovim and kickstart.nvim?" && \
+	: \
+; then
     log_section "NEOVIM SETUP"
     
     # Install Neovim and kickstart.nvim
@@ -921,10 +1034,14 @@ if prompt_continue "Install Neovim and kickstart.nvim?"; then
 fi
 
 # =============================================================================
-# SECTION 15: DWM SESSION CONFIGURATION
+# SECTION 16: DWM SESSION CONFIGURATION
 # =============================================================================
 
-if prompt_continue "Configure dwm desktop session?"; then
+if \
+	(( DO_DWM )) && \
+	prompt_continue "Configure dwm desktop session?" && \
+	: \
+; then
     log_section "DWM SESSION CONFIGURATION"
     
     log_info "Creating desktop entry for dwm in display manager..."
@@ -988,14 +1105,18 @@ EOF
 fi
 
 # =============================================================================
-# SECTION 16:
+# SECTION 17:
 # =============================================================================
 
 # =============================================================================
-# SECTION 17: FIX TOUCHPAD CLICK GESTURES
+# SECTION 18: FIX TOUCHPAD CLICK GESTURES
 # =============================================================================
 
-if prompt_continue "Fix touchpad left and right click gestures?"; then
+if \
+	(( DO_MAC )) && \
+	prompt_continue "Fix touchpad left and right click gestures?" && \
+	: \
+; then
     log_section "TOUCHPAD CONFIGURATION"
 
     log_info "COnfiguring touchpad click gestures..."
@@ -1020,10 +1141,14 @@ EOF
 fi
 
 # =============================================================================
-# SECTION 18: DOTFILES SETUP
+# SECTION 19: DOTFILES SETUP
 # =============================================================================
 
-if prompt_continue "Install and setup dotfiles from GitHub?"; then
+if \
+	(( DO_CORE )) && \
+	prompt_continue "Install and setup dotfiles from GitHub?" && \
+	: \
+; then
     log_section "DOTFILES SETUP"
     
     # Clone dotfiles repository
@@ -1117,10 +1242,14 @@ fi
 
 
 # =============================================================================
-# SECTION 19: SSH-FIND-AGENT INSTALLATION
+# SECTION 20: SSH-FIND-AGENT INSTALLATION
 # =============================================================================
 
-if prompt_continue "Install ssh-find-agent for SSH agent management?"; then
+if \
+	(( DO_CORE )) && \
+	prompt_continue "Install ssh-find-agent for SSH agent management?" && \
+	: \
+; then
     log_section "SSH-FIND-AGENT INSTALLATION"
     
     # Clone ssh-find-agent repository
@@ -1184,9 +1313,13 @@ EOF
 fi
 
 # =============================================================================
-# SECTION 20: SUCKLESS TOOLS CONFIGURATION
+# SECTION 21: SUCKLESS TOOLS CONFIGURATION
 # =============================================================================
-if prompt_continue "Configure and patch suckless tools?"; then
+if \
+	(( DO_DWM )) && \
+	prompt_continue "Configure and patch suckless tools?" && \
+	: \
+; then
     log_section "SUCKLESS CONFIGURATION"
 
     PATCHES_DIR="$HOME/dotfiles/patches"
@@ -1582,9 +1715,13 @@ fi
 
 
 # =============================================================================
-# SECTION 21: MAC KEYBOARD CONFIGURATION
+# SECTION 22: MAC KEYBOARD CONFIGURATION
 # =============================================================================
-if prompt_continue "Configure Mac keyboard layout (swap Alt and Cmd keys)?"; then
+if \
+	(( DO_MAC )) && \
+	prompt_continue "Configure Mac keyboard layout (swap Alt and Cmd keys)?" && \
+	: \
+; then
     log_section "MAC KEYBOARD CONFIGURATION"
     
     log_info "Configuring Mac keyboard layout..."
@@ -1606,9 +1743,13 @@ if prompt_continue "Configure Mac keyboard layout (swap Alt and Cmd keys)?"; the
 fi
 
 # =============================================================================
-# SECTION 22: MESSENGERS 
+# SECTION 23: MESSENGERS 
 # =============================================================================
-if prompt_continue "Install messengers (telegram, slack, signal, zulip)?"; then
+if \
+	(( DO_GUI )) && \
+	prompt_continue "Install messengers (telegram, slack, signal, zulip)?" && \
+	: \
+; then
     log_section "MESSENGERS INSTALLATION"
     refresh_sudo
     
@@ -1841,9 +1982,13 @@ if prompt_continue "Install messengers (telegram, slack, signal, zulip)?"; then
 fi
 
 # =============================================================================
-# SECTION 23: MEDIA 
+# SECTION 24: MEDIA 
 # =============================================================================
-if prompt_continue "Install media software?"; then
+if \
+	(( DO_GUI )) && \
+	prompt_continue "Install media software?" && \
+	: \
+; then
     log_section "MEDIA SOFTWARE INSTALLATION"
 
 	curl -sS https://download.spotify.com/debian/pubkey_C85668DF69375001.gpg | sudo gpg --dearmor --yes -o /etc/apt/trusted.gpg.d/spotify.gpg
@@ -1861,10 +2006,14 @@ if prompt_continue "Install media software?"; then
 fi
 
 # =============================================================================
-# SECTION 24: MACBOOK FUNCTION KEYS
+# SECTION 25: MACBOOK FUNCTION KEYS
 # =============================================================================
 
-if prompt_continue "Configure MacBook function keys (F1-F12) to work without Fn key?"; then
+if \
+	(( DO_MAC )) && \
+	prompt_continue "Configure MacBook function keys (F1-F12) to work without Fn key?" && \
+	: \
+; then
     log_section "MACBOOK FUNCTION KEYS CONFIGURATION"
     
     log_info "Configuring function keys to work without Fn key..."
@@ -1899,12 +2048,14 @@ if prompt_continue "Configure MacBook function keys (F1-F12) to work without Fn 
 fi
 
 # =============================================================================
-# SECTION 25: SCIENTIFIC SOFTWARE (GMP, FLINT, FINITEFLOW)
+# SECTION 26: SCIENTIFIC SOFTWARE (GMP, FLINT, FINITEFLOW)
 # =============================================================================
 
-END_DEBUG
-
-if prompt_continue "Install scientific software (GMP, FLINT, FiniteFlow)?"; then
+if \
+	(( DO_SCI )) && \
+	prompt_continue "Install scientific software (GMP, FLINT, FiniteFlow)?" && \
+	: \
+; then
     log_section "SCIENTIFIC SOFTWARE INSTALLATION"
 
     SCI_PREFIX="$HOME/.local"
@@ -2165,9 +2316,13 @@ if prompt_continue "Install scientific software (GMP, FLINT, FiniteFlow)?"; then
 fi
 
 # =============================================================================
-# SECTION 26: TEXLIVE INSTALLATION
+# SECTION 27: TEXLIVE INSTALLATION
 # =============================================================================
-if prompt_continue "Install TeX Live?"; then
+if \
+	(( DO_TEX )) && \
+	prompt_continue "Install TeX Live?" && \
+	: \
+; then
     log_section "TEXLIVE INSTALLATION"
     
     # Install system dependencies
@@ -2264,16 +2419,24 @@ EOF
 fi
 
 # =============================================================================
-# SECTION 27: krita and write
+# SECTION 28: krita and write
 # =============================================================================
-if prompt_continue "Install krita and write?"; then
+if \
+	(( DO_GUI )) && \
+	prompt_continue "Install krita and write?" && \
+	: \
+; then
     log_section "KRITA AND WRITE INSTALLATION"
 fi
 
 # =============================================================================
-# SECTION 28: SINGULAR COMPUTER ALGEBRA SYSTEM
+# SECTION 29: SINGULAR COMPUTER ALGEBRA SYSTEM
 # =============================================================================
-if prompt_continue "Install Singular Computer Algebra System?"; then
+if \
+	(( DO_SCI )) && \
+	prompt_continue "Install Singular Computer Algebra System?" && \
+	: \
+; then
     log_section "SINGULAR COMPUTER ALGEBRA SYSTEM INSTALLATION"
     
     # Check if Singular is already installed
@@ -2327,9 +2490,13 @@ if prompt_continue "Install Singular Computer Algebra System?"; then
 fi
 
 # =============================================================================
-# SECTION 29: ZATHURA PDF VIEWER (SOURCE BUILD)
+# SECTION 30: ZATHURA PDF VIEWER (SOURCE BUILD)
 # =============================================================================
-if prompt_continue "Build zathura PDF viewer from source (fixes link opening issues)?"; then
+if \
+	(( DO_GUI )) && \
+	prompt_continue "Build zathura PDF viewer from source (fixes link opening issues)?" && \
+	: \
+; then
     log_section "ZATHURA PDF VIEWER (SOURCE BUILD)"
     
     # Check if zathura is already installed
@@ -2483,10 +2650,14 @@ if prompt_continue "Build zathura PDF viewer from source (fixes link opening iss
 fi
 
 # =============================================================================
-# SECTION 30: PYTHON TOOLS
+# SECTION 31: PYTHON TOOLS
 # =============================================================================
 
-if prompt_continue "Install Python development tools (Poetry)?"; then
+if \
+	(( DO_POETRY )) && \
+	prompt_continue "Install Python development tools (Poetry)?" && \
+	: \
+; then
     log_section "PYTHON DEVELOPMENT TOOLS INSTALLATION"
 
     # Ensure pipx paths are configured in the user's environment
@@ -2529,12 +2700,14 @@ if prompt_continue "Install Python development tools (Poetry)?"; then
 fi
 
 # =============================================================================
-# SECTION 31: PASS PASSWORD STORE & GIT CREDENTIAL HELPER
+# SECTION 32: PASS PASSWORD STORE & GIT CREDENTIAL HELPER
 # =============================================================================
 
-END_DEBUG
-
-if prompt_continue "Configure pass-based password store and Git credential helper (for Overleaf tokens, etc.)?"; then
+if \
+	(( DO_GPG )) && \
+	prompt_continue "Configure pass-based password store and Git credential helper (for Overleaf tokens, etc.)?" && \
+	: \
+; then
     log_section "PASS & GIT CREDENTIAL HELPER SETUP"
 
     # Install pass and GnuPG
@@ -2582,9 +2755,13 @@ if prompt_continue "Configure pass-based password store and Git credential helpe
 fi
 
 # =============================================================================
-# SECTION 32: GPG TERMINAL PINENTRY (for pass, git-credential-pass)
+# SECTION 33: GPG TERMINAL PINENTRY (for pass, git-credential-pass)
 # =============================================================================
-if prompt_continue "Configure GnuPG to use terminal (curses) pinentry instead of GUI pop-ups?"; then
+if \
+	(( DO_GPG )) && \
+	prompt_continue "Configure GnuPG to use terminal (curses) pinentry instead of GUI pop-ups?" && \
+	: \
+; then
     log_section "GPG TERMINAL PINENTRY SETUP"
 
     GNUPG_DIR="$HOME/.gnupg"
@@ -2613,10 +2790,14 @@ fi
 
 
 # =============================================================================
-# SECTION 99: FINAL OWNERSHIP AND CLEANUP
+# SECTION 34: FINAL OWNERSHIP AND CLEANUP
 # =============================================================================
 
-if prompt_continue "Perform final ownership checks and cleanup?"; then
+if \
+	(( DO_CORE )) && \
+	prompt_continue "Perform final ownership checks and cleanup?" && \
+	: \
+; then
     log_section "FINAL OWNERSHIP AND CLEANUP"
     
     # Final ownership check for all created directories
@@ -2629,8 +2810,6 @@ if prompt_continue "Perform final ownership checks and cleanup?"; then
     
     log_success "Final cleanup completed"
 fi
-
-
 
 # =============================================================================
 # OUTRO 

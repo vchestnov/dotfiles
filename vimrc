@@ -704,7 +704,7 @@ function! FoldShellSectionHeaders(lnum)
   let line = getline(a:lnum)
 
   " If the line matches the SECTION header, it's a new fold level
-  if line =~ '^# \(SECTION \d\+:\|INTRO\|SUMMARY\|OUTRO\)'
+  if line =~ '^#\s*\(SECTION \d\+:\|INTRO\|SETUP\|SUMMARY\|OUTRO\)'
     return '>1'
   endif
 
