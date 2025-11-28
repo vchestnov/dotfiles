@@ -2,8 +2,8 @@
 # Scientific software environment setup (GMP, FLINT deps, FiniteFlow)
 # All installed under: $HOME/.local
 
-# Binaries
-export PATH="$HOME/.local/bin${PATH:+:$PATH}"
+# # Binaries
+# export PATH="$HOME/.local/bin${PATH:+:$PATH}"
 
 # pkg-config files
 export PKG_CONFIG_PATH="$HOME/.local/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"

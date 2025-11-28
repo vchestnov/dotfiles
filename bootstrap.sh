@@ -207,19 +207,26 @@ DO_MAC=0          # Macbook-related tweaks
 DO_SINGULAR=1     # temp stub for Singular
 DO_EXPERIMENTAL=0 # dev stub
 DO_SYSTEM=1       # system packages from apt
+DO_QD=1           # install QD library
 
 case "$BOOTSTRAP_PROFILE" in
     desktop)
         # defaults already represent desktop
         ;;
     server)
+        DO_CORE=1
         DO_DWM=0
         DO_GUI=0
         DO_TEX=0
         DO_GPG=0
         DO_POETRY=0
+        DO_RUST_TOOLS=1
+        DO_SCI=1
+        DO_MAC=0
         DO_SINGULAR=0
+        DO_EXPERIMENTAL=0
         DO_SYSTEM=0
+        DO_QD=0
         ;;
     nothing)
         DO_CORE=0
@@ -710,7 +717,7 @@ if \
     if ! command -v cargo &> /dev/null; then
         log_info "Installing Rust..."
         curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-        source "$HOME/.cargo/env"
+        source "$CARGO_HOME/env"
         export PATH="$HOME/.cargo/bin:$PATH"
     fi
 
@@ -2115,46 +2122,52 @@ if \
     export PKG_CONFIG_PATH="$SCI_PREFIX/lib/pkgconfig:$PKG_CONFIG_PATH"
     export LD_LIBRARY_PATH="$SCI_PREFIX/lib:$LD_LIBRARY_PATH"
 
-    # ========================================
-    # QD (Quad-Double Arithmetic Library)
-    # ========================================
-    log_info "Installing QD (Quad-Double library)..."
 
-    cd "$SRC_DIR"
-    clone_or_update "https://github.com/scibuilder/QD.git" "$SRC_DIR/QD"
-    cd "$SRC_DIR/QD"
+    if \
+        (( DO_QD)) && \
+        : \
+    ; then
+        # ========================================
+        # QD (Quad-Double Arithmetic Library)
+        # ========================================
+        log_info "Installing QD (Quad-Double library)..."
 
-    # If there was a previous build, clean it up first
-    if [ -f Makefile ]; then
-        log_info "Previous QD build detected; cleaning up..."
+        cd "$SRC_DIR"
+        clone_or_update "https://github.com/scibuilder/QD.git" "$SRC_DIR/QD"
+        cd "$SRC_DIR/QD"
 
-        if ! make clean; then
-            log_warning "make clean failed for QD (continuing anyway)..."
-        fi
+        # If there was a previous build, clean it up first
+        if [ -f Makefile ]; then
+            log_info "Previous QD build detected; cleaning up..."
 
-        # Try make uninstall if the target exists; don't abort on failure
-        if grep -q "^uninstall:" Makefile 2>/dev/null; then
-            if ! make uninstall; then
-                log_warning "make uninstall failed for QD (continuing anyway)..."
+            if ! make clean; then
+                log_warning "make clean failed for QD (continuing anyway)..."
             fi
-        else
-            log_info "No uninstall target in QD Makefile; skipping make uninstall."
+
+            # Try make uninstall if the target exists; don't abort on failure
+            if grep -q "^uninstall:" Makefile 2>/dev/null; then
+                if ! make uninstall; then
+                    log_warning "make uninstall failed for QD (continuing anyway)..."
+                fi
+            else
+                log_info "No uninstall target in QD Makefile; skipping make uninstall."
+            fi
         fi
+
+        # Reset tracked files to a clean state
+        git checkout . 2>/dev/null || true
+
+        # Configure with an absolute prefix 
+        log_info "Configuring QD with prefix: $SCI_PREFIX"
+        ./configure --prefix="$SCI_PREFIX" || {
+            log_error "QD configure failed"
+            exit 1
+        }
+
+        # Build and install using your helper
+        build_and_install "QD" "make -j$(nproc)" "make install" true
+        log_success "QD installed to $SCI_PREFIX (libs in $SCI_PREFIX/lib, headers in $SCI_PREFIX/include)"
     fi
-
-    # Reset tracked files to a clean state
-    git checkout . 2>/dev/null || true
-
-    # Configure with an absolute prefix 
-    log_info "Configuring QD with prefix: $SCI_PREFIX"
-    ./configure --prefix="$SCI_PREFIX" || {
-        log_error "QD configure failed"
-        exit 1
-    }
-
-    # Build and install using your helper
-    build_and_install "QD" "make -j$(nproc)" "make install" true
-    log_success "QD installed to $SCI_PREFIX (libs in $SCI_PREFIX/lib, headers in $SCI_PREFIX/include)"
         
     # ========================================
     # FiniteFlow
@@ -2162,7 +2175,9 @@ if \
     log_info "Installing FiniteFlow (dev sources in ~/dev/finiteflow)..."
 
     FINITEFLOW_DEV_DIR="$HOME/dev/finiteflow"
+    FINITEFLOW_MATHLIB="$SCI_PREFIX/lib"
     mkdir -p "$HOME/dev"
+    mkdir -p "$FINITEFLOW_MATHLIB"
 
     clone_or_update "https://github.com/peraro/finiteflow.git" "$FINITEFLOW_DEV_DIR"
     cd "$FINITEFLOW_DEV_DIR"
@@ -2199,6 +2214,7 @@ if \
     
     cmake -DCMAKE_INSTALL_PREFIX="$SCI_PREFIX" \
           -DCMAKE_PREFIX_PATH="$SCI_PREFIX" \
+          -DMATHLIBINSTALL="$FINITEFLOW_MATHLIB" \
           .
     build_and_install "FiniteFlow" "make -j$(nproc)" "make install" true
     log_success "FiniteFlow installed to $SCI_PREFIX; sources are in $FINITEFLOW_DEV_DIR"

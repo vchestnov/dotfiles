@@ -1,5 +1,5 @@
 {
-    "soft/finiteflow",
+    ".local/lib/",
     Nothing
 } // Map[RightComposition[
     ToFileName[$HomeDirectory, #]&,

@@ -1,3 +1,10 @@
+# Ensure ~/.local/bin is in PATH (prepend, safe)
+case ":$PATH:" in
+    *:"$HOME/.local/bin":*) ;;   # already there
+    *) PATH="$HOME/.local/bin${PATH:+:$PATH}" ;;
+esac
+export PATH
+
 # XDG Base Directory Specification
 export XDG_CONFIG_HOME="$HOME/.config"
 export XDG_DATA_HOME="$HOME/.local/share"
@@ -25,3 +32,4 @@ export XMODIFIERS=
 
 # Rust (XDG) environment
 [ -f "$CARGO_HOME/env" ] && . "$CARGO_HOME/env"
+. "$CARGO_HOME/env"

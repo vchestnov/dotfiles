@@ -176,8 +176,6 @@ if [[ $(hostname) = mac ]]; then
 fi
 
 if [[ $(hostname) = thinkpad ]]; then
-    # source "$HOME/soft/OpenXM/rc/dot.bashrc"
-
     # http://blog.joncairns.com/2013/12/understanding-ssh-agent-and-ssh-add/
     source "$HOME/.local/src/ssh-find-agent/ssh-find-agent.sh"
     ssh-find-agent -a \
@@ -191,6 +189,31 @@ if [[ $(hostname) = thinkpad ]]; then
         export FZF_DEFAULT_COMMAND='rg --files'
         export FZF_DEFAULT_OPTS='-m --height 50% --border'
     fi
+    
+    # Scientific software environment
+    source $XDG_CONFIG_HOME/scientific-env.sh
+
+    # TeX Live environment
+    source $XDG_CONFIG_HOME/texlive-env.sh
+fi
+
+if [[ $(hostname) = fire-chief-ash.maths.ox.ac.uk ]]; then
+    # http://blog.joncairns.com/2013/12/understanding-ssh-agent-and-ssh-add/
+    source "$HOME/.local/src/ssh-find-agent/ssh-find-agent.sh"
+    ssh-find-agent -a \
+        || ssh-add -l \
+        || eval $(ssh-agent)
+
+    [ -f "$XDG_CONFIG_HOME/fzf.bash" ] && . "$XDG_CONFIG_HOME/fzf.bash"
+    [ -f "$CARGO_HOME/env" ] && . "$CARGO_HOME/env"
+
+    if type rg &> /dev/null; then
+        export FZF_DEFAULT_COMMAND='rg --files'
+        export FZF_DEFAULT_OPTS='-m --height 50% --border'
+    fi
+    
+    # Scientific software environment
+    source $XDG_CONFIG_HOME/scientific-env.sh
 fi
 
 # export NVM_DIR="$HOME/.config/nvm"
@@ -273,12 +296,6 @@ clean_bash_history() {
     fi
 }
 
-# Scientific software environment
-source $XDG_CONFIG_HOME/scientific-env.sh
-
-# TeX Live environment
-source $XDG_CONFIG_HOME/texlive-env.sh
-
 export PASSWORD_STORE_DIR="$XDG_DATA_HOME/password-store"
 
 # Suppress GTK accessibility bridge warning
@@ -288,3 +305,18 @@ export NO_AT_BRIDGE=1
 if [ -t 1 ]; then
     export GPG_TTY="$(tty)"
 fi
+# . "/home/chestnov/.local/share/cargo/env"
+
+# SSH agent helper functions
+ssh_agent_start() {
+    eval $(ssh-agent -s)
+    ssh-add ~/.ssh/id_rsa 2>/dev/null || ssh-add ~/.ssh/id_ed25519 2>/dev/null || echo "No SSH keys found to add"
+}
+
+ssh_agent_list() {
+    ssh-find-agent -c
+}
+
+ssh_agent_kill() {
+    ssh-agent -k
+}
