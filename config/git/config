@@ -1,5 +1,5 @@
 [core]
-    excludesfile = /home/seva/.gitignore_global
+    excludesfile = ~/.config/git/ignore
 	editor = vim
 [user]
     name = Seva Chestnov
@@ -13,7 +13,5 @@
     tr = log --graph --decorate --oneline --all
 [credential "https://git.overleaf.com"]
     username = vchestnov@gmail.com
-
-[safe]
-	directory = /home/seva/soft/form
-	directory = /home/seva/soft/form
+[includeIf "gitdir:~/dev/ox/**"]
+    path = ~/.config/git/config_ox
