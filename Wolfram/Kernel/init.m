@@ -14,6 +14,7 @@
     "dev/finiteflow/mathlink",
     "dev/utils",
     "soft/amflow",
+    "soft/azurite/code",
     "soft/Baikovletter",
     "soft/BaikovPackage",
     "soft/calcloop",

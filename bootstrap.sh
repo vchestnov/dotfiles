@@ -238,7 +238,7 @@ case "$BOOTSTRAP_PROFILE" in
         DO_RUST_TOOLS=0
         DO_SCI=0
         DO_MAC=0
-        DO_SINGULAR=0
+        DO_SINGULAR=1
         DO_SOMETHING=0
         DO_SYSTEM=0
         ;;
@@ -2493,7 +2493,7 @@ fi
 # =============================================================================
 if \
 	(( DO_SCI )) && \
-	prompt_continue "Install Singular Computer Algebra System?" && \
+    prompt_continue "Install Singular (sudo)?" && \
 	: \
 ; then
     log_section "SINGULAR COMPUTER ALGEBRA SYSTEM INSTALLATION"
@@ -2545,6 +2545,156 @@ if \
             log_error "Singular installation verification failed"
             log_info "Try running 'sudo apt-get install -f' to fix any dependency issues"
         fi
+    fi
+fi
+
+# =============================================================================
+# SECTION 29: SINGULAR COMPUTER ALGEBRA SYSTEM (LOCAL INSTALL, NO SUDO)
+# =============================================================================
+if \
+    # (( DO_SCI )) && \
+    (( DO_SINGULAR )) && \
+    prompt_continue "Install Singular locally (no sudo)?" && \
+    : \
+; then
+    log_section "SINGULAR COMPUTER ALGEBRA SYSTEM INSTALLATION (LOCAL)"
+
+    # -------------------------------------------------------------------------
+    # 0. Check if Singular is already installed
+    # -------------------------------------------------------------------------
+    INSTALL_SINGULAR=true
+
+    if command -v Singular &> /dev/null; then
+        CURRENT_VERSION=$(
+            Singular --version 2>&1 \
+                | head -1 \
+                | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+' \
+                || echo "unknown"
+        )
+        log_info "Singular is already installed (version: $CURRENT_VERSION)"
+
+        if ! prompt_continue "Reinstall / update Singular (local install)?"; then
+            log_info "Skipping Singular installation"
+            INSTALL_SINGULAR=false
+        fi
+    fi
+
+    if [ "$INSTALL_SINGULAR" != true ]; then
+        log_info "Section 29: nothing to do."
+        return 0 2>/dev/null || true
+    fi
+
+    # -------------------------------------------------------------------------
+    # 1. Paths and versions
+    # -------------------------------------------------------------------------
+    # Where to install Singular (default: ~/.local, kept consistent with SCI_PREFIX)
+    SINGULAR_PREFIX="${SCI_PREFIX:-$HOME/.local}"
+
+    # Use the latest official release tag from GitHub
+    # See: https://github.com/Singular/Singular/tags (Release-4-4-1) :contentReference[oaicite:1]{index=1}
+    SINGULAR_TAG="Release-4-4-1"
+    SINGULAR_TARBALL="Singular-${SINGULAR_TAG}.tar.gz"
+    SINGULAR_URL="https://github.com/Singular/Singular/archive/refs/tags/${SINGULAR_TAG}.tar.gz"
+
+    mkdir -p "$SRC_DIR"
+    cd "$SRC_DIR"
+
+    # -------------------------------------------------------------------------
+    # 2. Download source tarball (no sudo)
+    # -------------------------------------------------------------------------
+    if [ ! -f "$SINGULAR_TARBALL" ]; then
+        log_info "Downloading Singular ${SINGULAR_TAG} from GitHub (local tarball)..."
+        wget -O "$SINGULAR_TARBALL" "$SINGULAR_URL"
+    else
+        log_info "Using existing Singular tarball: $SINGULAR_TARBALL"
+    fi
+
+    # Determine top-level directory name inside the tarball
+    SRC_SUBDIR=$(
+        # `tar` lists many files here, but `head` reads only the first line and
+        # quits. `tar` continues to write, hits the closed pipe and fires
+        # `SIGPIPE` with code 141. Here `{ tar ... || true; }` ensures that
+        # even if `tar` dies with 141, the group's exit code is still 0 and we
+        # are happy
+        { tar -tzf "$SINGULAR_TARBALL" || true; } | head -n1 | cut -d'/' -f1
+    )
+    if [ -z "$SRC_SUBDIR" ]; then
+        log_error "Could not determine Singular source directory from tarball"
+        exit 1
+    fi
+
+    # Clean any previous extracted tree for this tarball
+    rm -rf "$SRC_DIR/$SRC_SUBDIR"
+    log_info "Extracting Singular sources to $SRC_DIR/$SRC_SUBDIR..."
+    tar -xzf "$SINGULAR_TARBALL"
+
+    cd "$SRC_DIR/$SRC_SUBDIR"
+
+    # -------------------------------------------------------------------------
+    # 3. Point build system at locally installed scientific libraries (if any)
+    # -------------------------------------------------------------------------
+    # DO_SCI section installs GMP/FLINT/etc. into $SCI_PREFIX = ~/.local. :contentReference[oaicite:2]{index=2}
+    if [ -n "${SCI_PREFIX:-}" ]; then
+        export CPPFLAGS="-I$SCI_PREFIX/include${CPPFLAGS:+ $CPPFLAGS}"
+        export LDFLAGS="-L$SCI_PREFIX/lib${LDFLAGS:+ $LDFLAGS}"
+        export PKG_CONFIG_PATH="$SCI_PREFIX/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+        export LD_LIBRARY_PATH="$SCI_PREFIX/lib:${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+        log_info "Using local scientific libs from $SCI_PREFIX (CPPFLAGS/LDFLAGS/PKG_CONFIG_PATH/LD_LIBRARY_PATH updated)"
+    fi
+
+    # -------------------------------------------------------------------------
+    # 4. Configure, build, and install (all under $SINGULAR_PREFIX, no sudo)
+    # -------------------------------------------------------------------------
+    log_info "Configuring Singular with prefix: $SINGULAR_PREFIX (no sudo, local install)..."
+
+    # Some tarballs (e.g. GitHub snapshots) do not ship a pre-generated configure.
+    # In that case we try to run ./autogen.sh to generate it.
+    if [ ! -x ./configure ]; then
+        if [ -x ./autogen.sh ]; then
+            log_info "No configure script found, running ./autogen.sh to generate it..."
+            if ! ./autogen.sh; then
+                log_error "Singular ./autogen.sh failed – please check that autotools (autoconf/automake/libtool) are installed."
+                exit 1
+            fi
+        else
+            log_error "Neither ./configure nor ./autogen.sh found in $(pwd)"
+            log_error "Consider using an official release tarball from the Singular download page instead of a raw GitHub snapshot."
+            exit 1
+        fi
+    fi
+
+    # Keep configure minimal and robust; gfanlib and extra backends can be added later
+    if ! ./configure --prefix="$SINGULAR_PREFIX"; then
+        log_error "Singular ./configure failed"
+        exit 1
+    fi
+
+    # Use your generic helper for build + install into user prefix
+    build_and_install "Singular" "make -j$(nproc)" "make install" true
+
+    # -------------------------------------------------------------------------
+    # 5. Post-install: PATH hint and verification
+    # -------------------------------------------------------------------------
+    # Make sure ~/.local/bin is on PATH; your script does this earlier for core tools,
+    # but we log a reminder in case this section is run stand-alone.
+    if ! echo "$PATH" | tr ':' '\n' | grep -qx "$SINGULAR_PREFIX/bin"; then
+        log_warning "PATH does not contain $SINGULAR_PREFIX/bin"
+        log_info "Add this to your shell rc if needed:"
+        log_info "    export PATH=\"$SINGULAR_PREFIX/bin:\$PATH\""
+    fi
+
+    # Basic sanity check: can we run Singular at all?
+    if command -v Singular &> /dev/null; then
+        if Singular -q -c "quit;" >/dev/null 2>&1; then
+            VERSION_LINE=$(
+                Singular --version -c "quit;" 2>&1 | head -1 || true
+            )
+            log_success "Singular installation verified: ${VERSION_LINE:-'version check ok'}"
+        else
+            log_warning "Singular is found in PATH but a basic 'quit' test failed"
+        fi
+    else
+        log_error "Singular not found in PATH after installation; check $SINGULAR_PREFIX/bin and PATH"
     fi
 fi
 
