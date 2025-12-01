@@ -189,7 +189,7 @@ if [[ $(hostname) = thinkpad ]]; then
         export FZF_DEFAULT_COMMAND='rg --files'
         export FZF_DEFAULT_OPTS='-m --height 50% --border'
     fi
-    
+
     # Scientific software environment
     source $XDG_CONFIG_HOME/scientific-env.sh
 
@@ -211,7 +211,7 @@ if [[ $(hostname) = fire-chief-ash.maths.ox.ac.uk ]]; then
         export FZF_DEFAULT_COMMAND='rg --files'
         export FZF_DEFAULT_OPTS='-m --height 50% --border'
     fi
-    
+
     # Scientific software environment
     source $XDG_CONFIG_HOME/scientific-env.sh
 fi

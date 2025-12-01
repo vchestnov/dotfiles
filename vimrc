@@ -117,7 +117,7 @@ function! PrefsttW()
   " set shiftwidth=2
   " set softtabstop=2
   set expandtab
-endfunction   
+endfunction
 
 set t_Co=256
 colorscheme molokai
@@ -693,11 +693,11 @@ set suffixesadd=.tex,.bib,.sty
 
 " Enable custom folding for shell scripts
 augroup ShellScriptFolds
-	autocmd!
-	autocmd FileType sh setlocal foldmethod=expr
-	autocmd FileType sh setlocal foldexpr=FoldShellSectionHeaders(v:lnum)
-	autocmd FileType sh setlocal foldtext=getline(v:foldstart)
-	autocmd FileType sh setlocal foldlevel=0
+    autocmd!
+    autocmd FileType sh setlocal foldmethod=expr
+    autocmd FileType sh setlocal foldexpr=FoldShellSectionHeaders(v:lnum)
+    autocmd FileType sh setlocal foldtext=getline(v:foldstart)
+    autocmd FileType sh setlocal foldlevel=0
 augroup END
 
 function! FoldShellSectionHeaders(lnum)
