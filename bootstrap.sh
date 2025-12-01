@@ -660,6 +660,31 @@ EOF
 fi
 
 # =============================================================================
+# SECTION 08: XCLIP
+# =============================================================================
+if \
+    (( DO_CORE )) && \
+    prompt_continue "Install xclip?" && \
+    : \
+; then
+    log_section "XCLIP INSTALLATION"
+
+    if command -v xclip &> /dev/null; then
+        log_info "xclip already installed at $(command -v xclip)"
+        return 0
+    fi
+
+    clone_or_update "https://github.com/astrand/xclip.git" "$SRC_DIR/xclip"
+    cd "$SRC_DIR/xclip"
+    autoreconf
+    ./configure --prefix="$HOME/.local"
+    build_and_install "xclip" "make -j$(nproc)" "make install" true
+
+    log_success "xclip installed"
+fi
+
+
+# =============================================================================
 # SECTION 07: VIM FROM SOURCE
 # =============================================================================
 
@@ -1110,10 +1135,6 @@ EOF
 
     log_success "dwm desktop entry created"
 fi
-
-# =============================================================================
-# SECTION 17:
-# =============================================================================
 
 # =============================================================================
 # SECTION 18: FIX TOUCHPAD CLICK GESTURES
