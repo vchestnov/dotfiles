@@ -1034,23 +1034,45 @@ if \
 ; then
     log_section "NEOVIM SETUP"
     
-    # Install Neovim and kickstart.nvim
-    log_info "Installing Neovim..."
+    # # Install Neovim and kickstart.nvim
+    # log_info "Installing Neovim..."
 
-    # Remove old neovim if installed via apt
-    refresh_sudo
-    sudo apt remove -y neovim 2>/dev/null || true
+    # # Remove old neovim if installed via apt
+    # refresh_sudo
+    # sudo apt remove -y neovim 2>/dev/null || true
 
-    # Install latest Neovim from GitHub releases
-    log_info "Downloading latest Neovim..."
-    NVIM_VERSION=$(curl -s https://api.github.com/repos/neovim/neovim/releases/latest | grep -Po '"tag_name": "\K[^"]*')
-    wget "https://github.com/neovim/neovim/releases/download/${NVIM_VERSION}/nvim-linux64.tar.gz" -O /tmp/nvim-linux64.tar.gz
-    tar -xzf /tmp/nvim-linux64.tar.gz -C /tmp/
-    cp -r /tmp/nvim-linux64/* "$HOME/.local/"
-    rm -rf /tmp/nvim-linux64*
+    # # Install latest Neovim from GitHub releases
+    # log_info "Downloading latest Neovim..."
+    # NVIM_VERSION=$(curl -s https://api.github.com/repos/neovim/neovim/releases/latest | grep -Po '"tag_name": "\K[^"]*')
+    # wget "https://github.com/neovim/neovim/releases/download/${NVIM_VERSION}/nvim-linux64.tar.gz" -O /tmp/nvim-linux64.tar.gz
+    # tar -xzf /tmp/nvim-linux64.tar.gz -C /tmp/
+    # cp -r /tmp/nvim-linux64/* "$HOME/.local/"
+    # rm -rf /tmp/nvim-linux64*
 
-    # Ensure proper ownership of Neovim files
-    chown -R "$USER:$(id -gn)" "$HOME/.local/bin/nvim" "$HOME/.local/share/nvim" "$HOME/.local/lib/nvim" 2>/dev/null || true
+    # # Ensure proper ownership of Neovim files
+    # chown -R "$USER:$(id -gn)" "$HOME/.local/bin/nvim" "$HOME/.local/share/nvim" "$HOME/.local/lib/nvim" 2>/dev/null || true
+    
+    log_info "Building Neovim from source..."
+    clone_or_update "https://github.com/neovim/neovim.git" "$SRC_DIR/neovim"
+
+    cd "$SRC_DIR/neovim"
+    # Clean previous build artefacts if any
+    make distclean 2>/dev/null || true
+    rm -rf build .deps 2>/dev/null || true
+
+    # Use the helper to build + install into ~/.local
+    #   - CMAKE_BUILD_TYPE=RelWithDebInfo for a “release-ish” build
+    #   - CMAKE_INSTALL_PREFIX=$HOME/.local so nvim ends up in ~/.local/bin
+    build_and_install \
+        "Neovim" \
+        "make CMAKE_BUILD_TYPE=RelWithDebInfo CMAKE_INSTALL_PREFIX=$HOME/.local" \
+        "make install" \
+        true
+
+    # Sanity check: ensure nvim on PATH
+    if ! command -v nvim >/dev/null 2>&1; then
+        log_warning "nvim is not on PATH; ensure $HOME/.local/bin is in your PATH."
+    fi
 
     # Install kickstart.nvim
     log_info "Setting up kickstart.nvim..."
