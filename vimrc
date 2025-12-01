@@ -712,6 +712,59 @@ function! FoldShellSectionHeaders(lnum)
   return '='
 endfunction
 
+" Refresh SSH_AUTH_SOCK in Vim using ssh-find-agent on fire-chief-ash
+function! RefreshSSHAuthSock() abort
+    " if system('hostname') !~# 'fire-chief-ash'
+    "     return
+    " endif
+    if !executable('bash')
+        echom 'RefreshSSHAuthSock: bash not found'
+        return
+    endif
+
+    " Path to ssh-find-agent script
+    let l:script = expand('~/.local/src/ssh-find-agent/ssh-find-agent.sh')
+
+    " Check if script exists before sourcing it
+    if !filereadable(l:script)
+        echom 'RefreshSSHAuthSock: script not found: ' . l:script
+        return
+    endif
+
+    " Run ssh-find-agent in a fresh bash and print the resulting SSH_AUTH_SOCK
+    let l:cmd =
+        \ 'bash -lc ''' .
+        \ '. ' . fnameescape(l:script) . ' >/dev/null 2>&1; ' .
+        \ 'ssh-find-agent -a >/dev/null 2>&1; ' .
+        \ 'printf %s "$SSH_AUTH_SOCK"' .
+        \ ''''
+
+    " Run the command
+    let l:raw = system(l:cmd)
+    " Strip trailing newlines
+    let l:raw = substitute(l:raw, '\n\+$', '', '')
+
+    " Extract something that looks like an ssh-agent socket path
+    " Example: /tmp/ssh-XXXX/agent.12345
+    let l:sock = matchstr(l:raw, '/tmp/ssh-[^[:space:]]\+')
+
+    " Optional: stricter validation of the agent path shape
+    if !empty(l:sock) && l:sock !~# '^/tmp/ssh-.\+/agent\.\d\+$'
+        echom 'RefreshSSHAuthSock: ignoring suspicious socket path: ' . l:sock
+        let l:sock = ''
+    endif
+
+    if empty(l:sock)
+        echom 'RefreshSSHAuthSock: no valid socket found in output: ' . l:raw
+        return
+    endif
+
+    let $SSH_AUTH_SOCK = l:sock
+    echom 'SSH_AUTH_SOCK set to ' . l:sock
+endfunction
+
+command! RefreshSSHAuthSock call RefreshSSHAuthSock()
+
 set viminfo+=n$XDG_STATE_HOME/vim/viminfo
 set directory=$XDG_CACHE_HOME/vim/swap//
 set backupdir=$XDG_CACHE_HOME/vim/backup//

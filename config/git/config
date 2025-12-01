@@ -13,5 +13,5 @@
     tr = log --graph --decorate --oneline --all
 [credential "https://git.overleaf.com"]
     username = vchestnov@gmail.com
-[includeIf "gitdir:~/dev/ox/**"]
+[includeIf "gitdir:~/dev/ox/"]
     path = ~/.config/git/config_ox

@@ -286,8 +286,9 @@ if \
 ; then
     ensure_dir "$XDG_CONFIG_HOME"
     ensure_dir "$XDG_CONFIG_HOME/git"
-    link_file "$DOTFILES_DIR/config/git/config" "$XDG_CONFIG_HOME/git/config" "git config (XDG)"
-    link_file "$DOTFILES_DIR/config/git/ignore" "$XDG_CONFIG_HOME/git/ignore" "git ignore (XDG)"
+    link_file "$DOTFILES_DIR/config/git/config"    "$XDG_CONFIG_HOME/git/config"    "git config (XDG)"
+    link_file "$DOTFILES_DIR/config/git/ignore"    "$XDG_CONFIG_HOME/git/ignore"    "git ignore (XDG)"
+    link_file "$DOTFILES_DIR/config/git/config_ox" "$XDG_CONFIG_HOME/git/config_ox" "git config for Oxford (XDG)"
 fi
 
 # =============================================================================
