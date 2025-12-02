@@ -2566,7 +2566,7 @@ if \
 
     if command -v Singular &> /dev/null; then
         CURRENT_VERSION=$(
-            Singular --version 2>&1 \
+            Singular --version -c "quit;" 2>&1 \
                 | head -1 \
                 | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+' \
                 || echo "unknown"
