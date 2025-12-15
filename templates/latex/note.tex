@@ -1,0 +1,251 @@
+\documentclass[11pt, a4paper]{article}
+
+\usepackage[left=2.5cm,right=2.5cm,top=2.8cm,bottom=2.8cm]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{mathtools}
+\usepackage[bookmarks=true,ocgcolorlinks=true]{hyperref} % ocgcolorlinks: color links on screen, but print them black. Requires pdf version 1.5
+\usepackage{cite}
+\usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{nicematrix}
+\usepackage{cleveref}
+\usepackage{fancyhdr}
+\usepackage{parskip}
+\usepackage{tikz}
+\usetikzlibrary{calc}
+\usetikzlibrary{patterns}
+\usetikzlibrary{shapes.misc}
+\usetikzlibrary{
+    decorations.pathmorphing,
+    decorations.pathreplacing,
+    decorations.shapes,
+    decorations.markings,
+}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Figure captions (also makes sure that hyperlinks point to figures, not to captions)
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\usepackage[font=small,labelfont=bf,width=0.85\textwidth]{caption}
+\usepackage{subcaption}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Fonts
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\usepackage{lmodern}
+\usepackage[T1]{fontenc}
+\usepackage{microtype}
+% for mathbbm
+\usepackage{bbm}
+% \usepackage{bbold}
+
+% TURNS OFF \hbox WARNING
+\hfuzz=500pt
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Colors
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\definecolor{green1}{HTML}{244819}
+\definecolor{cyan1}{HTML}{37cdaa}
+\definecolor{blue1}{HTML}{5d7ac4}
+\definecolor{red1}{HTML}{921818}
+\definecolor{purple1}{HTML}{53047A}
+\definecolor{orange1}{HTML}{e07229}
+\definecolor{yellow1}{HTML}{edcb52}
+\definecolor{gr}{gray}{0.7}
+\definecolor{gr1}{gray}{0.7}
+\newcommand{\gr}[1]{{\color{gr}#1}}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Hypersetup
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\providecommand{\hypersetup}[1]{}
+\providecommand{\hyperref}[2][]{#2}
+\providecommand{\texorpdfstring}[2]{#1}
+\providecommand{\pdfbookmark}[3][]{}
+
+\hypersetup{plainpages=false}
+\hypersetup{pdfpagemode=UseOutlines}
+\hypersetup{bookmarksnumbered=true}
+\hypersetup{bookmarksopen=true}
+\hypersetup{pdfstartview=FitH}
+% \hypersetup{citecolor=[rgb]{0 .4 0}}
+% \hypersetup{urlcolor=[rgb]{.4 0 0}}
+% \hypersetup{linkcolor=[rgb]{0 0 .4}}
+% \hypersetup{citebordercolor={.6 .9 .6}}
+% \hypersetup{urlbordercolor={.7 .8 1}}
+% \hypersetup{linkbordercolor={1 .7 .7}}
+% \hypersetup{pdfborder={0 0 .5}}
+
+\hypersetup{citecolor=purple1}
+\hypersetup{urlcolor=red1}
+\hypersetup{linkcolor=purple1}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% graphics wrapper
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\makeatletter
+\newlength{\apb@width}
+\newcommand{\autoparbox}[2][c]{\settowidth{\apb@width}{#2}\parbox[#1]{\apb@width}{#2}}
+\newcommand{\includegraphicsbox}[2][]{\autoparbox{\includegraphics[#1]{#2}}}
+\makeatother
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Brackets
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand{\brk}[1]{(#1)}
+\newcommand{\lrbrk}[1]{\left(#1\right)}
+\newcommand{\bigbrk}[1]{\bigl(#1\bigr)}
+\newcommand{\Bigbrk}[1]{\Bigl(#1\Bigr)}
+\newcommand{\biggbrk}[1]{\biggl(#1\biggr)}
+\newcommand{\Biggbrk}[1]{\Biggl(#1\Biggr)}
+\newcommand{\sbrk}[1]{[#1]}
+\newcommand{\lrsbrk}[1]{\left[#1\right]}
+\newcommand{\bigsbrk}[1]{\bigl[#1\bigr]}
+\newcommand{\biggsbrk}[1]{\biggl[#1\biggr]}
+\newcommand{\Bigsbrk}[1]{\Bigl[#1\Bigr]}
+\newcommand{\Biggsbrk}[1]{\Biggl[#1\Biggr]}
+\newcommand{\rbsbrk}[1]{%
+    \resizebox{!}{.35cm}{[}%
+    #1%
+    \resizebox{!}{.35cm}{]}%
+}
+\newcommand{\brc}[1]{\{#1\}}
+\newcommand{\lrbrc}[1]{\left\{#1\right\}}
+\newcommand{\bigbrc}[1]{\bigl\{#1\bigr\}}
+\newcommand{\Bigbrc}[1]{\Bigl\{#1\Bigr\}}
+\newcommand{\vev}[1]{\langle #1\rangle}
+\newcommand{\smb}[1]{(#1)}
+\newcommand{\bigsmb}[1]{\bigl(#1\bigr)}
+\newcommand{\Bigsmb}[1]{\Bigl(#1\Bigr)}
+\newcommand{\biggsmb}[1]{\biggl(#1\biggr)}
+\newcommand{\br}[1]{\langle#1\rangle}
+\newcommand{\floor}[1]{\lfloor#1\rfloor}
+\newcommand{\abs}[1]{|#1|}
+\newcommand{\bigabs}[1]{\bigl|#1\bigr|}
+\newcommand{\Bigabs}[1]{\Bigl|#1\Bigr|}
+\newcommand{\biggabs}[1]{\biggl|#1\biggr|}
+\newcommand{\lrabs}[1]{\left|#1\right|}
+\newcommand{\lrnorm}[1]{\left\lVert#1\right\rVert}
+\newcommand{\lst}[1]{\{#1\}}
+\newcommand{\comm}[2]{[#1,#2]}
+\newcommand{\lrcomm}[2]{\left[#1,#2\right]}
+\newcommand{\supbrk}[1]{^{\brk{#1}}}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Symbols
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand{\eps}{\varepsilon}
+\newcommand{\dd}{\mathrm{d}}
+\newcommand{\order}[1]{\mathcal{O}(#1)}
+\newcommand{\suprm}[1]{^{\mathrm{#1}}}
+\newcommand{\subrm}[1]{_{\mathrm{#1}}}
+\newcommand{\Integers}{\mathbb{Z}}
+\newcommand{\Rationals}{\mathbb{Q}}
+\newcommand{\Reals}{\mathbb{R}}
+\newcommand{\Complex}{\mathbb{C}}
+\newcommand{\Field}{\mathbb{K}}
+\newcommand{\defas}{:=}
+\newcommand{\safed}{=:}
+\newcommand{\tr}{^T}
+\newcommand{\mzero}{\gr{\cdot}}
+\newcommand{\mId}{\mathbb{1}}
+\newcommand{\mZero}{\mathbb{0}}
+\newcommand{\Res}{\operatorname{Res}}
+\newcommand{\im}{\mathrm{i}}
+
+% https://tex.stackexchange.com/a/235120
+\makeatletter
+    \newcommand*\bigcdot{\mathpalette\bigcdot@{1}}
+    \newcommand*\smtimes{\mathpalette\smtimes@{.7}}
+    \newcommand*\bigcdot@[2]{\mathbin{\vcenter{\hbox{\scalebox{#2}{$\m@th#1\bullet$}}}}}
+    \newcommand*\smtimes@[2]{\mathbin{\vcenter{\hbox{\scalebox{#2}{$\m@th#1\times$}}}}}
+\makeatother
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Caligraphic
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand{\cA}{\mathcal{A}}
+\newcommand{\cB}{\mathcal{B}}
+\newcommand{\cC}{\mathcal{C}}
+\newcommand{\cD}{\mathcal{D}}
+\newcommand{\cE}{\mathcal{E}}
+\newcommand{\cF}{\mathcal{F}}
+\newcommand{\cG}{\mathcal{G}}
+\newcommand{\cH}{\mathcal{H}}
+\newcommand{\cI}{\mathcal{I}}
+\newcommand{\cJ}{\mathcal{J}}
+\newcommand{\cK}{\mathcal{K}}
+\newcommand{\cL}{\mathcal{L}}
+\newcommand{\cM}{\mathcal{M}}
+\newcommand{\cN}{\mathcal{N}}
+\newcommand{\cO}{\mathcal{O}}
+\newcommand{\cP}{\mathcal{P}}
+\newcommand{\cQ}{\mathcal{Q}}
+\newcommand{\cR}{\mathcal{R}}
+\newcommand{\cS}{\mathcal{S}}
+\newcommand{\cT}{\mathcal{T}}
+\newcommand{\cU}{\mathcal{U}}
+\newcommand{\cV}{\mathcal{V}}
+\newcommand{\cW}{\mathcal{W}}
+\newcommand{\cX}{\mathcal{X}}
+\newcommand{\cY}{\mathcal{Y}}
+\newcommand{\cZ}{\mathcal{Z}}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Specials
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand{\soft}[1]{\textsc{#1}}
+\newcommand{\mathematica}{\soft{Mathematica}}
+\newcommand{\form}{\soft{Form}}
+\newcommand{\filename}[1]{\texttt{#1}}
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\wavy}[1]{
+    \begin{tikzpicture}[baseline=-0.5ex]
+        \coordinate (origin) at (0, 0);
+        \draw[->,
+            decorate, decoration={
+                snake,
+                segment length=.2cm,
+                amplitude=.03cm
+            }
+        ] (origin) -- +(#1, 0);
+    \end{tikzpicture}
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Theorem style
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{example}[theorem]{Example}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{remark}[theorem]{Remark}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{algorithm}[theorem]{Algorithm}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Comments
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\def\seva#1{({\color{purple1} Seva: #1})}
+
+\newcommand{\NoteTitle}{Title}
+\newcommand{\NoteAuthor}{Seva Chestnov}
+\newcommand{\NoteDate}{\today}
+
+\pagestyle{fancy}
+\fancyhf{} % clear all fields
+\lhead{\NoteAuthor}
+\chead{\itshape\NoteTitle}
+\rhead{\NoteDate}
+\cfoot{\thepage}
+
+\begin{document}
+\thispagestyle{fancy}
+\date{\today}
+\null
+
+% \bibliographystyle{nb}
+% \bibliography{references}
+
+\end{document}

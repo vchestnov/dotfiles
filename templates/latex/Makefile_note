@@ -1,0 +1,47 @@
+BASENAME = main
+
+# remove whitespaces
+BASENAME := $(strip $(BASENAME))
+
+$(info BASENAME = $(BASENAME))
+$(info Main LaTeX file = $(BASENAME).tex)
+
+# From: http://www.acoustics.hut.fi/u/mairas/UltimateLatexMakefile/Makefile
+RERUN = "(There were undefined references|Rerun to get (cross-references|the bars) right)"
+RERUNBIB = "No file.*\.bbl|Citation.*undefined"
+COPY = if test -r $(<:%.tex=%.toc); then cp $(<:%.tex=%.toc) $(<:%.tex=%.toc.bak); fi; if test -r $(<:%.tex=%.lof); then cp $(<:%.tex=%.lof) $(<:%.tex=%.lof.bak); fi; if test -r $(<:%.tex=%.out); then cp $(<:%.tex=%.out) $(<:%.tex=%.out.bak); fi
+LATEX = pdflatex -interaction nonstopmode -output-format pdf
+BIBTEX	= bibtex
+RM = rm -f
+
+define run-latex
+	$(COPY); $(LATEX) $< >/dev/null
+	egrep -c $(RERUNBIB) $(<:%.tex=%.log) >/dev/null && ($(BIBTEX) $(<:%.tex=%); $(COPY); $(LATEX) $< >/dev/null); true
+	egrep $(RERUN) $(<:%.tex=%.log) >/dev/null && ($(COPY); $(LATEX) $< >/dev/null); true
+	egrep $(RERUN) $(<:%.tex=%.log) >/dev/null && ($(COPY); $(LATEX) $< >/dev/null); true
+	if test -r $(<:%.tex=%.toc); then if cmp -s $(<:%.tex=%.toc) $(<:%.tex=%.toc.bak); then true; else ($(COPY); $(LATEX) $< >/dev/null); fi; fi
+	if test -r $(<:%.tex=%.lof); then if cmp -s $(<:%.tex=%.lof) $(<:%.tex=%.lof.bak); then true; else ($(COPY); $(LATEX) $< >/dev/null); fi; fi
+	if test -r $(<:%.tex=%.out); then if cmp -s $(<:%.tex=%.out) $(<:%.tex=%.out.bak); then true; else ($(COPY); $(LATEX) $< >/dev/null); fi; fi
+	$(RM) $(<:%.tex=%.toc.bak) $(<:%.tex=%.lof.bak) $(<:%.tex=%.out.bak)
+	# Display relevant warnings
+	egrep "((Reference|Citation).*undefined)|(W| w)arning|(Under|Over)full" $(<:%.tex=%.log); true
+endef
+# End From: http://www.acoustics.hut.fi/u/mairas/UltimateLatexMakefile/Makefile
+
+# ALLDEPS = $(BASENAME).tex #references.bib nb.bst
+ALLDEPS = $(BASENAME).tex references.bib nb.bst
+PDFDEPS = $(ALLDEPS)
+TARGETFILES = $(BASENAME).pdf
+
+# Files that can be safely removed
+AUXFILES = '.*\.bbl\|.*\.blg\|.*\.toc\|.*\.lof\|.*\.aux\|.*\.dvi\|.*\.log\|.*\.out\|.*\.ps\|.*\.table\|.*\.gnuplot\|.*\.mps\|.*\.mpx\|.*\.md5\|.*\.dpth\|.*\.auxlock\|.*\.bak'
+
+.PHONY : pdf
+pdf : $(BASENAME).pdf
+$(BASENAME).pdf : $(PDFDEPS)
+	@$(run-latex)
+
+.PHONY : pdf-clean
+clean :
+	@-for file in $(TARGETFILES); do [ -f $$file ] && rm $$file; done
+	@-for file in `find . -regex $(AUXFILES)`; do [ -f $$file ] && rm $$file; done
