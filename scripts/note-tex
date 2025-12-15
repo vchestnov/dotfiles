@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# set -Eeuo pipefail # Exit on error, undefined var; fail pipelines
+
+# 1. Create directory with timestamp
+TIMESTAMP=$(date +"%Y_%m_%d_%H%M%S")
+NOTE_DIR="$HOME/dev/zk/note_$TIMESTAMP"
+mkdir -p "$NOTE_DIR"
+
+DEBUGLOG="/tmp/quicknote-debug.log"
+
+# 2. Copy template files
+TEMPLATE_DIR="$HOME/dev/templates/latex"
+cp "$TEMPLATE_DIR/note.tex" "$NOTE_DIR/"
+
+# Create symlinks to bibliography files
+ln -s "$HOME/dev/latex/bib/references.bib" "$NOTE_DIR/references.bib"
+ln -s "$HOME/dev/latex/bib/nb.bst" "$NOTE_DIR/nb.bst"
+
+# Optional step 5: Copy or symlink Makefile
+# Option A: Copy Makefile to each note
+cp "$TEMPLATE_DIR/Makefile_note" "$NOTE_DIR/Makefile"
+# Option B: Symlink to central Makefile (uncomment if preferred)
+# ln -s "$TEMPLATE_DIR/Makefile" "$NOTE_DIR/Makefile"
+
+# Change to note directory
+cd "$NOTE_DIR" || exit
+
+source "$HOME/.bashrc"
+
+echo "Current directory: $(pwd)" > $DEBUGLOG
+echo "PATH=$PATH" >> $DEBUGLOG
+which pdflatex >> $DEBUGLOG
+
+# 4. Compile template and open in zathura (in background)
+# make
+($HOME/soft/texlive/2025/bin/x86_64-linux/pdflatex note.tex &> /dev/null && exec setsid zathura note.pdf &) &
+
+# sleep 60
+
+# && (exec setsid zathura note.pdf &)
+# zathura note.pdf &
+
+# 3. Open vim with cursor positioned for editing
+# The '+' puts cursor at specific location - adjust as needed for your template
+vim note.tex +146

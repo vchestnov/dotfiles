@@ -14,7 +14,7 @@ DOTFILES_DIR="${DOTFILES_DIR:-$HOME/dotfiles}"
 XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 
 DRY_RUN=0
-if [[ "${1-}" == "--dry-run" ]]; then
+if [[ "${1-}" == "--dry" ]]; then
     DRY_RUN=1
     shift
 fi
@@ -189,6 +189,7 @@ DO_TEX=1
 DO_USER=1         # User scripts
 DO_VIFM=1
 DO_WOLFRAM=1
+DO_TEMPLATES=1
 
 case "$BOOTSTRAP_PROFILE" in
     desktop)
@@ -450,6 +451,28 @@ if \
             link_file "$app" "$HOME/.Wolfram/Applications/$name" \
                       "Wolfram Application $name"
         done
+    fi
+fi
+
+# =============================================================================
+# SECTION 08: Templates
+# =============================================================================
+
+if \
+    (( DO_TEMPLATES )) && \
+    [ -d "$DOTFILES_DIR/templates" ] && \
+    : \
+; then
+    ensure_dir "$HOME/dev"
+    ensure_dir "$HOME/dev/templates"
+
+    # LaTeX note templates for ZK workflow
+    if [ -d "$DOTFILES_DIR/templates/latex" ]; then
+        link_file "$DOTFILES_DIR/templates/latex" \
+                  "$HOME/dev/templates/latex" \
+                  "LaTeX templates (ZK)"
+    else
+        log_warn "No LaTeX templates found at: $DOTFILES_DIR/templates/latex"
     fi
 fi
 

@@ -208,6 +208,7 @@ DO_SINGULAR=1     # temp stub for Singular
 DO_EXPERIMENTAL=0 # dev stub
 DO_SYSTEM=1       # system packages from apt
 DO_QD=1           # install QD library
+DO_ZK=1           # Zettelkasten + templates
 
 case "$BOOTSTRAP_PROFILE" in
     desktop)
@@ -227,6 +228,7 @@ case "$BOOTSTRAP_PROFILE" in
         DO_EXPERIMENTAL=0
         DO_SYSTEM=0
         DO_QD=0
+        DO_ZK=0
         ;;
     nothing)
         DO_CORE=0
@@ -455,6 +457,17 @@ if \
 
     # Create main directories
     mkdir -p "$HOME/dev" "$HOME/docs/downloads" "$HOME/soft"
+
+    # Zettelkasten + templates
+    if \
+        (( DO_ZK )) && \
+        : \
+    ; then
+        mkdir -p \
+            "$HOME/dev/zk" \
+            "$HOME/dev/templates" \
+            "$HOME/dev/templates/latex"
+    fi
 
     # Remove Ubuntu default directories if they exist and are empty
     for dir in Desktop Documents Downloads Music Pictures Public Templates Videos; do
@@ -2500,7 +2513,12 @@ if \
     
     # Check if Singular is already installed
     if command -v Singular &> /dev/null; then
-        CURRENT_VERSION=$(Singular --version 2>&1 | head -1 | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+' || echo "unknown")
+        CURRENT_VERSION=$(
+            Singular --version 2>&1 \
+                | head -1 \
+                | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+' \
+                || echo "unknown"
+        )
         log_info "Singular is already installed (version: $CURRENT_VERSION)"
         if ! prompt_continue "Reinstall/update Singular?"; then
             log_info "Skipping Singular installation"
@@ -2549,152 +2567,61 @@ if \
 fi
 
 # =============================================================================
-# SECTION 29: SINGULAR COMPUTER ALGEBRA SYSTEM (LOCAL INSTALL, NO SUDO)
+# SECTION 29: MACAULAY2 COMPUTER ALGEBRA SYSTEM
 # =============================================================================
 if \
-    # (( DO_SCI )) && \
-    (( DO_SINGULAR )) && \
-    prompt_continue "Install Singular locally (no sudo)?" && \
+    (( DO_SCI )) && \
+    prompt_continue "Install Macaulay2 Computer Algebra System from PPA?" && \
     : \
 ; then
-    log_section "SINGULAR COMPUTER ALGEBRA SYSTEM INSTALLATION (LOCAL)"
+    log_section "MACAULAY2 COMPUTER ALGEBRA SYSTEM INSTALLATION (PPA)"
 
-    # -------------------------------------------------------------------------
-    # 0. Check if Singular is already installed
-    # -------------------------------------------------------------------------
-    INSTALL_SINGULAR=true
+    INSTALL_MACAULAY2=false
 
-    if command -v Singular &> /dev/null; then
+    # Check if M2 is already installed.
+    if command -v M2 &> /dev/null; then
+        # Extract version; fails softly to "unknown".
         CURRENT_VERSION=$(
-            Singular --version -c "quit;" 2>&1 \
-                | head -1 \
-                | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+' \
+            M2 --version 2>/dev/null \
+                | head -n1 \
                 || echo "unknown"
         )
-        log_info "Singular is already installed (version: $CURRENT_VERSION)"
+        log_info "Macaulay2 is already installed (version: $CURRENT_VERSION)"
 
-        if ! prompt_continue "Reinstall / update Singular (local install)?"; then
-            log_info "Skipping Singular installation"
-            INSTALL_SINGULAR=false
+        if prompt_continue "Reinstall/update Macaulay2 via PPA?"; then
+            INSTALL_MACAULAY2=true
+        else
+            log_info "Skipping Macaulay2 installation"
         fi
-    fi
-
-    if [ "$INSTALL_SINGULAR" != true ]; then
-        log_info "Section 29: nothing to do."
-        return 0 2>/dev/null || true
-    fi
-
-    # -------------------------------------------------------------------------
-    # 1. Paths and versions
-    # -------------------------------------------------------------------------
-    # Where to install Singular (default: ~/.local, kept consistent with SCI_PREFIX)
-    SINGULAR_PREFIX="${SCI_PREFIX:-$HOME/.local}"
-
-    # Use the latest official release tag from GitHub
-    # See: https://github.com/Singular/Singular/tags (Release-4-4-1) :contentReference[oaicite:1]{index=1}
-    SINGULAR_TAG="Release-4-4-1"
-    SINGULAR_TARBALL="Singular-${SINGULAR_TAG}.tar.gz"
-    SINGULAR_URL="https://github.com/Singular/Singular/archive/refs/tags/${SINGULAR_TAG}.tar.gz"
-
-    mkdir -p "$SRC_DIR"
-    cd "$SRC_DIR"
-
-    # -------------------------------------------------------------------------
-    # 2. Download source tarball (no sudo)
-    # -------------------------------------------------------------------------
-    if [ ! -f "$SINGULAR_TARBALL" ]; then
-        log_info "Downloading Singular ${SINGULAR_TAG} from GitHub (local tarball)..."
-        wget -O "$SINGULAR_TARBALL" "$SINGULAR_URL"
     else
-        log_info "Using existing Singular tarball: $SINGULAR_TARBALL"
+        INSTALL_MACAULAY2=true
     fi
 
-    # Determine top-level directory name inside the tarball
-    SRC_SUBDIR=$(
-        # `tar` lists many files here, but `head` reads only the first line and
-        # quits. `tar` continues to write, hits the closed pipe and fires
-        # `SIGPIPE` with code 141. Here `{ tar ... || true; }` ensures that
-        # even if `tar` dies with 141, the group's exit code is still 0 and we
-        # are happy
-        { tar -tzf "$SINGULAR_TARBALL" || true; } | head -n1 | cut -d'/' -f1
-    )
-    if [ -z "$SRC_SUBDIR" ]; then
-        log_error "Could not determine Singular source directory from tarball"
-        exit 1
-    fi
+    if [[ "$INSTALL_MACAULAY2" = true ]]; then
+        log_info "Adding official Macaulay2 PPA: ppa:macaulay2/macaulay2"
 
-    # Clean any previous extracted tree for this tarball
-    rm -rf "$SRC_DIR/$SRC_SUBDIR"
-    log_info "Extracting Singular sources to $SRC_DIR/$SRC_SUBDIR..."
-    tar -xzf "$SINGULAR_TARBALL"
+        refresh_sudo
+        sudo add-apt-repository -y ppa:macaulay2/macaulay2
 
-    cd "$SRC_DIR/$SRC_SUBDIR"
+        log_info "Updating package lists…"
+        sudo apt-get update
 
-    # -------------------------------------------------------------------------
-    # 3. Point build system at locally installed scientific libraries (if any)
-    # -------------------------------------------------------------------------
-    # DO_SCI section installs GMP/FLINT/etc. into $SCI_PREFIX = ~/.local. :contentReference[oaicite:2]{index=2}
-    if [ -n "${SCI_PREFIX:-}" ]; then
-        export CPPFLAGS="-I$SCI_PREFIX/include${CPPFLAGS:+ $CPPFLAGS}"
-        export LDFLAGS="-L$SCI_PREFIX/lib${LDFLAGS:+ $LDFLAGS}"
-        export PKG_CONFIG_PATH="$SCI_PREFIX/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
-        export LD_LIBRARY_PATH="$SCI_PREFIX/lib:${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-        log_info "Using local scientific libs from $SCI_PREFIX (CPPFLAGS/LDFLAGS/PKG_CONFIG_PATH/LD_LIBRARY_PATH updated)"
-    fi
+        log_info "Installing Macaulay2…"
+        sudo apt-get install -y macaulay2
 
-    # -------------------------------------------------------------------------
-    # 4. Configure, build, and install (all under $SINGULAR_PREFIX, no sudo)
-    # -------------------------------------------------------------------------
-    log_info "Configuring Singular with prefix: $SINGULAR_PREFIX (no sudo, local install)..."
-
-    # Some tarballs (e.g. GitHub snapshots) do not ship a pre-generated configure.
-    # In that case we try to run ./autogen.sh to generate it.
-    if [ ! -x ./configure ]; then
-        if [ -x ./autogen.sh ]; then
-            log_info "No configure script found, running ./autogen.sh to generate it..."
-            if ! ./autogen.sh; then
-                log_error "Singular ./autogen.sh failed – please check that autotools (autoconf/automake/libtool) are installed."
-                exit 1
+        # Verify installation
+        log_info "Verifying Macaulay2 installation…"
+        if command -v M2 &> /dev/null; then
+            # Minimal non-interactive invocation
+            if M2 --version > /dev/null 2>&1; then
+                log_success "Macaulay2 installation verified and working"
+            else
+                log_warning "Macaulay2 is installed but failed a minimal non-interactive test"
             fi
         else
-            log_error "Neither ./configure nor ./autogen.sh found in $(pwd)"
-            log_error "Consider using an official release tarball from the Singular download page instead of a raw GitHub snapshot."
-            exit 1
+            log_error "'M2' binary not found after installation"
+            log_info "Try: sudo apt-get install -f"
         fi
-    fi
-
-    # Keep configure minimal and robust; gfanlib and extra backends can be added later
-    if ! ./configure --prefix="$SINGULAR_PREFIX"; then
-        log_error "Singular ./configure failed"
-        exit 1
-    fi
-
-    # Use your generic helper for build + install into user prefix
-    build_and_install "Singular" "make -j$(nproc)" "make install" true
-
-    # -------------------------------------------------------------------------
-    # 5. Post-install: PATH hint and verification
-    # -------------------------------------------------------------------------
-    # Make sure ~/.local/bin is on PATH; your script does this earlier for core tools,
-    # but we log a reminder in case this section is run stand-alone.
-    if ! echo "$PATH" | tr ':' '\n' | grep -qx "$SINGULAR_PREFIX/bin"; then
-        log_warning "PATH does not contain $SINGULAR_PREFIX/bin"
-        log_info "Add this to your shell rc if needed:"
-        log_info "    export PATH=\"$SINGULAR_PREFIX/bin:\$PATH\""
-    fi
-
-    # Basic sanity check: can we run Singular at all?
-    if command -v Singular &> /dev/null; then
-        if Singular -q -c "quit;" >/dev/null 2>&1; then
-            VERSION_LINE=$(
-                Singular --version -c "quit;" 2>&1 | head -1 || true
-            )
-            log_success "Singular installation verified: ${VERSION_LINE:-'version check ok'}"
-        else
-            log_warning "Singular is found in PATH but a basic 'quit' test failed"
-        fi
-    else
-        log_error "Singular not found in PATH after installation; check $SINGULAR_PREFIX/bin and PATH"
     fi
 fi
 
