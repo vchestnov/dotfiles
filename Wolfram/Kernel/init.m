@@ -30,6 +30,7 @@
     "soft/NeatIBP",
     "soft/rationalizeroots",
     "soft/Effortless",
+    "dev/spqr/landau/math/codes",
     Nothing
 } // Map[RightComposition[
     ToFileName[$HomeDirectory, #]&,
