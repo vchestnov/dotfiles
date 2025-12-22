@@ -76,3 +76,21 @@ st.background: #282828
 st.foreground: #ebdbb2
 st.cursorColor: #ebdbb2
 st.alpha: 1.0
+
+! slock colors 
+! INIT
+slock.color0:      #000000
+! INPUT
+slock.color4:      #458588
+! slock.color4:      #282828
+! FAILED
+slock.color1:      #cc241d
+! CAPS
+slock.color3:      #ff0000
+
+! slock message patch bits 
+slock.message:     Ciao
+slock.text_color:  #ebdbb2
+! slock.font_name:   fixed
+! slock.font_name: -jis-fixed-medium-r-normal--24-230-75-75-c-240-jisx0208.1983-0
+slock.font_name: JetBrains Mono:size=24

@@ -1008,6 +1008,41 @@ EOF
 fi
 
 # =============================================================================
+# SECTION 14: SUCKLESS TOOLS (SLOCK)
+# =============================================================================
+if \
+    (( DO_DWM )) && \
+    prompt_continue "Build slock (screen locker)?" && \
+    : \
+; then
+    log_section "SLOCK INSTALLATION"
+
+    # Optional but recommended: integrates lockers with X11 idle + systemd sleep
+    refresh_sudo
+    sudo apt install -y xss-lock
+
+    log_info "Building slock..."
+    clone_or_update "https://git.suckless.org/slock" "$SRC_DIR/slock"
+    cd "$SRC_DIR/slock"
+
+    if [ ! -f config.h ]; then
+        cp config.def.h config.h
+    fi
+
+    build_and_install "slock" "make clean && make -j$(nproc)" "make install" false
+
+    # Convenience wrapper (message flag comes from patching in SECTION 21;
+    # without the patch, slock will simply ignore -m and still lock fine.)
+    cat > "$HOME/.local/bin/lock" <<'EOF'
+#!/usr/bin/env bash
+exec slock -m "Locked  $(date '+%a %d %b, %H:%M:%S')"
+EOF
+    chmod +x "$HOME/.local/bin/lock"
+
+    log_success "slock installed"
+fi
+
+# =============================================================================
 # SECTION 15: FILE MANAGER AND PDF VIEWER
 # =============================================================================
 
@@ -1141,8 +1176,16 @@ setxkbmap "us,ru" -option "grp:caps_toggle"
 # Set black desktop background
 xsetroot -solid black
 
-# Disable screen saver and DPMS
-xset s off -dpms
+# # Disable screen saver and DPMS
+# xset s off -dpms
+
+# Enable screensaver/DPMS and lock on idle
+xset s 300 60            # start screensaver after 5 min, cycle every 60s
+xset +dpms
+xset dpms 300 600 900    # standby/suspend/off (tweak to taste)
+
+# Lock on idle and on suspend (systemd)
+xss-lock --transfer-sleep-lock -- lock &
 
 # Start background services 
 slstatus &
@@ -1609,6 +1652,11 @@ static const struct arg args[] = {\
     { datetime, " %s", "%b %d %H:%M:%S" },\
 };' config.def.h
 			;;
+            "slock")
+                apply_patch \
+                    "$PATCHES_DIR/slock/slock-capslock-xresources-message-patches.diff" \
+                    "slock-patches"
+            ;;
         esac
 
         # Copy patched config.def.h to config.h
@@ -1751,27 +1799,38 @@ st.background: #282828
 st.foreground: #ebdbb2
 st.cursorColor: #ebdbb2
 st.alpha: 1.0
+
+! slock colors 
+slock.color0:      #000000   ! INIT
+slock.color4:      #005577   ! INPUT
+slock.color1:      #cc3333   ! FAILED
+slock.color3:      #ff0000   ! CAPS
+
+! slock message patch bits 
+slock.message:     Locked
+slock.text_color:  #ebdbb2
+slock.font_name:   JetBrains Mono:size=16
 EOF
         xrdb -merge "$HOME/.Xresources" 2>/dev/null || true
         log_success "Xresources configuration created"
     }
 
-        # Create a script to reload Xresources easily
-        tee "$HOME/.local/bin/reload-xresources" > /dev/null << 'EOF'
+    # Create a script to reload Xresources easily
+    tee "$HOME/.local/bin/reload-xresources" > /dev/null << 'EOF'
 #!/bin/bash
 # Reload Xresources configuration
 xrdb -merge ~/.Xresources && echo "Xresources reloaded successfully"
 EOF
-        chmod +x "$HOME/.local/bin/reload-xresources" 2>/dev/null || true
-        log_info "Created reload-xresources script in ~/.local/bin/"
+    chmod +x "$HOME/.local/bin/reload-xresources" 2>/dev/null || true
+    log_info "Created reload-xresources script in ~/.local/bin/"
     
     # Configure each tool
-    for tool in dwm dmenu st slstatus; do
+    for tool in dwm dmenu st slstatus slock; do
         configure_suckless_tool "$tool"
     done
 
-    # Create Xresources
-    create_xresources
+    # # Create Xresources
+    # create_xresources
     
     log_success "Suckless tools configuration completed"
 fi
