@@ -765,6 +765,25 @@ endfunction
 
 command! RefreshSSHAuthSock call RefreshSSHAuthSock()
 
+command! MathematicaClean call s:MathematicaClean()
+function! s:MathematicaClean() abort
+  " " 1) Uncomment whole-line Mathematica comments that are NOT cell markers
+  " "    (* code *)  -> code
+  " "    (*(* c *)*) -> (* c *)
+  " silent! g/^\s*(\*.\{-}\*)\s*$/ if getline('.') !~# '^\s*(\*\s*::' | s/^\s*(\*\(.\{-}\)\*)\s*$/\1/ | endif
+
+  " 2) Delete Input marker lines (including ::Input::Initialization:: etc.)
+  silent! g/^\s*(\*\s*::Input::.\{-}::\s*\*)\s*$/d
+
+  " 3) For remaining cell markers, remove only the Initialization token, keep Closed/Open state
+  silent! g/^\s*(\*\s*::/ s/::Initialization//g
+
+  " 4) Normalize spacing for real comment lines (not markers):
+  "    (*foo*) -> (* foo *)
+  silent! g/^\s*(\*[^:]/ s/(\*\s*/(* / | s/\s*\*)/ *)/
+endfunction
+
+
 set viminfo+=n$XDG_STATE_HOME/vim/viminfo
 set directory=$XDG_CACHE_HOME/vim/swap//
 set backupdir=$XDG_CACHE_HOME/vim/backup//
