@@ -554,50 +554,55 @@ endfunction
 
 " The main command is :Repl <command>
 function! ReplV(first, ...)
-    " let size = get(a:, 1, 150)
-    let l:size = a:first =~ '^[0-9]*$' ? str2nr(a:first) : 0
-    " echo l:size
-    if !(l:size)
+    let l:size = a:first =~# '^\d\+$' ? str2nr(a:first) : 0
+    
+    if l:size <= 0
        let l:size = 150
        let l:command = join([a:first] + a:000)
     else
         let l:command = join(a:000)
     endif
-    " echo l:size
-    " echo l:command
-    " " this doesn't work
-    " set termwinsize="0x" . string(size)
-    " set termwinsize = 0x150
-    let oldbuf = bufnr("%")
-    " exec "vert rightb term ++close " . a:args
-    " exec "vert rightb term ++cols=" . size . " ++close " . a:args
-    exec "vert botright term ++cols=" . l:size . " ++close " . l:command
-    let g:slime_target = "vimterminal"
-    call setbufvar(oldbuf, "slime_config", {"bufnr": bufnr("%")})
-    exec ":vertical resize " . l:size
-    " exec ":vertical resize 150"
-    exec ":set winfixwidth"
-    " exec ":vertical resize 80"
-    exec ":wincmd p"
+
+    " save *original* buffer
+    let l:oldbuf = bufnr('%')
+
+    exec 'vert botright term ++cols=' . l:size . ' ++close ' . l:command
+
+    let g:slime_target = 'vimterminal'
+    " store in *original* buffer REPL target
+    call setbufvar(oldbuf, "slime_config", {'bufnr': bufnr('%')})
+
+    " ensure width, keep it fixed
+    exec 'vert resize ' . l:size
+    setlocal winfixwidth
+    wincmd p
 endfunction
 
-function! ReplH(args, ...)
-    let size = get(a:, 1, 30)
-    let size = str2nr(size)
-    if !(size)
-       let size = 30
+function! ReplH(first, ...) abort
+    let l:size = a:first =~# '^\d\+$' ? str2nr(a:first) : 0
+
+    if l:size <= 0
+        let l:size = 30
+        let l:command = join([a:first] + a:000)
+    else
+        let l:command = join(a:000)
     endif
-    " set termwinsize=30x0
-    let oldbuf = bufnr("%")
-    " exec "rightb term ++close " . a:args
-    exec "rightb term ++rows=" . size . " ++close " . a:args
-    let g:slime_target = "vimterminal"
-    call setbufvar(oldbuf, "slime_config", {"bufnr": bufnr("%")})
-    exec ":5wincmd -"
-    exec ":vertical resize " . size
-    " exec ":resize 30"
-    exec ":wincmd p"
+
+    " save *original* buffer
+    let l:oldbuf = bufnr('%')
+
+    exec 'botright term ++rows=' . l:size . ' ++close ' . l:command
+
+    let g:slime_target = 'vimterminal'
+    " store in *original* buffer REPL target
+    call setbufvar(l:oldbuf, 'slime_config', {'bufnr': bufnr('%')})
+
+    " ensure height, keep it fixed
+    exec 'resize ' . l:size
+    setlocal winfixheight
+    wincmd p
 endfunction
+
 command! -nargs=* Repl call ReplV(<q-args>)
 " command! -nargs=* ReplV call ReplV(<q-args>)
 " command! -nargs=* ReplH call ReplH(<q-args>)
