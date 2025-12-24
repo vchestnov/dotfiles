@@ -1167,6 +1167,9 @@ case ":$PATH:" in
 esac
 export PATH
 
+# Drop legacy GTK accessibility modules injected by /etc/X11/Xsession.d/90atk-adaptor
+unset GTK_MODULES
+
 # Keyboard configuration:
 # repeat rate and key maps
 xset r rate 300 50
