@@ -84,9 +84,10 @@ slock.color0:      #000000
 slock.color4:      #458588
 ! slock.color4:      #282828
 ! FAILED
-slock.color1:      #cc241d
+! slock.color1:      #fe8019
+slock.color1:      #505050
 ! CAPS
-slock.color3:      #ff0000
+slock.color3:      #cc241d
 
 ! slock message patch bits 
 slock.message:     Ciao
