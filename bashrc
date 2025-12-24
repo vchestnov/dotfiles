@@ -127,7 +127,7 @@ if ! shopt -oq posix; then
   fi
 fi
 
-alias zathura='zathura --fork'
+alias zathura='zathura --fork --log-level=error'
 
 export LD_LIBRARY_PATH="${LD_LIBRARY_PATH:+$LD_LIBRARY_PATH:}/usr/local/lib"
 

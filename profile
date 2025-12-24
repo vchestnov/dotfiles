@@ -23,9 +23,12 @@ export PYTHONSTARTUP="$XDG_CONFIG_HOME/python/pythonrc"
 export WGET_HSTS_FILE="$XDG_STATE_HOME/wget/hsts"
 
 # Disable IBus to prevent conflicts with setxkbmap
-export GTK_IM_MODULE=none
-export QT_IM_MODULE=none
-export XMODIFIERS=
+# export GTK_IM_MODULE=none
+# export QT_IM_MODULE=none
+# export XMODIFIERS=
+export GTK_IM_MODULE=xim
+export QT_IM_MODULE=xim
+export XMODIFIERS=@im=xim
 
 # Source existing profile content if it exists
 [ -f "$HOME/.profile.local" ] && . "$HOME/.profile.local"
