@@ -190,6 +190,7 @@ DO_USER=1         # User scripts
 DO_VIFM=1
 DO_WOLFRAM=1
 DO_TEMPLATES=1
+DO_KRITA=1
 
 case "$BOOTSTRAP_PROFILE" in
     desktop)
@@ -208,6 +209,8 @@ case "$BOOTSTRAP_PROFILE" in
         DO_USER=1
         DO_VIFM=0
         DO_WOLFRAM=1
+        DO_TEMPLATES=0
+        DO_KRITA=0
         ;;
     nothing)
         DO_CORE=0
@@ -222,6 +225,8 @@ case "$BOOTSTRAP_PROFILE" in
         DO_USER=0
         DO_VIFM=0
         DO_WOLFRAM=0
+        DO_TEMPLATES=0
+        DO_KRITA=1
         ;;
     *)
         log_error "Unknown profile '$BOOTSTRAP_PROFILE'!"
@@ -475,6 +480,66 @@ if \
         log_warn "No LaTeX templates found at: $DOTFILES_DIR/templates/latex"
     fi
 fi
+
+# =============================================================================
+# SECTION 09: Krita 
+# =============================================================================
+
+if \
+    (( DO_KRITA)) && \
+    [ -d "$DOTFILES_DIR/templates" ] && \
+    : \
+; then
+
+	#========================================
+	# Krita (configs in ~/.config, resources in ~/.local/share)
+	#   - Symlink config files
+	#   - *Merge* paintoppresets into ~/.local/share/krita/paintoppresets
+	#========================================
+
+	# Config files -> ~/.config
+	# (These are plain files; linking is typically fine. kritadisplayrc may be machine-dependent.)
+	if [ -f "$DOTFILES_DIR/config/kritarc" ] || \
+	   [ -f "$DOTFILES_DIR/config/kritashortcutsrc" ] || \
+	   [ -f "$DOTFILES_DIR/config/kritadisplayrc" ]; then
+
+		ensure_dir "$XDG_CONFIG_HOME"
+
+		if [ -f "$DOTFILES_DIR/config/kritarc" ]; then
+			link_file "$DOTFILES_DIR/config/kritarc" \
+					  "$XDG_CONFIG_HOME/kritarc" \
+					  "Krita config"
+		fi
+
+		if [ -f "$DOTFILES_DIR/config/kritashortcutsrc" ]; then
+			link_file "$DOTFILES_DIR/config/kritashortcutsrc" \
+					  "$XDG_CONFIG_HOME/kritashortcutsrc" \
+					  "Krita shortcuts"
+		fi
+
+		if [ -f "$DOTFILES_DIR/config/kritadisplayrc" ]; then
+			link_file "$DOTFILES_DIR/config/kritadisplayrc" \
+					  "$XDG_CONFIG_HOME/kritadisplayrc" \
+					  "Krita display"
+		fi
+	fi
+
+	# Presets/resources -> ~/.local/share/krita (merge individual files)
+	if [ -d "$DOTFILES_DIR/krita/paintoppresets" ]; then
+		ensure_dir "$HOME/.local/share"
+		ensure_dir "$HOME/.local/share/krita"
+		ensure_dir "$HOME/.local/share/krita/paintoppresets"
+
+		for preset in "$DOTFILES_DIR"/krita/paintoppresets/*; do
+			[ -e "$preset" ] || continue
+			name=$(basename "$preset")
+			link_file "$preset" \
+					  "$HOME/.local/share/krita/paintoppresets/$name" \
+					  "Krita paintop preset $name"
+		done
+	fi
+fi
+
 
 # =============================================================================
 # OUTRO

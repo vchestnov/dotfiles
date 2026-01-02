@@ -209,6 +209,7 @@ DO_EXPERIMENTAL=0 # dev stub
 DO_SYSTEM=1       # system packages from apt
 DO_QD=1           # install QD library
 DO_ZK=1           # Zettelkasten + templates
+DO_KRITA=1        # Krita drawing app
 
 case "$BOOTSTRAP_PROFILE" in
     desktop)
@@ -229,6 +230,7 @@ case "$BOOTSTRAP_PROFILE" in
         DO_SYSTEM=0
         DO_QD=0
         DO_ZK=0
+        DO_KRITA=0
         ;;
     nothing)
         DO_CORE=0
@@ -240,9 +242,12 @@ case "$BOOTSTRAP_PROFILE" in
         DO_RUST_TOOLS=0
         DO_SCI=0
         DO_MAC=0
-        DO_SINGULAR=1
+        DO_SINGULAR=0
         DO_SOMETHING=0
         DO_SYSTEM=0
+        DO_QD=0
+        DO_ZK=0
+        DO_KRITA=1
         ;;
     *)
         log_error "Unknown profile '$BOOTSTRAP_PROFILE'!"
@@ -2593,11 +2598,90 @@ fi
 # SECTION 28: krita and write
 # =============================================================================
 if \
-	(( DO_GUI )) && \
-	prompt_continue "Install krita and write?" && \
+	(( DO_KRITA )) && \
+	prompt_continue "Install krita?" && \
 	: \
 ; then
-    log_section "KRITA AND WRITE INSTALLATION"
+    log_section "KRITA INSTALLATION"
+
+    # Install method: "appimage" (default) or "flatpak"
+    KRITA_INSTALL_METHOD="${KRITA_INSTALL_METHOD:-appimage}"
+
+    if [[ "$KRITA_INSTALL_METHOD" == "flatpak" ]]; then
+        log_info "Installing Krita via Flatpak (Flathub)..."
+
+        refresh_sudo
+        sudo apt update
+        sudo apt install -y flatpak  # Flathub recommends this on Ubuntu :contentReference[oaicite:1]{index=1}
+
+        # Add Flathub remote if missing
+        if ! flatpak remotes | awk '{print $1}' | grep -qx "flathub"; then
+            log_info "Adding Flathub remote..."
+            flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+        fi
+
+        # Install Krita (user install keeps it out of /var; remove --user if you prefer system-wide)
+        flatpak --user install -y flathub org.kde.krita  # :contentReference[oaicite:2]{index=2}
+
+        # Convenience wrapper in ~/.local/bin
+        mkdir -p "$BIN_DIR"
+        cat > "$BIN_DIR/krita" <<'EOF'
+#!/usr/bin/env bash
+exec flatpak run org.kde.krita "$@"
+EOF
+        chmod +x "$BIN_DIR/krita"
+
+        log_success "Krita installed via Flatpak. Run: krita"
+    else
+        log_info "Installing Krita via AppImage..."
+
+        # Krita AppImages are published on download.kde.org stable tree :contentReference[oaicite:3]{index=3}
+        # We'll infer the latest version from the directory listing to avoid scraping krita.org.
+        KRITA_BASE_URL="https://download.kde.org/stable/krita"
+        KRITA_VERSION="$(
+            curl -fsSL "$KRITA_BASE_URL/" \
+              | grep -Eo 'href="[0-9]+\.[0-9]+\.[0-9]+/?' \
+              | sed -E 's/href="|\/?$//g' \
+              | sort -V \
+              | tail -n 1
+        )"
+
+        if [[ -z "$KRITA_VERSION" ]]; then
+            log_error "Could not determine latest Krita version from $KRITA_BASE_URL/"
+            exit 1
+        fi
+
+        KRITA_DIR="$HOME/soft/krita"
+        mkdir -p "$KRITA_DIR" "$BIN_DIR"
+
+        KRITA_APPIMAGE_NAME="krita-${KRITA_VERSION}-x86_64.AppImage"
+        KRITA_APPIMAGE_URL="${KRITA_BASE_URL}/${KRITA_VERSION}/${KRITA_APPIMAGE_NAME}"
+        KRITA_APPIMAGE_PATH="${KRITA_DIR}/${KRITA_APPIMAGE_NAME}"
+
+        # AppImages commonly require FUSE2 on Ubuntu; install if missing
+        if ! ldconfig -p 2>/dev/null | grep -q 'libfuse\.so\.2'; then
+            log_info "Installing FUSE2 runtime needed by many AppImages..."
+            refresh_sudo
+            sudo apt update
+            sudo apt install -y libfuse2 || sudo apt install -y libfuse2t64 || true
+        fi
+
+        if [[ -f "$KRITA_APPIMAGE_PATH" ]]; then
+            log_info "Krita AppImage already present: $KRITA_APPIMAGE_PATH"
+        else
+            log_info "Downloading Krita ${KRITA_VERSION} AppImage..."
+            curl -fL --retry 3 --retry-delay 2 -o "$KRITA_APPIMAGE_PATH" "$KRITA_APPIMAGE_URL"
+            chmod +x "$KRITA_APPIMAGE_PATH"
+        fi
+
+        # Create/update a stable symlink "krita.AppImage" and a launcher in PATH
+        ln -sf "$KRITA_APPIMAGE_PATH" "${KRITA_DIR}/krita.AppImage"
+        ln -sf "${KRITA_DIR}/krita.AppImage" "$BIN_DIR/krita"
+
+        log_success "Krita installed (AppImage). Run: krita"
+        log_info "Installed at: ${KRITA_APPIMAGE_PATH}"
+        log_info "To update later: re-run this section or delete old AppImage(s) in ${KRITA_DIR}/"
+    fi
 fi
 
 # =============================================================================
