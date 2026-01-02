@@ -6,5 +6,7 @@ set recolor
 
 set database sqlite
 
+set guioptions none
+
 # map D exec "sh -c 'zathura --fork -P $PAGE -- \"$FILE\" >/dev/null 2>&1'"
 map D exec "zathura --fork --log-level=error -P $PAGE -- $FILE"

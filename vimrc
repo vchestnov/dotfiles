@@ -557,7 +557,7 @@ function! ReplV(first, ...)
     let l:size = a:first =~# '^\d\+$' ? str2nr(a:first) : 0
     
     if l:size <= 0
-       let l:size = 150
+       let l:size = 120
        let l:command = join([a:first] + a:000)
     else
         let l:command = join(a:000)
@@ -582,7 +582,7 @@ function! ReplH(first, ...) abort
     let l:size = a:first =~# '^\d\+$' ? str2nr(a:first) : 0
 
     if l:size <= 0
-        let l:size = 30
+        let l:size = 25
         let l:command = join([a:first] + a:000)
     else
         let l:command = join(a:000)
