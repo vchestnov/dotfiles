@@ -2403,6 +2403,22 @@ if \
 		msg "LiteRed already installed at $LITERED_DIR"
 	fi
 
+	###############################################################################
+	# Singular interface for Mathematica
+	###############################################################################
+
+	SINGULAR_INTERFACE_URL="https://www3.risc.jku.at/research/combinat/software/Singular/Singular.m"
+	SINGULAR_INTERFACE_DIR="$SCI_REPOS_DIR/Singular"
+
+	if [ ! -d "$SINGULAR_INTERFACE_DIR" ]; then
+		msg "Installing Singular Mathematica interface into $SINGULAR_INTERFACE_DIR"
+
+		mkdir -p "$SINGULAR_INTERFACE_DIR"
+		curl -L "$SINGULAR_INTERFACE_URL" -o "$SINGULAR_INTERFACE_DIR/Singular.m"
+	else
+		msg "Singular Mathematica interface already present at $SINGULAR_INTERFACE_DIR"
+	fi
+
     # ========================================
     # Extra tools 
     # ========================================
