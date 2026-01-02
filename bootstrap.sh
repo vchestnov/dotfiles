@@ -2382,6 +2382,27 @@ if \
         fi
     fi
 
+	###############################################################################
+	# LiteRed (legacy version 1.84)
+	###############################################################################
+
+	LITERED_URL="https://www.inp.nsk.su/~lee/programs/LiteRed/LiteRedV1/LiteRedV1.84.zip"
+	LITERED_DIR="$SCI_REPOS_DIR/LiteRed"
+
+	if [ ! -d "$LITERED_DIR" ]; then
+		msg "Installing LiteRed (v1.84) into $LITERED_DIR"
+
+		mkdir -p "$SCI_REPOS_DIR"
+		tmpzip="$(mktemp)"
+
+		curl -L "$LITERED_URL" -o "$tmpzip"
+		unzip -q "$tmpzip" -d "$LITERED_DIR"
+
+		rm -f "$tmpzip"
+	else
+		msg "LiteRed already installed at $LITERED_DIR"
+	fi
+
     # ========================================
     # Extra tools 
     # ========================================
