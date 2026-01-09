@@ -3,6 +3,7 @@ KisToolSelectOutline=F
 KisToolSelectRectangular=S
 KritaFill/KisToolFill=G
 KritaFill/KisToolGradient=none
+KritaSelected/KisToolColorSampler=Esc
 KritaShape/KisToolLine=T
 KritaTransform/KisToolMove=V
 Select Screen Blending Mode=none

@@ -487,7 +487,6 @@ fi
 
 if \
     (( DO_KRITA)) && \
-    [ -d "$DOTFILES_DIR/templates" ] && \
     : \
 ; then
 
@@ -499,14 +498,14 @@ if \
 
 	# Config files -> ~/.config
 	# (These are plain files; linking is typically fine. kritadisplayrc may be machine-dependent.)
-	if [ -f "$DOTFILES_DIR/config/kritarc" ] || \
+	if [ -f "$DOTFILES_DIR/dotfiles-private/kritarc" ] || \
 	   [ -f "$DOTFILES_DIR/config/kritashortcutsrc" ] || \
 	   [ -f "$DOTFILES_DIR/config/kritadisplayrc" ]; then
 
 		ensure_dir "$XDG_CONFIG_HOME"
 
-		if [ -f "$DOTFILES_DIR/config/kritarc" ]; then
-			link_file "$DOTFILES_DIR/config/kritarc" \
+		if [ -f "$DOTFILES_DIR/dotfiles-private/kritarc" ]; then
+			link_file "$DOTFILES_DIR/dotfiles-private/kritarc" \
 					  "$XDG_CONFIG_HOME/kritarc" \
 					  "Krita config"
 		fi
