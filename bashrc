@@ -320,3 +320,6 @@ ssh_agent_list() {
 ssh_agent_kill() {
     ssh-agent -k
 }
+
+# OpenXM / Risa-Asir
+[ -f "/home/seva/.config/openxm/env.sh" ] && source "/home/seva/.config/openxm/env.sh"

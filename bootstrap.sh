@@ -210,6 +210,7 @@ DO_SYSTEM=1       # system packages from apt
 DO_QD=1           # install QD library
 DO_ZK=1           # Zettelkasten + templates
 DO_KRITA=1        # Krita drawing app
+DO_ASIR=1         # OpenXM and Risa/Asir computer algebra systems
 
 case "$BOOTSTRAP_PROFILE" in
     desktop)
@@ -231,6 +232,7 @@ case "$BOOTSTRAP_PROFILE" in
         DO_QD=0
         DO_ZK=0
         DO_KRITA=0
+        DO_ASIR=1
         ;;
     nothing)
         DO_CORE=0
@@ -247,7 +249,8 @@ case "$BOOTSTRAP_PROFILE" in
         DO_SYSTEM=0
         DO_QD=0
         DO_ZK=0
-        DO_KRITA=1
+        DO_KRITA=0
+        DO_ASIR=1
         ;;
     *)
         log_error "Unknown profile '$BOOTSTRAP_PROFILE'!"
@@ -1013,7 +1016,7 @@ EOF
 fi
 
 # =============================================================================
-# SECTION 14: SUCKLESS TOOLS (SLOCK)
+# SECTION 15: SUCKLESS TOOLS (SLOCK)
 # =============================================================================
 if \
     (( DO_DWM )) && \
@@ -1038,7 +1041,7 @@ if \
 
     # Convenience wrapper (message flag comes from patching in SECTION 21;
     # without the patch, slock will simply ignore -m and still lock fine.)
-    cat > "$HOME/.local/bin/lock" <<'EOF'
+    tee "$HOME/.local/bin/lock" > /dev/null <<'EOF'
 #!/usr/bin/env bash
 exec slock -m "Locked  $(date '+%a %d %b, %H:%M:%S')"
 EOF
@@ -1048,7 +1051,7 @@ EOF
 fi
 
 # =============================================================================
-# SECTION 15: FILE MANAGER AND PDF VIEWER
+# SECTION 16: FILE MANAGER AND PDF VIEWER
 # =============================================================================
 
 if \
@@ -1077,7 +1080,7 @@ if \
 fi
 
 # =============================================================================
-# SECTION 16: NEOVIM SETUP
+# SECTION 17: NEOVIM SETUP
 # =============================================================================
 
 if \
@@ -1141,7 +1144,7 @@ if \
 fi
 
 # =============================================================================
-# SECTION 17: DWM SESSION CONFIGURATION
+# SECTION 18: DWM SESSION CONFIGURATION
 # =============================================================================
 
 if \
@@ -1223,7 +1226,7 @@ EOF
 fi
 
 # =============================================================================
-# SECTION 18: FIX TOUCHPAD CLICK GESTURES
+# SECTION 19: FIX TOUCHPAD CLICK GESTURES
 # =============================================================================
 
 if \
@@ -1255,7 +1258,7 @@ EOF
 fi
 
 # =============================================================================
-# SECTION 19: DOTFILES SETUP
+# SECTION 20: DOTFILES SETUP
 # =============================================================================
 
 if \
@@ -1356,7 +1359,7 @@ fi
 
 
 # =============================================================================
-# SECTION 20: SSH-FIND-AGENT INSTALLATION
+# SECTION 21: SSH-FIND-AGENT INSTALLATION
 # =============================================================================
 
 if \
@@ -1427,7 +1430,7 @@ EOF
 fi
 
 # =============================================================================
-# SECTION 21: SUCKLESS TOOLS CONFIGURATION
+# SECTION 22: SUCKLESS TOOLS CONFIGURATION
 # =============================================================================
 if \
 	(( DO_DWM )) && \
@@ -1845,7 +1848,7 @@ fi
 
 
 # =============================================================================
-# SECTION 22: MAC KEYBOARD CONFIGURATION
+# SECTION 23: MAC KEYBOARD CONFIGURATION
 # =============================================================================
 if \
 	(( DO_MAC )) && \
@@ -1873,7 +1876,7 @@ if \
 fi
 
 # =============================================================================
-# SECTION 23: MESSENGERS 
+# SECTION 24: MESSENGERS 
 # =============================================================================
 if \
 	(( DO_GUI )) && \
@@ -2112,7 +2115,7 @@ if \
 fi
 
 # =============================================================================
-# SECTION 24: MEDIA 
+# SECTION 25: MEDIA 
 # =============================================================================
 if \
 	(( DO_GUI )) && \
@@ -2136,7 +2139,7 @@ if \
 fi
 
 # =============================================================================
-# SECTION 25: MACBOOK FUNCTION KEYS
+# SECTION 26: MACBOOK FUNCTION KEYS
 # =============================================================================
 
 if \
@@ -2178,7 +2181,7 @@ if \
 fi
 
 # =============================================================================
-# SECTION 26: SCIENTIFIC SOFTWARE (GMP, FLINT, FINITEFLOW)
+# SECTION 27: SCIENTIFIC SOFTWARE (GMP, FLINT, FINITEFLOW)
 # =============================================================================
 
 if \
@@ -2492,7 +2495,170 @@ if \
 fi
 
 # =============================================================================
-# SECTION 27: TEXLIVE INSTALLATION
+# SECTION 28: OPENXM + Risa/Asir (from source, XDG-compliant)
+# =============================================================================
+
+if \
+    (( DO_ASIR )) && \
+    prompt_continue "Install OpenXM + Risa/Asir from source (XDG-compliant)?" && \
+    : \
+; then
+    log_section "OPENXM + Risa/Asir INSTALLATION"
+
+    # --- XDG locations (install/runtime tree in XDG_DATA_HOME; env in XDG_CONFIG_HOME) ---
+    : "${XDG_DATA_HOME:=$HOME/.local/share}"
+    : "${XDG_CONFIG_HOME:=$HOME/.config}"
+
+    OPENXM_PREFIX="$XDG_DATA_HOME/openxm"          # runtime tree (OpenXM_HOME)
+    OPENXM_CONFIG_DIR="$XDG_CONFIG_HOME/openxm"
+    OPENXM_ENV_SH="$OPENXM_CONFIG_DIR/env.sh"
+
+    # Keep sources with the rest of your scientific repos (your script already uses ~/soft)
+    OPENXM_REPOS_DIR="$HOME/soft/openxm"
+    OPENXM_REPO="$OPENXM_REPOS_DIR/OpenXM"
+    OPENXM_CONTRIB_REPO="$OPENXM_REPOS_DIR/OpenXM_contrib2"
+
+    mkdir -p "$OPENXM_PREFIX" "$OPENXM_CONFIG_DIR" "$OPENXM_REPOS_DIR"
+
+    # # --- deps (from upstream README prereq list; some are already in your base deps) ---
+    # log_info "Installing OpenXM build dependencies..."
+    # refresh_sudo
+    # sudo apt install -y \
+    #     nkf \
+    #     wget \
+    #     texinfo \
+    #     texi2html \
+    #     sharutils \
+    #     java-common \
+    #     openjdk-11-jdk \
+    #     gnupg \
+    #     latex2html \
+    #     dvipdfmx \
+    #     freeglut3-dev \
+    #     libxaw7 \
+    #     libxaw7-dev \
+    #     libtinfo-dev \
+    #     bison \
+    #     build-essential \
+    #     git \
+    #     || true
+
+    # --- clone/update sources ---
+    log_info "Cloning/updating OpenXM sources..."
+    clone_or_update "https://github.com/openxm-org/OpenXM.git" "$OPENXM_REPO"
+    clone_or_update "https://github.com/openxm-org/OpenXM_contrib2.git" "$OPENXM_CONTRIB_REPO"
+
+    # OpenXM build expects contrib2 as a sibling directory (matches upstream instructions)
+    # so we keep them under the same parent: ~/soft/openxm/{OpenXM,OpenXM_contrib2}
+    cd "$OPENXM_REPO/src"
+
+    # # --- build/install (upstream flow) ---
+    # log_info "Building OpenXM (make configure; make install)..."
+    # # Make install is user-local in the tree; no sudo needed per upstream guidance.
+    # make configure
+    # make -j"$(nproc)"
+    # make install
+    
+    # --- build/install (asir-only) ---
+    log_info "Building OpenXM: asir only (install-asir)..."
+    # This avoids k097/kxx/gnuplot/oxmgraph/OpenMath/Mathematica-related targets.
+    # Still builds required deps (util, asir-gc, gmp/mpfr/mpc/mpfi, pari, editline).
+    make -j"$(nproc)" install-asir
+
+    # --- optional: asir-contrib packages only (avoid oxservers dependency chain) ---
+    if prompt_continue "Install asir-contrib packages (no oxservers)?" && : ; then
+        log_info "Installing asir-contrib (packages only)..."
+        make configure-asir-contrib
+        (cd asir-contrib && make -j"$(nproc)" && make install)
+    fi
+
+    # The build typically creates an OpenXM runtime tree with bin/lib under the repo.
+    # We copy/sync that runtime tree into XDG_DATA_HOME so OpenXM_HOME is clean + stable.
+    # Try a couple of plausible layouts robustly.
+    log_info "Installing runtime tree into: $OPENXM_PREFIX"
+    if [ -d "$OPENXM_REPO/OpenXM" ] && [ -d "$OPENXM_REPO/OpenXM/bin" ]; then
+        rsync -a --delete "$OPENXM_REPO/OpenXM/" "$OPENXM_PREFIX/"
+    else
+        # fallback: treat repo root as OpenXM_HOME if it already contains bin/
+        if [ -d "$OPENXM_REPO/bin" ]; then
+            rsync -a --delete "$OPENXM_REPO/" "$OPENXM_PREFIX/"
+        else
+            log_error "Could not locate built OpenXM runtime tree (expected OpenXM/bin)."
+            log_error "Looked for: $OPENXM_REPO/OpenXM/bin or $OPENXM_REPO/bin"
+            exit 1
+        fi
+    fi
+
+    # --- env file (XDG) ---
+    log_info "Writing OpenXM environment file: $OPENXM_ENV_SH"
+    tee "$OPENXM_ENV_SH" > /dev/null << EOF
+# OpenXM / Risa-Asir environment (XDG-compliant)
+export OpenXM_HOME="$OPENXM_PREFIX"
+export PATH="\$OpenXM_HOME/bin:\$PATH"
+# Some OpenXM components rely on runtime libs in OpenXM_HOME/lib
+export LD_LIBRARY_PATH="\$OpenXM_HOME/lib\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}"
+EOF
+
+    # Auto-source env in bashrc (idempotent)
+    if ! grep -qF "$OPENXM_ENV_SH" "$HOME/.bashrc" 2>/dev/null; then
+        echo "" >> "$HOME/.bashrc"
+        echo "# OpenXM / Risa-Asir" >> "$HOME/.bashrc"
+        echo "[ -f \"$OPENXM_ENV_SH\" ] && source \"$OPENXM_ENV_SH\"" >> "$HOME/.bashrc"
+    fi
+
+    # --- launcher in ~/.local/bin ---
+    # Provide a stable 'openxm' command regardless of upstream rc script pathing.
+    log_info "Installing launcher: $BIN_DIR/openxm"
+    tee "$BIN_DIR/openxm" > /dev/null << 'EOF'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+: "${XDG_DATA_HOME:=$HOME/.local/share}"
+export OpenXM_HOME="${OpenXM_HOME:-$XDG_DATA_HOME/openxm}"
+export PATH="$OpenXM_HOME/bin:$PATH"
+export LD_LIBRARY_PATH="$OpenXM_HOME/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+
+# If upstream provides an openxm driver script, prefer it.
+if command -v openxm.orig >/dev/null 2>&1; then
+  exec openxm.orig "$@"
+fi
+
+if [ -x "$OpenXM_HOME/bin/openxm" ]; then
+  exec "$OpenXM_HOME/bin/openxm" "$@"
+fi
+
+# Convenience: allow `openxm asir` style even if only asir exists.
+if [ $# -gt 0 ] && [ "$1" = "asir" ] && [ -x "$OpenXM_HOME/bin/asir" ]; then
+  shift
+  exec "$OpenXM_HOME/bin/asir" "$@"
+fi
+
+echo "[openxm] Could not find OpenXM driver or asir under: $OpenXM_HOME/bin" >&2
+exit 1
+EOF
+    chmod +x "$BIN_DIR/openxm"
+
+    # Optional: keep a copy of upstream-generated rc/openxm as openxm.orig if present
+    # (Upstream suggests generating it in OpenXM/rc via `make`.) :contentReference[oaicite:2]{index=2}
+    if [ -d "$OPENXM_REPO/rc" ]; then
+        cd "$OPENXM_REPO/rc"
+        if make; then
+            if [ -f "$OPENXM_REPO/rc/openxm" ]; then
+                cp -f "$OPENXM_REPO/rc/openxm" "$BIN_DIR/openxm.orig"
+                chmod +x "$BIN_DIR/openxm.orig"
+                log_info "Saved upstream rc/openxm as: $BIN_DIR/openxm.orig"
+            fi
+        else
+            log_warning "OpenXM/rc make failed; continuing with wrapper launcher only."
+        fi
+    fi
+
+    log_success "OpenXM installed (OpenXM_HOME=$OPENXM_PREFIX)"
+    log_info "Try: source \"$OPENXM_ENV_SH\" && openxm asir"
+fi
+
+# =============================================================================
+# SECTION 29: TEXLIVE INSTALLATION
 # =============================================================================
 if \
 	(( DO_TEX )) && \
@@ -2595,7 +2761,7 @@ EOF
 fi
 
 # =============================================================================
-# SECTION 28: krita and write
+# SECTION 30: krita and write
 # =============================================================================
 if \
 	(( DO_KRITA )) && \
@@ -2685,7 +2851,7 @@ EOF
 fi
 
 # =============================================================================
-# SECTION 29: SINGULAR COMPUTER ALGEBRA SYSTEM
+# SECTION 31: SINGULAR COMPUTER ALGEBRA SYSTEM
 # =============================================================================
 if \
 	(( DO_SCI )) && \
@@ -2750,7 +2916,7 @@ if \
 fi
 
 # =============================================================================
-# SECTION 30: SINGULAR COMPUTER ALGEBRA SYSTEM (LOCAL INSTALL, NO SUDO)
+# SECTION 32: SINGULAR COMPUTER ALGEBRA SYSTEM (LOCAL INSTALL, NO SUDO)
 # =============================================================================
 if \
     # (( DO_SCI )) && \
@@ -2900,7 +3066,7 @@ if \
 fi
 
 # =============================================================================
-# SECTION 31: MACAULAY2 COMPUTER ALGEBRA SYSTEM
+# SECTION 33: MACAULAY2 COMPUTER ALGEBRA SYSTEM
 # =============================================================================
 if \
     (( DO_SCI )) && \
@@ -2959,7 +3125,7 @@ if \
 fi
 
 # =============================================================================
-# SECTION 32: ZATHURA PDF VIEWER (SOURCE BUILD)
+# SECTION 34: ZATHURA PDF VIEWER (SOURCE BUILD)
 # =============================================================================
 if \
 	(( DO_GUI )) && \
@@ -3119,7 +3285,7 @@ if \
 fi
 
 # =============================================================================
-# SECTION 33: PYTHON TOOLS
+# SECTION 35: PYTHON TOOLS
 # =============================================================================
 
 if \
@@ -3169,7 +3335,7 @@ if \
 fi
 
 # =============================================================================
-# SECTION 34: PASS PASSWORD STORE & GIT CREDENTIAL HELPER
+# SECTION 36: PASS PASSWORD STORE & GIT CREDENTIAL HELPER
 # =============================================================================
 
 if \
@@ -3224,7 +3390,7 @@ if \
 fi
 
 # =============================================================================
-# SECTION 35: GPG TERMINAL PINENTRY (for pass, git-credential-pass)
+# SECTION 37: GPG TERMINAL PINENTRY (for pass, git-credential-pass)
 # =============================================================================
 if \
 	(( DO_GPG )) && \
@@ -3259,7 +3425,7 @@ fi
 
 
 # =============================================================================
-# SECTION 36: FINAL OWNERSHIP AND CLEANUP
+# SECTION 38: FINAL OWNERSHIP AND CLEANUP
 # =============================================================================
 
 if \
