@@ -325,6 +325,8 @@ BUILD_DIR="$HOME/.local/build"
 BIN_DIR="$HOME/.local/bin"
 SRC_DIR="$HOME/.local/src"
 
+# : <<'DEBUG'
+
 # =============================================================================
 # SECTION 01: DIRECTORY SETUP
 # =============================================================================
@@ -2481,6 +2483,9 @@ if \
     # SOFIA
     clone_sci_repo "SOFIA" "https://github.com/StrangeQuark007/SOFIA.git"
 
+    # MultivariateApart
+    clone_sci_repo "MultivariateApart" "https://gitlab.msu.edu/vmante/multivariateapart.git"
+
     # Private FiniteFlow external packages 
     if ! clone_sci_repo "ff_ext_packages" "git@github.com:peraro/ff_ext_packages.git"; then
         log_warning "Skipping private repo ff_ext_packages (SSH keys not configured or access denied)."
@@ -2552,26 +2557,66 @@ if \
     # so we keep them under the same parent: ~/soft/openxm/{OpenXM,OpenXM_contrib2}
     cd "$OPENXM_REPO/src"
 
-    # # --- build/install (upstream flow) ---
-    # log_info "Building OpenXM (make configure; make install)..."
-    # # Make install is user-local in the tree; no sudo needed per upstream guidance.
+    # --- build/install (upstream flow) ---
+    log_info "Building OpenXM (make configure; make install)..."
+    # Make install is user-local in the tree; no sudo needed per upstream guidance.
     # make configure
     # make -j"$(nproc)"
-    # make install
+    # make
+    make install
     
-    # --- build/install (asir-only) ---
-    log_info "Building OpenXM: asir only (install-asir)..."
-    # This avoids k097/kxx/gnuplot/oxmgraph/OpenMath/Mathematica-related targets.
-    # Still builds required deps (util, asir-gc, gmp/mpfr/mpc/mpfi, pari, editline).
-    make -j"$(nproc)" install-asir
+    # # --- build/install (asir-only) ---
+    # log_info "Building OpenXM: asir only (install-asir)..."
+    # # This avoids k097/kxx/gnuplot/oxmgraph/OpenMath/Mathematica-related targets.
+    # # Still builds required deps (util, asir-gc, gmp/mpfr/mpc/mpfi, pari, editline).
+    # make -j"$(nproc)" install-asir
 
-    # --- optional: asir-contrib packages only (avoid oxservers dependency chain) ---
-    if prompt_continue "Install asir-contrib packages (no oxservers)?" && : ; then
-        log_info "Installing asir-contrib (packages only)..."
-        make configure-asir-contrib
-        (cd asir-contrib && make -j"$(nproc)" && make install)
-    fi
+    # # --- optional: asir-contrib packages only (avoid oxservers dependency chain) ---
+    # if prompt_continue "Install asir-contrib packages (no oxservers)?" && : ; then
+    #     log_info "Installing asir-contrib (packages only)..."
+    #     make configure-asir-contrib
+    #     (cd asir-contrib && make -j"$(nproc)" && make install)
+    # fi
+    
+    # log_info "Building OpenXM (asir + linsolv only)..."
 
+    # # Always start from src
+    # cd "$OPENXM_REPO/src"
+
+    # # --- configure phase (minimal) ---
+    # make configure-util
+    # make configure-gmp
+    # make configure-mpfr
+    # make configure-mpc
+    # make configure-mpfi
+    # make configure-asir
+    # make configure-linsolv
+    # make configure-asir-contrib || true
+
+    # # --- build phase ---
+    # make -j"$(nproc)" \
+    #     all-util \
+    #     all-asirgc \
+    #     all-gmp \
+    #     all-mpfr \
+    #     all-mpc \
+    #     all-mpfi \
+    #     all-asir \
+    #     all-linsolv
+
+    # # --- install phase (user-local, no sudo) ---
+    # make \
+    #     install-util \
+    #     install-asirgc \
+    #     install-gmp \
+    #     install-mpfr \
+    #     install-mpc \
+    #     install-mpfi \
+    #     install-asir \
+    #     install-linsolv \
+    #     install-asir-contrib
+
+: <<'OPENXM_IGNORE'
     # The build typically creates an OpenXM runtime tree with bin/lib under the repo.
     # We copy/sync that runtime tree into XDG_DATA_HOME so OpenXM_HOME is clean + stable.
     # Try a couple of plausible layouts robustly.
@@ -2652,6 +2697,7 @@ EOF
             log_warning "OpenXM/rc make failed; continuing with wrapper launcher only."
         fi
     fi
+OPENXM_IGNORE
 
     log_success "OpenXM installed (OpenXM_HOME=$OPENXM_PREFIX)"
     log_info "Try: source \"$OPENXM_ENV_SH\" && openxm asir"

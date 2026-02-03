@@ -32,6 +32,7 @@
     "soft/Effortless",
     "dev/spqr/landau/math/codes",
     "soft/Singular",
+    "soft/MultivariateApart",
     Nothing
 } // Map[RightComposition[
     ToFileName[$HomeDirectory, #]&,
