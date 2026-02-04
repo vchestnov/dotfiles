@@ -6,6 +6,106 @@ setlocal commentstring=#\ %s
 setlocal formatoptions+=r
 setlocal formatoptions+=o
 
+if exists("b:did_indent")
+  finish
+endif
+let b:did_indent = 1
+
+setlocal indentexpr=GetMapleIndent()
+setlocal indentkeys=o,O,0=end,0=fi,0=od,0=end\ proc,0=end\ if,0=end\ do
+
+function! GetMapleIndent() abort
+  let lnum = v:lnum
+  let prev = prevnonblank(lnum - 1)
+  if prev <= 0
+    return 0
+  endif
+
+  let ind   = indent(prev)
+  let line  = getline(lnum)
+  let pline = getline(prev)
+
+  " Dedent on block closers (including end proc:)
+  if line =~# '^\s*\%(end\s\+proc\|end\s\+if\|end\s\+do\|fi\|od\)\>\s*[:;]\=\s*$'
+    return max([ind - &shiftwidth, 0])
+  endif
+
+  " Indent after openers
+  " proc header (either "...:=proc(" or a bare "proc(" line)
+  if pline =~# '^\s*\w\+\s*:=\s*proc\>' || pline =~# '^\s*proc\>'
+    return ind + &shiftwidth
+  endif
+
+  " if/for/while blocks that end with then/do
+  if pline =~# '\<\%(then\|do\)\>\s*[:;]\=\s*$'
+    return ind + &shiftwidth
+  endif
+
+  return ind
+endfunction
+
+let s:maple_kw_list = ['for','if','elif','else','while','return','proc','end','do','od','fi','local']
+let s:maple_kw = '\%(' . join(s:maple_kw_list, '\|') . '\)\>'
+let s:sep = '\%(:\%([=:-]\)\@!\|;\)'
+" let s:closer = '\%(\<fi\>\|\<od\>\|\<end\>\s\+\%(if\|do\|proc\|module\|try\)\)\>\s*[:;]\='
+let s:closer_kw = '\%(\<fi\>\|\<od\>\|\<end\>\s\+\%(if\|do\|proc\|module\|try\)\)\>'
+
+function! s:MapleSplitCtl(first, last) abort
+    let view = winsaveview()
+    try
+        let l1 = a:first
+        let l2 = a:last
+
+        " 0) Split after 'then' when it's written as:  then <code>
+        " (avoid silly 'then :' or 'then ;' or 'then #comment')
+        let before = line('$')
+        silent! keeppatterns execute l1 . ',' . l2
+            \ . 's/\<then\>\zs\s\+\ze\%([^:;#\s]\)/\r/g'
+        let l2 += line('$') - before
+
+        " 1) Split after openers do/then with immediate ;/:  and after proc(...) headers
+        let before = line('$')
+        silent! keeppatterns execute l1 . ',' . l2
+                    \ . 's/\%(\<\%(do\|then\)\>\|\<proc\>\s*(.\{-})\)\s*' . s:sep . '\zs\s*\ze\S/\r/g'
+        let l2 += line('$') - before
+
+        " 2) Split before control keywords when preceded by ;/:
+        let before = line('$')
+        silent! keeppatterns execute l1 . ',' . l2
+            \ . 's/' . s:sep . '\zs\s*\ze' . s:maple_kw . '/\r/g'
+        let l2 += line('$') - before
+
+        " 3) Force closers onto their own line (even if not preceded by ;/:)
+        let before = line('$')
+        silent! keeppatterns execute l1 . ',' . l2
+              \ . 's/\S\zs\s*\ze' . s:closer_kw . '/\r/g'
+        let l2 += line('$') - before
+
+        " 4) Also split AFTER a closer’s terminator if more code follows (e.g. 'end if; r:=...')
+        let before = line('$')
+        silent! keeppatterns execute l1 . ',' . l2
+            \ . 's/' . s:closer_kw . '\s*' . s:sep . '\zs\s*\ze\S/\r/g'
+        let l2 += line('$') - before
+    finally
+        call winrestview(view)
+    endtry
+endfunction
+
+command! -range=% MapleSplitCtl call <SID>MapleSplitCtl(<line1>, <line2>)
+
+function! s:MapleSplitOp(type) abort
+    " operatorfunc sets '[ and '] to the affected region
+    let l1 = line("'[")
+    let l2 = line("']")
+    execute l1 . ',' . l2 . 'MapleSplitCtl'
+endfunction
+
+" Normal mode: start an operator, then give a motion/textobject
+nnoremap <buffer> <leader>s :set opfunc=<SID>MapleSplitOp<CR>g@
+
+" Visual mode: run directly on the selection
+xnoremap <buffer> <leader>s :<C-U>'<,'>MapleSplitCtl<CR>
+
 " ftplugin/maple.vim
 " Maple: pseudo-Mathematica-style Section/Subsection/Subsubsection folding
 " and heading highlighting using comment markers.
@@ -118,3 +218,5 @@ endfunction
 nnoremap <buffer> <silent> <leader>ms :MapleSection<CR>
 nnoremap <buffer> <silent> <leader>mn :MapleSubsection<CR>
 nnoremap <buffer> <silent> <leader>mm :MapleSubsubsection<CR>
+
+
