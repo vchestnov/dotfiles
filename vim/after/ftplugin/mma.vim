@@ -4,12 +4,14 @@
 function! MathematicaFolds()
     let thisline = getline(v:lnum)
 
-    if match(thisline, '^(\* ::Section') >= 0
+    if match(thisline, '^(\* ::Chapter') >= 0
         return ">1"
-    elseif match(thisline, '^(\* ::Subsection') >= 0
+    elseif match(thisline, '^(\* ::Section') >= 0
         return ">2"
-    elseif match(thisline, '^(\* ::Subsubsection') >= 0
+    elseif match(thisline, '^(\* ::Subsection') >= 0
         return ">3"
+    elseif match(thisline, '^(\* ::Subsubsection') >= 0
+        return ">4"
     else
         return "="
     endif

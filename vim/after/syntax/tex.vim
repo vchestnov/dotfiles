@@ -12,7 +12,7 @@ syn region texMathZoneC
   \ contains=@texMathZoneGroup
   \ containedin=ALL
 
-syn region texMathZoneEquationSeva
+syn region texMathZoneEquationC
   \ start='\\begin{\(equation\|equation\*\)}'
   \ end='\\end{\(equation\|equation\*\)}'
   \ keepend
@@ -22,7 +22,8 @@ syn region texMathZoneEquationSeva
 silent! syn clear texRefZone
 syn region texRefZone
   \ matchgroup=texStatement
-  \ start=/\\\(cref\|labelcref\|namecref\|pagecref\){/
+  \ start=/\\\(cref\|labelcref\|namecref\|pagecref\|label\){/
   \ end=/}\|%stopzone\>/
+  \ keepend
   \ contains=@texRefGroup
   \ containedin=ALL
