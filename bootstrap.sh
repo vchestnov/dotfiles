@@ -446,7 +446,8 @@ if \
         libxcb-xtest0 \
         pavucontrol \
         libboost-all-dev \
-        pass
+        pass \
+        npm
 
     log_success "System packages and build dependencies installed"
 fi

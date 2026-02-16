@@ -191,6 +191,7 @@ DO_VIFM=1
 DO_WOLFRAM=1
 DO_TEMPLATES=1
 DO_KRITA=1
+DO_NPM=1
 
 case "$BOOTSTRAP_PROFILE" in
     desktop)
@@ -211,6 +212,7 @@ case "$BOOTSTRAP_PROFILE" in
         DO_WOLFRAM=1
         DO_TEMPLATES=0
         DO_KRITA=0
+        DO_NPM=0
         ;;
     nothing)
         DO_CORE=0
@@ -226,7 +228,8 @@ case "$BOOTSTRAP_PROFILE" in
         DO_VIFM=0
         DO_WOLFRAM=0
         DO_TEMPLATES=0
-        DO_KRITA=1
+        DO_KRITA=0
+        DO_NPM=1
         ;;
     *)
         log_error "Unknown profile '$BOOTSTRAP_PROFILE'!"
@@ -371,6 +374,18 @@ if \
         link_file "$DOTFILES_DIR/config/texlive-env.sh" \
                   "$XDG_CONFIG_HOME/texlive-env.sh" \
                   "texlive env"
+    fi
+fi
+
+if \
+    (( DO_NPM )) && \
+    : \
+; then
+    echo "Hello!"
+    if [ -f "$DOTFILES_DIR/config/npm/npmrc" ]; then
+        link_file "$DOTFILES_DIR/config/npm/npmrc" \
+                  "$XDG_CONFIG_HOME/npmrc" \
+                  "npmrc"
     fi
 fi
 

@@ -321,5 +321,8 @@ ssh_agent_kill() {
     ssh-agent -k
 }
 
+# export NPM_CONFIG_USERCONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/npm/npmrc"
+export NPM_CONFIG_USERCONFIG="$XDG_CONFIG_HOME/npmrc"
+
 # OpenXM / Risa-Asir
 [ -f "/home/seva/.config/openxm/env.sh" ] && source "/home/seva/.config/openxm/env.sh"
