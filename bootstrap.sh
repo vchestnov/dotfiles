@@ -617,6 +617,23 @@ apply_singular_flint_compat_patch() {
     fi
 }
 
+apply_gfan_compat_patch() {
+    local gfan_src_dir=$1
+    local z_header="$gfan_src_dir/src/gfanlib_z.h"
+    local patched=0
+
+    if [ -f "$z_header" ] && grep -Fq 'std::int32_t' "$z_header" && ! sed -n '1,30p' "$z_header" | grep -Fq '#include <cstdint>'; then
+        perl -0pi -e 's/#include <iostream>\n/#include <iostream>\n#include <cstdint>\n/' "$z_header"
+        patched=1
+    fi
+
+    if [ "$patched" -eq 1 ]; then
+        log_info "Applied gfan compatibility patch for explicit std::int32_t declarations."
+    else
+        log_info "No gfan compatibility patch needed."
+    fi
+}
+
 detect_polymake_dependency_prefix() {
     local candidate
 
@@ -812,6 +829,7 @@ DO_NTL=1          # NTL from source inside scientific stack
 DO_MPFR=1         # MPFR from source inside scientific stack
 DO_FLINT=1        # FLINT from source inside scientific stack
 DO_FINITEFLOW=1   # FiniteFlow from GitHub inside scientific stack
+DO_GFAN=1         # Gfan from upstream tarball inside scientific stack
 DO_FERMAT=1       # Fermat binary helper inside scientific stack
 DO_LITERED=1      # LiteRed and Mathematica helpers inside scientific stack
 DO_SINGULAR_MMA=1 # Singular Mathematica interface inside scientific stack
@@ -847,6 +865,7 @@ case "$BOOTSTRAP_PROFILE" in
         DO_MPFR=1
         DO_FLINT=1
         DO_FINITEFLOW=1
+        DO_GFAN=1
         DO_FERMAT=1
         DO_LITERED=1
         DO_SINGULAR_MMA=1
@@ -878,6 +897,7 @@ case "$BOOTSTRAP_PROFILE" in
         DO_MPFR=0
         DO_FLINT=0
         DO_FINITEFLOW=0
+        DO_GFAN=0
         DO_FERMAT=0
         DO_LITERED=0
         DO_SINGULAR_MMA=0
@@ -908,10 +928,11 @@ case "$BOOTSTRAP_PROFILE" in
         DO_MPFR=0
         DO_FLINT=0
         DO_FINITEFLOW=0
+        DO_GFAN=1
         DO_FERMAT=0
         DO_LITERED=0
         DO_SINGULAR_MMA=0
-        DO_MSOLVE=1
+        DO_MSOLVE=0
         DO_SCI_EXTRA=0
         DO_SAGE=0
         DO_POLYMAKE=0
@@ -2963,7 +2984,7 @@ fi
 
 if \
 	(( DO_SCI )) && \
-    (( DO_GMP || DO_NTL || DO_MPFR || DO_FLINT || DO_QD || DO_FINITEFLOW || DO_FERMAT || DO_LITERED || DO_SINGULAR_MMA || DO_MSOLVE || DO_SCI_EXTRA )) && \
+    (( DO_GMP || DO_NTL || DO_MPFR || DO_FLINT || DO_QD || DO_FINITEFLOW || DO_GFAN || DO_FERMAT || DO_LITERED || DO_SINGULAR_MMA || DO_MSOLVE || DO_SCI_EXTRA )) && \
 	prompt_continue "Install enabled scientific software components?" && \
 	: \
 ; then
@@ -3243,6 +3264,58 @@ if \
         ./configure --prefix="$SCI_PREFIX"
         build_and_install "msolve" "make -j$SCI_JOBS" "make install" true
         log_success "msolve installed to $SCI_PREFIX; sources are in $MSOLVE_DEV_DIR"
+    fi
+
+    # ========================================
+    # gfan
+    # ========================================
+    if (( DO_GFAN )); then
+        log_info "Installing cddlib and gfan from upstream tarballs..."
+
+        GFAN_VERSION="${GFAN_VERSION:-0.7}"
+        GFAN_ARCHIVE="gfan${GFAN_VERSION}.tar.gz"
+        GFAN_URL="${GFAN_URL:-https://math.au.dk/~jensen/software/gfan/${GFAN_ARCHIVE}}"
+        GFAN_ARCHIVE_PATH="$SRC_DIR/$GFAN_ARCHIVE"
+        GFAN_SRC_DIR="${GFAN_SRC_DIR:-$SRC_DIR/gfan-${GFAN_VERSION}-src}"
+        CDDLIB_VERSION="${CDDLIB_VERSION:-094i}"
+        CDDLIB_ARCHIVE="cddlib-${CDDLIB_VERSION}.tar.gz"
+        CDDLIB_URL="${CDDLIB_URL:-https://people.inf.ethz.ch/fukudak/cdd_home/Cddtarfiles_pub/${CDDLIB_ARCHIVE}}"
+        CDDLIB_ARCHIVE_PATH="$SRC_DIR/$CDDLIB_ARCHIVE"
+        CDDLIB_SRC_DIR="${CDDLIB_SRC_DIR:-$SRC_DIR/cddlib-${CDDLIB_VERSION}-src}"
+        GFAN_MAKE_ARGS=()
+
+        mkdir -p "$SRC_DIR"
+
+        log_info "Installing cddlib for gfan..."
+        download_file "$CDDLIB_URL" "$CDDLIB_ARCHIVE_PATH"
+
+        rm -rf "$CDDLIB_SRC_DIR"
+        mkdir -p "$CDDLIB_SRC_DIR"
+        tar -xzf "$CDDLIB_ARCHIVE_PATH" -C "$CDDLIB_SRC_DIR" --strip-components=1
+        cd "$CDDLIB_SRC_DIR"
+
+        CFLAGS="-I$SCI_PREFIX/include -L$SCI_PREFIX/lib" \
+            ./configure --prefix="$SCI_PREFIX"
+        build_and_install "cddlib" "make -j$SCI_JOBS" "make install" true
+        log_success "cddlib installed to $SCI_PREFIX; sources are in $CDDLIB_SRC_DIR"
+
+        log_info "Installing gfan from upstream tarball..."
+        download_file "$GFAN_URL" "$GFAN_ARCHIVE_PATH"
+
+        rm -rf "$GFAN_SRC_DIR"
+        mkdir -p "$GFAN_SRC_DIR"
+        tar -xzf "$GFAN_ARCHIVE_PATH" -C "$GFAN_SRC_DIR" --strip-components=1
+        cd "$GFAN_SRC_DIR"
+        apply_gfan_compat_patch "$GFAN_SRC_DIR"
+
+        GFAN_MAKE_ARGS+=("gmppath=$SCI_PREFIX")
+        GFAN_MAKE_ARGS+=("cddpath=$SCI_PREFIX")
+        GFAN_MAKE_ARGS+=("cddnoprefix=true")
+
+        make "${GFAN_MAKE_ARGS[@]}"
+        ./gfan _test
+        make PREFIX="$SCI_PREFIX" install
+        log_success "gfan installed to $SCI_PREFIX; sources are in $GFAN_SRC_DIR"
     fi
 
     # ========================================
