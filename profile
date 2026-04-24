@@ -26,6 +26,8 @@ export CONDARC="${CONDARC:-$XDG_CONFIG_HOME/conda/condarc}"
 export CONDA_ENVS_PATH="${CONDA_ENVS_PATH:-$XDG_DATA_HOME/conda/envs}"
 export CONDA_PKGS_DIRS="${CONDA_PKGS_DIRS:-$XDG_CACHE_HOME/conda/pkgs}"
 export MAMBA_ROOT_PREFIX="${MAMBA_ROOT_PREFIX:-$CONDA_HOME}"
+export POLYMAKE_USER_DIR="${POLYMAKE_USER_DIR:-$XDG_CONFIG_HOME/polymake/user}"
+export POLYMAKE_CONFIG_PATH="${POLYMAKE_CONFIG_PATH:-user=$POLYMAKE_USER_DIR}"
 
 # Disable IBus to prevent conflicts with setxkbmap
 # export GTK_IM_MODULE=none
