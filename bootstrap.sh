@@ -872,9 +872,9 @@ case "$BOOTSTRAP_PROFILE" in
         DO_POETRY=0
         DO_RUST_TOOLS=0
         DO_LSP=0
-        DO_SCI=0
+        DO_SCI=1
         DO_SAGE=0
-        DO_POLYMAKE=1
+        DO_POLYMAKE=0
         DO_MAC=0
         DO_SINGULAR=0
         DO_SYSTEM=0
@@ -3303,6 +3303,9 @@ if \
 
     # MultivariateApart
     clone_sci_repo "MultivariateApart" "https://gitlab.msu.edu/vmante/multivariateapart.git"
+
+    # Subtropica
+    clone_sci_repo "Subtropica" "https://github.com/SubTropica/SubTropica.git"
 
     # Private FiniteFlow external packages 
     if ! clone_sci_repo "ff_ext_packages" "git@github.com:peraro/ff_ext_packages.git"; then

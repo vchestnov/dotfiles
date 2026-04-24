@@ -33,6 +33,7 @@
     "dev/spqr/landau/math/codes",
     "soft/Singular",
     "soft/MultivariateApart",
+    "soft/Subtropica",
     Nothing
 } // Map[RightComposition[
     ToFileName[$HomeDirectory, #]&,
