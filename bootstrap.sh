@@ -807,6 +807,16 @@ DO_POETRY=1       # poetry / arxivterminal
 DO_RUST_TOOLS=1   # rustup + fzf, rg, fd, bat
 DO_LSP=1          # language servers + vim LSP tooling
 DO_SCI=1          # scientific stack (GMP, NTL, MPFR, FLINT, FiniteFlow, etc.)
+DO_GMP=1          # GMP from source inside scientific stack
+DO_NTL=1          # NTL from source inside scientific stack
+DO_MPFR=1         # MPFR from source inside scientific stack
+DO_FLINT=1        # FLINT from source inside scientific stack
+DO_FINITEFLOW=1   # FiniteFlow from GitHub inside scientific stack
+DO_FERMAT=1       # Fermat binary helper inside scientific stack
+DO_LITERED=1      # LiteRed and Mathematica helpers inside scientific stack
+DO_SINGULAR_MMA=1 # Singular Mathematica interface inside scientific stack
+DO_MSOLVE=1       # msolve from GitHub inside scientific stack
+DO_SCI_EXTRA=1    # extra scientific repositories and helper tools
 DO_SAGE=1         # SageMath via Miniforge/conda, defaulting to GitHub checkout
 DO_POLYMAKE=1     # polymake from GitHub/source, installed under ~/.local
 DO_MAC=0          # Macbook-related tweaks
@@ -832,6 +842,16 @@ case "$BOOTSTRAP_PROFILE" in
         DO_RUST_TOOLS=1
         DO_LSP=1
         DO_SCI=1
+        DO_GMP=1
+        DO_NTL=1
+        DO_MPFR=1
+        DO_FLINT=1
+        DO_FINITEFLOW=1
+        DO_FERMAT=1
+        DO_LITERED=1
+        DO_SINGULAR_MMA=1
+        DO_MSOLVE=1
+        DO_SCI_EXTRA=1
         DO_SAGE=1
         DO_POLYMAKE=1
         DO_MAC=0
@@ -853,6 +873,16 @@ case "$BOOTSTRAP_PROFILE" in
         DO_RUST_TOOLS=0
         DO_LSP=0
         DO_SCI=0
+        DO_GMP=0
+        DO_NTL=0
+        DO_MPFR=0
+        DO_FLINT=0
+        DO_FINITEFLOW=0
+        DO_FERMAT=0
+        DO_LITERED=0
+        DO_SINGULAR_MMA=0
+        DO_MSOLVE=0
+        DO_SCI_EXTRA=0
         DO_SAGE=0
         DO_POLYMAKE=0
         DO_MAC=0
@@ -873,6 +903,16 @@ case "$BOOTSTRAP_PROFILE" in
         DO_RUST_TOOLS=0
         DO_LSP=0
         DO_SCI=1
+        DO_GMP=0
+        DO_NTL=0
+        DO_MPFR=0
+        DO_FLINT=0
+        DO_FINITEFLOW=0
+        DO_FERMAT=0
+        DO_LITERED=0
+        DO_SINGULAR_MMA=0
+        DO_MSOLVE=1
+        DO_SCI_EXTRA=0
         DO_SAGE=0
         DO_POLYMAKE=0
         DO_MAC=0
@@ -2918,12 +2958,13 @@ if \
 fi
 
 # =============================================================================
-# SECTION 28: SCIENTIFIC SOFTWARE (GMP, NTL, MPFR, FLINT, FINITEFLOW)
+# SECTION 28: SCIENTIFIC SOFTWARE (MODULAR SUBSECTIONS)
 # =============================================================================
 
 if \
 	(( DO_SCI )) && \
-	prompt_continue "Install scientific software (GMP, NTL, MPFR, FLINT, FiniteFlow)?" && \
+    (( DO_GMP || DO_NTL || DO_MPFR || DO_FLINT || DO_QD || DO_FINITEFLOW || DO_FERMAT || DO_LITERED || DO_SINGULAR_MMA || DO_MSOLVE || DO_SCI_EXTRA )) && \
+	prompt_continue "Install enabled scientific software components?" && \
 	: \
 ; then
     log_section "SCIENTIFIC SOFTWARE INSTALLATION"
@@ -2941,6 +2982,14 @@ if \
     mkdir -p "$SCI_PREFIX"
     mkdir -p "$SCI_REPOS_DIR"
 
+    # Prefer the local scientific prefix for subsequent builds, even when only
+    # a subset of the section is enabled on a later rerun.
+    export PATH="$SCI_PREFIX/bin${PATH:+:$PATH}"
+    export CPPFLAGS="-I$SCI_PREFIX/include${CPPFLAGS:+ $CPPFLAGS}"
+    export LDFLAGS="-L$SCI_PREFIX/lib${LDFLAGS:+ $LDFLAGS}"
+    export PKG_CONFIG_PATH="$SCI_PREFIX/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+    export LD_LIBRARY_PATH="$SCI_PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+
     # Helper to clone repos into common directory
     clone_sci_repo() {
         local name=$1
@@ -2954,119 +3003,116 @@ if \
     # ========================================
     # GMP
     # ========================================
-    log_info "Installing GMP from source..."
-    GMP_VERSION="${GMP_VERSION:-6.3.0}"
-    GMP_ARCHIVE="gmp-${GMP_VERSION}.tar.xz"
-    GMP_URL="${GMP_URL:-https://gmplib.org/download/gmp/${GMP_ARCHIVE}}"
+    if (( DO_GMP )); then
+        log_info "Installing GMP from source..."
+        GMP_VERSION="${GMP_VERSION:-6.3.0}"
+        GMP_ARCHIVE="gmp-${GMP_VERSION}.tar.xz"
+        GMP_URL="${GMP_URL:-https://gmplib.org/download/gmp/${GMP_ARCHIVE}}"
 
-    cd "$SRC_DIR"
-    download_file "$GMP_URL" "$GMP_ARCHIVE"
-    tar -xf "$GMP_ARCHIVE"
-    cd "gmp-${GMP_VERSION}"
+        cd "$SRC_DIR"
+        download_file "$GMP_URL" "$GMP_ARCHIVE"
+        tar -xf "$GMP_ARCHIVE"
+        cd "gmp-${GMP_VERSION}"
 
-    ./configure --prefix="$SCI_PREFIX" --enable-cxx
-    build_and_install "GMP" "make -j$SCI_JOBS" "make install" true
-    log_success "GMP installed to $SCI_PREFIX"
-
-    # Update environment for subsequent builds
-    export CPPFLAGS="-I$SCI_PREFIX/include${CPPFLAGS:+ $CPPFLAGS}"
-    export LDFLAGS="-L$SCI_PREFIX/lib${LDFLAGS:+ $LDFLAGS}"
-    export PKG_CONFIG_PATH="$SCI_PREFIX/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
-    export LD_LIBRARY_PATH="$SCI_PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+        ./configure --prefix="$SCI_PREFIX" --enable-cxx
+        build_and_install "GMP" "make -j$SCI_JOBS" "make install" true
+        log_success "GMP installed to $SCI_PREFIX"
+    fi
 
     # ========================================
     # NTL
     # ========================================
-    log_info "Installing NTL from source..."
-    NTL_VERSION="${NTL_VERSION:-11.6.0}"
-    NTL_ARCHIVE="ntl-${NTL_VERSION}.tar.gz"
-    NTL_URL="${NTL_URL:-https://libntl.org/${NTL_ARCHIVE}}"
+    if (( DO_NTL )); then
+        log_info "Installing NTL from source..."
+        NTL_VERSION="${NTL_VERSION:-11.6.0}"
+        NTL_ARCHIVE="ntl-${NTL_VERSION}.tar.gz"
+        NTL_URL="${NTL_URL:-https://libntl.org/${NTL_ARCHIVE}}"
 
-    cd "$SRC_DIR"
-    download_file "$NTL_URL" "$NTL_ARCHIVE"
-    tar -xf "$NTL_ARCHIVE"
-    cd "ntl-${NTL_VERSION}/src"
+        cd "$SRC_DIR"
+        download_file "$NTL_URL" "$NTL_ARCHIVE"
+        tar -xf "$NTL_ARCHIVE"
+        cd "ntl-${NTL_VERSION}/src"
 
-    ./configure DEF_PREFIX="$SCI_PREFIX" SHARED=on
-    build_and_install "NTL" "make -j$SCI_JOBS" "make install" true
-    log_success "NTL installed to $SCI_PREFIX"
-
-    export PKG_CONFIG_PATH="$SCI_PREFIX/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
-    export LD_LIBRARY_PATH="$SCI_PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+        ./configure DEF_PREFIX="$SCI_PREFIX" SHARED=on
+        build_and_install "NTL" "make -j$SCI_JOBS" "make install" true
+        log_success "NTL installed to $SCI_PREFIX"
+    fi
 
     # ========================================
     # MPFR
     # ========================================
-    log_info "Installing MPFR from source..."
-    MPFR_VERSION="${MPFR_VERSION:-4.2.2}"
-    MPFR_ARCHIVE="mpfr-${MPFR_VERSION}.tar.xz"
-    MPFR_URL="${MPFR_URL:-https://www.mpfr.org/mpfr-${MPFR_VERSION}/${MPFR_ARCHIVE}}"
+    if (( DO_MPFR )); then
+        log_info "Installing MPFR from source..."
+        MPFR_VERSION="${MPFR_VERSION:-4.2.2}"
+        MPFR_ARCHIVE="mpfr-${MPFR_VERSION}.tar.xz"
+        MPFR_URL="${MPFR_URL:-https://www.mpfr.org/mpfr-${MPFR_VERSION}/${MPFR_ARCHIVE}}"
 
-    cd "$SRC_DIR"
-    download_file "$MPFR_URL" "$MPFR_ARCHIVE"
-    tar -xf "$MPFR_ARCHIVE"
-    cd "mpfr-${MPFR_VERSION}"
+        cd "$SRC_DIR"
+        download_file "$MPFR_URL" "$MPFR_ARCHIVE"
+        tar -xf "$MPFR_ARCHIVE"
+        cd "mpfr-${MPFR_VERSION}"
 
-    ./configure --prefix="$SCI_PREFIX" --with-gmp="$SCI_PREFIX"
-    build_and_install "MPFR" "make -j$SCI_JOBS" "make install" true
-    log_success "MPFR installed to $SCI_PREFIX"
+        ./configure --prefix="$SCI_PREFIX" --with-gmp="$SCI_PREFIX"
+        build_and_install "MPFR" "make -j$SCI_JOBS" "make install" true
+        log_success "MPFR installed to $SCI_PREFIX"
+    fi
 
     # ========================================
     # FLINT
     # ========================================
-    log_info "Installing FLINT from source..."
-    FLINT_VERSION="${FLINT_VERSION:-3.4.0}"
-    FLINT_ARCHIVE="flint-${FLINT_VERSION}.tar.gz"
-    FLINT_URL="${FLINT_URL:-https://flintlib.org/download/${FLINT_ARCHIVE}}"
+    if (( DO_FLINT )); then
+        log_info "Installing FLINT from source..."
+        FLINT_VERSION="${FLINT_VERSION:-3.4.0}"
+        FLINT_ARCHIVE="flint-${FLINT_VERSION}.tar.gz"
+        FLINT_URL="${FLINT_URL:-https://flintlib.org/download/${FLINT_ARCHIVE}}"
 
-    cd "$SRC_DIR"
-    download_file "$FLINT_URL" "$FLINT_ARCHIVE"
-    tar -xf "$FLINT_ARCHIVE"
-    cd "flint-${FLINT_VERSION}"
+        cd "$SRC_DIR"
+        download_file "$FLINT_URL" "$FLINT_ARCHIVE"
+        tar -xf "$FLINT_ARCHIVE"
+        cd "flint-${FLINT_VERSION}"
 
-    ./configure \
-        --prefix="$SCI_PREFIX" \
-        --with-gmp="$SCI_PREFIX" \
-        --with-mpfr="$SCI_PREFIX"
-    build_and_install "FLINT" "make -j$SCI_JOBS" "make install" true
-    log_success "FLINT installed to $SCI_PREFIX"
+        ./configure \
+            --prefix="$SCI_PREFIX" \
+            --with-gmp="$SCI_PREFIX" \
+            --with-mpfr="$SCI_PREFIX"
+        build_and_install "FLINT" "make -j$SCI_JOBS" "make install" true
+        log_success "FLINT installed to $SCI_PREFIX"
+    fi
 
     # ========================================
     # FiniteFlow FLINT provider
     # ========================================
-    FINITEFLOW_FLINT_PROVIDER="${FINITEFLOW_FLINT_PROVIDER:-full}"
+    if (( DO_FINITEFLOW )); then
+        FINITEFLOW_FLINT_PROVIDER="${FINITEFLOW_FLINT_PROVIDER:-full}"
 
-    case "$FINITEFLOW_FLINT_PROVIDER" in
-        full)
-            log_info "Using full FLINT installation for FiniteFlow; skipping flint-finiteflow-dep."
-            ;;
-        mini|minimal)
-            FINITEFLOW_FLINT_PREFIX="${FINITEFLOW_FLINT_PREFIX:-$SCI_PREFIX/finiteflow-deps}"
+        case "$FINITEFLOW_FLINT_PROVIDER" in
+            full)
+                log_info "Using full FLINT installation for FiniteFlow; skipping flint-finiteflow-dep."
+                ;;
+            mini|minimal)
+                FINITEFLOW_FLINT_PREFIX="${FINITEFLOW_FLINT_PREFIX:-$SCI_PREFIX/finiteflow-deps}"
 
-            log_info "Installing FiniteFlow-specific minimal FLINT into $FINITEFLOW_FLINT_PREFIX..."
-            mkdir -p "$FINITEFLOW_FLINT_PREFIX"
-            clone_or_update "https://github.com/peraro/flint-finiteflow-dep.git" "$SRC_DIR/flint-finiteflow-dep"
-            cd "$SRC_DIR/flint-finiteflow-dep"
+                log_info "Installing FiniteFlow-specific minimal FLINT into $FINITEFLOW_FLINT_PREFIX..."
+                mkdir -p "$FINITEFLOW_FLINT_PREFIX"
+                clone_or_update "https://github.com/peraro/flint-finiteflow-dep.git" "$SRC_DIR/flint-finiteflow-dep"
+                cd "$SRC_DIR/flint-finiteflow-dep"
 
-            cmake -DCMAKE_PREFIX_PATH="$SCI_PREFIX" \
-                  -DCMAKE_INSTALL_PREFIX="$FINITEFLOW_FLINT_PREFIX" \
-                  .
-            build_and_install "FLINT-FiniteFlow-dep" "make -j$SCI_JOBS" "make install" true
-            log_success "FiniteFlow-specific minimal FLINT installed to $FINITEFLOW_FLINT_PREFIX"
+                cmake -DCMAKE_PREFIX_PATH="$SCI_PREFIX" \
+                      -DCMAKE_INSTALL_PREFIX="$FINITEFLOW_FLINT_PREFIX" \
+                      .
+                build_and_install "FLINT-FiniteFlow-dep" "make -j$SCI_JOBS" "make install" true
+                log_success "FiniteFlow-specific minimal FLINT installed to $FINITEFLOW_FLINT_PREFIX"
 
-            FINITEFLOW_PREFIX_PATH="$FINITEFLOW_FLINT_PREFIX:$SCI_PREFIX"
-            FINITEFLOW_ENV_PREFIX="$FINITEFLOW_FLINT_PREFIX"
-            export LD_LIBRARY_PATH="$FINITEFLOW_FLINT_PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-            ;;
-        *)
-            log_error "Unknown FINITEFLOW_FLINT_PROVIDER='$FINITEFLOW_FLINT_PROVIDER'. Use full or mini."
-            exit 1
-            ;;
-    esac
-
-    # Update environment for FiniteFlow build
-    export PKG_CONFIG_PATH="$SCI_PREFIX/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
-    export LD_LIBRARY_PATH="$SCI_PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+                FINITEFLOW_PREFIX_PATH="$FINITEFLOW_FLINT_PREFIX:$SCI_PREFIX"
+                FINITEFLOW_ENV_PREFIX="$FINITEFLOW_FLINT_PREFIX"
+                export LD_LIBRARY_PATH="$FINITEFLOW_FLINT_PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+                ;;
+            *)
+                log_error "Unknown FINITEFLOW_FLINT_PROVIDER='$FINITEFLOW_FLINT_PROVIDER'. Use full or mini."
+                exit 1
+                ;;
+        esac
+    fi
 
 
     if \
@@ -3118,95 +3164,131 @@ if \
     # ========================================
     # FiniteFlow
     # ========================================
-    log_info "Installing FiniteFlow (dev sources in ~/dev/finiteflow)..."
+    if (( DO_FINITEFLOW )); then
+        log_info "Installing FiniteFlow (dev sources in ~/dev/finiteflow)..."
 
-    FINITEFLOW_DEV_DIR="$HOME/dev/finiteflow"
-    FINITEFLOW_MATHLIB="$SCI_PREFIX/lib"
-    mkdir -p "$HOME/dev"
-    mkdir -p "$FINITEFLOW_MATHLIB"
+        FINITEFLOW_DEV_DIR="$HOME/dev/finiteflow"
+        FINITEFLOW_MATHLIB="$SCI_PREFIX/lib"
+        mkdir -p "$HOME/dev"
+        mkdir -p "$FINITEFLOW_MATHLIB"
 
-    clone_or_update "https://github.com/peraro/finiteflow.git" "$FINITEFLOW_DEV_DIR"
-    cd "$FINITEFLOW_DEV_DIR"
+        clone_or_update "https://github.com/peraro/finiteflow.git" "$FINITEFLOW_DEV_DIR"
+        cd "$FINITEFLOW_DEV_DIR"
 
-    # If there was a previous build, clean it up first
-    if [ -f CMakeCache.txt ] || [ -d CMakeFiles ] || [ -f Makefile ]; then
-        log_info "Previous FiniteFlow build detected; cleaning up..."
+        # If there was a previous build, clean it up first
+        if [ -f CMakeCache.txt ] || [ -d CMakeFiles ] || [ -f Makefile ]; then
+            log_info "Previous FiniteFlow build detected; cleaning up..."
 
-        if [ -f Makefile ]; then
-            # Try make clean; don't abort on failure
-            if ! make clean; then
-                log_warning "make clean failed for FiniteFlow (continuing anyway)..."
+            if [ -f Makefile ]; then
+                # Try make clean; don't abort on failure
+                if ! make clean; then
+                    log_warning "make clean failed for FiniteFlow (continuing anyway)..."
+                fi
+
+                # Try make uninstall if target exists; don't abort on failure
+                if grep -q "^uninstall:" Makefile 2>/dev/null; then
+                    if ! make uninstall; then
+                        log_warning "make uninstall failed for FiniteFlow (continuing anyway)..."
+                    fi
+                else
+                    log_info "No uninstall target in FiniteFlow Makefile; skipping make uninstall."
+                fi
             fi
 
-            # Try make uninstall if target exists; don't abort on failure
-            if grep -q "^uninstall:" Makefile 2>/dev/null; then
-                if ! make uninstall; then
-                    log_warning "make uninstall failed for FiniteFlow (continuing anyway)..."
-                fi
-            else
-                log_info "No uninstall target in FiniteFlow Makefile; skipping make uninstall."
+            # Remove CMake cache and related build files
+            rm -f CMakeCache.txt
+            rm -rf CMakeFiles
+            rm -f cmake_install.cmake
+            rm -f install_manifest.txt
+            rm -f Makefile
+
+            log_info "Removed previous FiniteFlow CMake cache and build artifacts."
+        fi
+        
+        cmake -DCMAKE_INSTALL_PREFIX="$SCI_PREFIX" \
+              -DCMAKE_PREFIX_PATH="$FINITEFLOW_PREFIX_PATH" \
+              -DMATHLIBINSTALL="$FINITEFLOW_MATHLIB" \
+              .
+        build_and_install "FiniteFlow" "make -j$SCI_JOBS" "make install" true
+        log_success "FiniteFlow installed to $SCI_PREFIX; sources are in $FINITEFLOW_DEV_DIR"
+    fi
+
+    # ========================================
+    # msolve
+    # ========================================
+    if (( DO_MSOLVE )); then
+        log_info "Installing msolve from GitHub..."
+
+        MSOLVE_DEV_DIR="${MSOLVE_DEV_DIR:-$SCI_REPOS_DIR/msolve}"
+        mkdir -p "$SCI_REPOS_DIR"
+
+        clone_or_update "https://github.com/algebraic-solving/msolve.git" "$MSOLVE_DEV_DIR" "${MSOLVE_GIT_REF:-}"
+        cd "$MSOLVE_DEV_DIR"
+
+        if [ -f Makefile ]; then
+            log_info "Previous msolve build detected; cleaning up..."
+            if grep -q "^distclean:" Makefile 2>/dev/null; then
+                make distclean || log_warning "make distclean failed for msolve (continuing anyway)..."
+            elif grep -q "^clean:" Makefile 2>/dev/null; then
+                make clean || log_warning "make clean failed for msolve (continuing anyway)..."
             fi
         fi
 
-        # Remove CMake cache and related build files
-        rm -f CMakeCache.txt
-        rm -rf CMakeFiles
-        rm -f cmake_install.cmake
-        rm -f install_manifest.txt
-        rm -f Makefile
+        if [ ! -x ./autogen.sh ]; then
+            log_error "msolve checkout does not contain ./autogen.sh"
+            exit 1
+        fi
 
-        log_info "Removed previous FiniteFlow CMake cache and build artifacts."
+        ./autogen.sh
+        ./configure --prefix="$SCI_PREFIX"
+        build_and_install "msolve" "make -j$SCI_JOBS" "make install" true
+        log_success "msolve installed to $SCI_PREFIX; sources are in $MSOLVE_DEV_DIR"
     fi
-    
-    cmake -DCMAKE_INSTALL_PREFIX="$SCI_PREFIX" \
-          -DCMAKE_PREFIX_PATH="$FINITEFLOW_PREFIX_PATH" \
-          -DMATHLIBINSTALL="$FINITEFLOW_MATHLIB" \
-          .
-    build_and_install "FiniteFlow" "make -j$SCI_JOBS" "make install" true
-    log_success "FiniteFlow installed to $SCI_PREFIX; sources are in $FINITEFLOW_DEV_DIR"
 
     # ========================================
     # Fermat
     # ========================================
-    log_info "Installing Fermat..."
+    if (( DO_FERMAT )); then
+        log_info "Installing Fermat..."
 
-    FERMAT_URL="https://home.bway.net/lewis/fermat64/Ferl7.tar.gz"
-    FERMAT_SRC_DIR="$SRC_DIR"
-    FERMAT_LINK_TARGET="$SCI_PREFIX/bin/fer64"
+        FERMAT_URL="https://home.bway.net/lewis/fermat64/Ferl7.tar.gz"
+        FERMAT_SRC_DIR="$SRC_DIR"
+        FERMAT_LINK_TARGET="$SCI_PREFIX/bin/fer64"
 
-    mkdir -p "$FERMAT_SRC_DIR"
-    cd "$FERMAT_SRC_DIR"
+        mkdir -p "$FERMAT_SRC_DIR"
+        cd "$FERMAT_SRC_DIR"
 
-    fermat_ok=1
+        fermat_ok=1
 
-    # Download archive if not present (avoid repeated fetch)
-    if [ ! -f "Ferl7.tar.gz" ]; then
-        log_info "Downloading Fermat from $FERMAT_URL"
-        if ! wget -O Ferl7.tar.gz "$FERMAT_URL"; then
-            log_warning "Could not download Fermat! Skipping Fermat installation (network issue or mirror blocked?)."
-            fermat_ok=0
+        # Download archive if not present (avoid repeated fetch)
+        if [ ! -f "Ferl7.tar.gz" ]; then
+            log_info "Downloading Fermat from $FERMAT_URL"
+            if ! wget -O Ferl7.tar.gz "$FERMAT_URL"; then
+                log_warning "Could not download Fermat! Skipping Fermat installation (network issue or mirror blocked?)."
+                fermat_ok=0
+            fi
         fi
-    fi
 
-    # Extract only if download (or existing tarball) is OK
-    if [ "$fermat_ok" -eq 1 ]; then
-        log_info "Extracting Fermat..."
-        if ! tar -xzf Ferl7.tar.gz; then
-            log_warning "Failed to extract Fermat archive! Skipping Fermat installation."
-            fermat_ok=0
+        # Extract only if download (or existing tarball) is OK
+        if [ "$fermat_ok" -eq 1 ]; then
+            log_info "Extracting Fermat..."
+            if ! tar -xzf Ferl7.tar.gz; then
+                log_warning "Failed to extract Fermat archive! Skipping Fermat installation."
+                fermat_ok=0
+            fi
         fi
-    fi
 
-    # Find the Fermat binary somewhere under $FERMAT_SRC_DIR
-    if [ "$fermat_ok" -eq 1 ]; then
-        FER_BINARY="$FERMAT_SRC_DIR/Ferl7/fer64"
+        # Find the Fermat binary somewhere under $FERMAT_SRC_DIR
+        if [ "$fermat_ok" -eq 1 ]; then
+            FER_BINARY="$FERMAT_SRC_DIR/Ferl7/fer64"
 
-        if [ -z "$FER_BINARY" ]; then
-            log_warning "Fermat binary not found after extraction! Skipping Fermat installation."
-        else
-            log_info "Linking Fermat binary ($FER_BINARY) to $FERMAT_LINK_TARGET"
-            ln -sf "$FER_BINARY" "$FERMAT_LINK_TARGET"
-            log_success "Fermat available as: $FERMAT_LINK_TARGET"
+            if [ -z "$FER_BINARY" ]; then
+                log_warning "Fermat binary not found after extraction! Skipping Fermat installation."
+            else
+                log_info "Linking Fermat binary ($FER_BINARY) to $FERMAT_LINK_TARGET"
+                ln -sf "$FER_BINARY" "$FERMAT_LINK_TARGET"
+                log_success "Fermat available as: $FERMAT_LINK_TARGET"
+            fi
         fi
     fi
 
@@ -3214,106 +3296,116 @@ if \
 	# LiteRed (legacy version 1.84)
 	###############################################################################
 
-	LITERED_URL="https://www.inp.nsk.su/~lee/programs/LiteRed/LiteRedV1/LiteRedV1.84.zip"
-	LITERED_DIR="$SCI_REPOS_DIR/LiteRed"
+    if (( DO_LITERED )); then
+	    LITERED_URL="https://www.inp.nsk.su/~lee/programs/LiteRed/LiteRedV1/LiteRedV1.84.zip"
+	    LITERED_DIR="$SCI_REPOS_DIR/LiteRed"
 
-	if [ ! -d "$LITERED_DIR" ]; then
-		log_info "Installing LiteRed (v1.84) into $LITERED_DIR"
+	    if [ ! -d "$LITERED_DIR" ]; then
+		    log_info "Installing LiteRed (v1.84) into $LITERED_DIR"
 
-		mkdir -p "$SCI_REPOS_DIR"
-		tmpzip="$(mktemp)"
+		    mkdir -p "$SCI_REPOS_DIR"
+		    tmpzip="$(mktemp)"
 
-		curl -L "$LITERED_URL" -o "$tmpzip"
-		unzip -q "$tmpzip" -d "$LITERED_DIR"
+		    curl -L "$LITERED_URL" -o "$tmpzip"
+		    unzip -q "$tmpzip" -d "$LITERED_DIR"
 
-		rm -f "$tmpzip"
-	else
-		log_info "LiteRed already installed at $LITERED_DIR"
-	fi
+		    rm -f "$tmpzip"
+	    else
+		    log_info "LiteRed already installed at $LITERED_DIR"
+	    fi
+    fi
 
 	###############################################################################
 	# Singular interface for Mathematica
 	###############################################################################
 
-	SINGULAR_INTERFACE_URL="https://www3.risc.jku.at/research/combinat/software/Singular/Singular.m"
-	SINGULAR_INTERFACE_DIR="$SCI_REPOS_DIR/Singular"
+    if (( DO_SINGULAR_MMA )); then
+	    SINGULAR_INTERFACE_URL="https://www3.risc.jku.at/research/combinat/software/Singular/Singular.m"
+	    SINGULAR_INTERFACE_DIR="$SCI_REPOS_DIR/Singular"
 
-	if [ ! -d "$SINGULAR_INTERFACE_DIR" ]; then
-		log_info "Installing Singular Mathematica interface into $SINGULAR_INTERFACE_DIR"
+	    if [ ! -d "$SINGULAR_INTERFACE_DIR" ]; then
+		    log_info "Installing Singular Mathematica interface into $SINGULAR_INTERFACE_DIR"
 
-		mkdir -p "$SINGULAR_INTERFACE_DIR"
-		curl -L "$SINGULAR_INTERFACE_URL" -o "$SINGULAR_INTERFACE_DIR/Singular.m"
-	else
-		log_info "Singular Mathematica interface already present at $SINGULAR_INTERFACE_DIR"
-	fi
+		    mkdir -p "$SINGULAR_INTERFACE_DIR"
+		    curl -L "$SINGULAR_INTERFACE_URL" -o "$SINGULAR_INTERFACE_DIR/Singular.m"
+	    else
+		    log_info "Singular Mathematica interface already present at $SINGULAR_INTERFACE_DIR"
+	    fi
+    fi
 
     # ========================================
     # Extra tools 
     # ========================================
-    log_section "CLONING EXTRA SCIENTIFIC PACKAGES"
-    log_info "All extra packages will live in: $SCI_REPOS_DIR"
+    if (( DO_SCI_EXTRA )); then
+        log_section "CLONING EXTRA SCIENTIFIC PACKAGES"
+        log_info "All extra packages will live in: $SCI_REPOS_DIR"
 
-    # FiniteFlow MathTools 
-    clone_sci_repo "finiteflow-mathtools" "https://github.com/peraro/finiteflow-mathtools.git"
+        # FiniteFlow MathTools 
+        clone_sci_repo "finiteflow-mathtools" "https://github.com/peraro/finiteflow-mathtools.git"
 
-    # CALICO 
-    clone_sci_repo "calico" "https://github.com/fontana-g/calico.git"
+        # CALICO 
+        clone_sci_repo "calico" "https://github.com/fontana-g/calico.git"
 
-    # LiteRed2 + Libra 
-    clone_sci_repo "LiteRed2"  "https://github.com/rnlg/LiteRed2.git"
-    clone_sci_repo "Libra"     "https://github.com/rnlg/Libra.git"
-    clone_sci_repo "Fermatica" "https://github.com/rnlg/Fermatica.git"
+        # LiteRed2 + Libra 
+        clone_sci_repo "LiteRed2"  "https://github.com/rnlg/LiteRed2.git"
+        clone_sci_repo "Libra"     "https://github.com/rnlg/Libra.git"
+        clone_sci_repo "Fermatica" "https://github.com/rnlg/Fermatica.git"
 
-    # Blade / AMFlow / CalcLoop 
-    if ! clone_sci_repo "blade" "https://gitee.com/multiloop-pku/blade.git"; then
-        log_warning "Skipping repo blade"
+        # Blade / AMFlow / CalcLoop 
+        if ! clone_sci_repo "blade" "https://gitee.com/multiloop-pku/blade.git"; then
+            log_warning "Skipping repo blade"
+        fi
+        clone_sci_repo "amflow"   "https://gitlab.com/multiloop-pku/amflow.git"
+        clone_sci_repo "calcloop" "https://gitlab.com/multiloop-pku/calcloop.git"
+
+        # BaikovLetter
+        clone_sci_repo "Baikovletter" "https://github.com/windfolgen/Baikovletter.git"
+
+        # BaikovPackage
+        clone_sci_repo "BaikovPackage" "https://github.com/HjalteFrellesvig/BaikovPackage.git"
+
+        # INITIAL 
+        clone_sci_repo "INITIAL" "https://github.com/UT-team/INITIAL.git"
+
+        # NeatIBP 
+        clone_sci_repo "NeatIBP" "https://github.com/yzhphy/NeatIBP.git"
+
+        # Alibrary 
+        clone_sci_repo "alibrary" "https://github.com/magv/alibrary.git"
+
+        # RationalizeRoots 
+        clone_sci_repo "rationalizeroots" "https://github.com/marcobesier/rationalizeroots.git"
+
+        # Azurite 
+        clone_sci_repo "azurite" "https://bitbucket.org/yzhphy/azurite.git"
+
+        # DlogBasis 
+        clone_sci_repo "DlogBasis" "https://github.com/pascalwasser/DlogBasis.git"
+
+        # Effortless
+        clone_sci_repo "Effortless" "https://github.com/antonela-matijasic/Effortless.git"
+
+        # SOFIA
+        clone_sci_repo "SOFIA" "https://github.com/StrangeQuark007/SOFIA.git"
+
+        # MultivariateApart
+        clone_sci_repo "MultivariateApart" "https://gitlab.msu.edu/vmante/multivariateapart.git"
+
+        # Subtropica
+        clone_sci_repo "Subtropica" "https://github.com/SubTropica/SubTropica.git"
+
+        # Private FiniteFlow external packages 
+        if ! clone_sci_repo "ff_ext_packages" "git@github.com:peraro/ff_ext_packages.git"; then
+            log_warning "Skipping private repo ff_ext_packages (SSH keys not configured or access denied)."
+        fi
     fi
-    clone_sci_repo "amflow"   "https://gitlab.com/multiloop-pku/amflow.git"
-    clone_sci_repo "calcloop" "https://gitlab.com/multiloop-pku/calcloop.git"
 
-    # BaikovLetter
-    clone_sci_repo "Baikovletter" "https://github.com/windfolgen/Baikovletter.git"
-
-    # BaikovPackage
-    clone_sci_repo "BaikovPackage" "https://github.com/HjalteFrellesvig/BaikovPackage.git"
-
-    # INITIAL 
-    clone_sci_repo "INITIAL" "https://github.com/UT-team/INITIAL.git"
-
-    # NeatIBP 
-    clone_sci_repo "NeatIBP" "https://github.com/yzhphy/NeatIBP.git"
-
-    # Alibrary 
-    clone_sci_repo "alibrary" "https://github.com/magv/alibrary.git"
-
-    # RationalizeRoots 
-    clone_sci_repo "rationalizeroots" "https://github.com/marcobesier/rationalizeroots.git"
-
-    # Azurite 
-    clone_sci_repo "azurite" "https://bitbucket.org/yzhphy/azurite.git"
-
-    # DlogBasis 
-    clone_sci_repo "DlogBasis" "https://github.com/pascalwasser/DlogBasis.git"
-
-    # Effortless
-    clone_sci_repo "Effortless" "https://github.com/antonela-matijasic/Effortless.git"
-
-    # SOFIA
-    clone_sci_repo "SOFIA" "https://github.com/StrangeQuark007/SOFIA.git"
-
-    # MultivariateApart
-    clone_sci_repo "MultivariateApart" "https://gitlab.msu.edu/vmante/multivariateapart.git"
-
-    # Subtropica
-    clone_sci_repo "Subtropica" "https://github.com/SubTropica/SubTropica.git"
-
-    # Private FiniteFlow external packages 
-    if ! clone_sci_repo "ff_ext_packages" "git@github.com:peraro/ff_ext_packages.git"; then
-        log_warning "Skipping private repo ff_ext_packages (SSH keys not configured or access denied)."
+    if (( DO_SCI_EXTRA )); then
+        log_success "Extra scientific packages cloned into $SCI_REPOS_DIR"
+        log_info "Consult each repository's README for Mathematica / workflow-specific setup."
+    else
+        log_info "Scientific repositories and helper tools live under: $SCI_REPOS_DIR"
     fi
-
-    log_success "Extra scientific packages cloned into $SCI_REPOS_DIR"
-    log_info "Consult each repository's README for Mathematica / workflow-specific setup."
     
     log_success "Scientific software installation complete!"
     log_info "Scientific environment is managed from: $SCI_ENV_REPO_PATH"
