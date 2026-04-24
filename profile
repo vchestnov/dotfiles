@@ -21,6 +21,11 @@ export IPYTHONDIR="$XDG_CONFIG_HOME/ipython"
 export JUPYTER_CONFIG_DIR="$XDG_CONFIG_HOME/jupyter"
 export PYTHONSTARTUP="$XDG_CONFIG_HOME/python/pythonrc"
 export WGET_HSTS_FILE="$XDG_STATE_HOME/wget/hsts"
+export CONDA_HOME="${CONDA_HOME:-$XDG_DATA_HOME/miniforge3}"
+export CONDARC="${CONDARC:-$XDG_CONFIG_HOME/conda/condarc}"
+export CONDA_ENVS_PATH="${CONDA_ENVS_PATH:-$XDG_DATA_HOME/conda/envs}"
+export CONDA_PKGS_DIRS="${CONDA_PKGS_DIRS:-$XDG_CACHE_HOME/conda/pkgs}"
+export MAMBA_ROOT_PREFIX="${MAMBA_ROOT_PREFIX:-$CONDA_HOME}"
 
 # Disable IBus to prevent conflicts with setxkbmap
 # export GTK_IM_MODULE=none
@@ -32,6 +37,16 @@ export XMODIFIERS=@im=xim
 
 # Source existing profile content if it exists
 [ -f "$HOME/.profile.local" ] && . "$HOME/.profile.local"
+
+# Conda/Mamba (XDG) environment
+case ":$PATH:" in
+    *:"$CONDA_HOME/condabin":*) ;;
+    *) PATH="$CONDA_HOME/condabin${PATH:+:$PATH}" ;;
+esac
+export PATH
+
+[ -f "$CONDA_HOME/etc/profile.d/conda.sh" ] && . "$CONDA_HOME/etc/profile.d/conda.sh"
+[ -f "$CONDA_HOME/etc/profile.d/mamba.sh" ] && . "$CONDA_HOME/etc/profile.d/mamba.sh"
 
 # Rust (XDG) environment
 [ -f "$CARGO_HOME/env" ] && . "$CARGO_HOME/env"
