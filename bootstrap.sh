@@ -176,6 +176,108 @@ build_and_install() {
     fi
 }
 
+install_python_lsp() {
+    if command -v pipx >/dev/null 2>&1; then
+        pipx install --force 'python-lsp-server[all]'
+        return 0
+    fi
+
+    if command -v python3 >/dev/null 2>&1; then
+        if python3 -m pip --version >/dev/null 2>&1; then
+            python3 -m pip install --user --upgrade 'python-lsp-server[all]'
+            return 0
+        fi
+
+        log_warning "python3 is available, but python3 -m pip is not."
+        return 1
+    fi
+
+    log_warning "Neither pipx nor python3 is available for installing pylsp."
+    return 1
+}
+
+install_clangd_from_source() {
+    local source_kind="${1:-git}"
+    local install_prefix="${2:-$HOME/.local}"
+    local git_ref="${CLANGD_GIT_REF:-llvmorg-21.1.6}"
+    local tar_version="${CLANGD_TARBALL_VERSION:-21.1.6}"
+    local source_root=""
+    local build_dir="$BUILD_DIR/llvm-project-clangd"
+    local repo_dir="$SRC_DIR/llvm-project"
+    local tarball="$SRC_DIR/llvm-project-${tar_version}.src.tar.xz"
+    local tar_src_dir="$SRC_DIR/llvm-project-${tar_version}.src"
+    local tar_url="${CLANGD_TARBALL_URL:-https://github.com/llvm/llvm-project/releases/download/llvmorg-${tar_version}/llvm-project-${tar_version}.src.tar.xz}"
+
+    if ! command -v cmake >/dev/null 2>&1; then
+        log_warning "cmake is required to build clangd from source."
+        return 1
+    fi
+
+    if ! command -v ninja >/dev/null 2>&1; then
+        log_warning "ninja is required to build clangd from source."
+        return 1
+    fi
+
+    if ! command -v c++ >/dev/null 2>&1; then
+        log_warning "A C++ compiler is required to build clangd from source."
+        return 1
+    fi
+
+    mkdir -p "$SRC_DIR" "$BUILD_DIR" "$install_prefix"
+
+    case "$source_kind" in
+        git)
+            if ! command -v git >/dev/null 2>&1; then
+                log_warning "git is required for CLANGD_INSTALL_METHOD=git."
+                return 1
+            fi
+
+            log_info "Installing clangd from llvm-project git ref: $git_ref"
+            clone_or_update "https://github.com/llvm/llvm-project.git" "$repo_dir" "$git_ref"
+            source_root="$repo_dir"
+            ;;
+        tar)
+            if ! command -v wget >/dev/null 2>&1; then
+                log_warning "wget is required for CLANGD_INSTALL_METHOD=tar."
+                return 1
+            fi
+
+            log_info "Installing clangd from llvm-project source tarball: $tar_version"
+            cd "$SRC_DIR"
+            if [ ! -f "$tarball" ]; then
+                wget "$tar_url" -O "$tarball"
+            fi
+            if [ ! -d "$tar_src_dir" ]; then
+                tar -xf "$tarball"
+            fi
+            source_root="$tar_src_dir"
+            ;;
+        *)
+            log_error "Unknown clangd source kind '$source_kind'. Use git or tar."
+            return 1
+            ;;
+    esac
+
+    cmake -G Ninja \
+        -S "$source_root/llvm" \
+        -B "$build_dir" \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX="$install_prefix" \
+        -DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra" \
+        -DLLVM_TARGETS_TO_BUILD="host"
+
+    cmake --build "$build_dir" --target clangd -j"$(nproc)"
+    cmake --install "$build_dir"
+
+    if [ -x "$install_prefix/bin/clangd" ]; then
+        log_success "clangd installed from source to $install_prefix/bin/clangd"
+        return 0
+    fi
+
+    log_warning "clangd source build completed, but the installed binary was not found in $install_prefix/bin."
+    return 1
+}
+
 # =============================================================================
 # SETUP: profile selection 
 # =============================================================================
@@ -202,6 +304,7 @@ DO_TEX=1          # TeX Live & tex-related env
 DO_GPG=1          # gpg-agent + pinentry tweaks
 DO_POETRY=1       # poetry / arxivterminal
 DO_RUST_TOOLS=1   # rustup + fzf, rg, fd, bat
+DO_LSP=1          # language servers + vim LSP tooling
 DO_SCI=1          # scientific stack (GMP, FLINT, FiniteFlow, etc.)
 DO_MAC=0          # Macbook-related tweaks
 DO_SINGULAR=1     # temp stub for Singular
@@ -224,6 +327,7 @@ case "$BOOTSTRAP_PROFILE" in
         DO_GPG=0
         DO_POETRY=0
         DO_RUST_TOOLS=1
+        DO_LSP=1
         DO_SCI=1
         DO_MAC=0
         DO_SINGULAR=0
@@ -242,6 +346,7 @@ case "$BOOTSTRAP_PROFILE" in
         DO_GPG=0
         DO_POETRY=0
         DO_RUST_TOOLS=0
+        DO_LSP=0
         DO_SCI=0
         DO_MAC=0
         DO_SINGULAR=0
@@ -747,11 +852,99 @@ if \
     : "${XDG_CACHE_HOME:=$HOME/.cache}";
     mkdir -p "$XDG_CACHE_HOME/vim/"{swap,undo,backup}
 
-    log_success "Vim installed with terminal and xclip support"
+log_success "Vim installed with terminal and xclip support"
 fi
 
 # =============================================================================
-# SECTION 09: RUST TOOLS (FZF, RIPGREP, FD, BAT)
+# SECTION 09: LANGUAGE SERVER TOOLING
+# =============================================================================
+
+if \
+    (( DO_LSP )) && \
+    prompt_continue "Install language servers and Vim LSP tooling?" && \
+    : \
+; then
+    log_section "LANGUAGE SERVER TOOLING"
+
+    mkdir -p "$BIN_DIR"
+
+    if command -v clangd >/dev/null 2>&1; then
+        log_info "clangd already available at $(command -v clangd)"
+    else
+        CLANGD_INSTALL_METHOD="${CLANGD_INSTALL_METHOD:-auto}"
+
+        if [ "$CLANGD_INSTALL_METHOD" = "auto" ]; then
+            if (( DO_SYSTEM )) && command -v sudo >/dev/null 2>&1; then
+                CLANGD_INSTALL_METHOD="apt"
+            else
+                CLANGD_INSTALL_METHOD="${CLANGD_SOURCE_KIND:-git}"
+            fi
+        fi
+
+        log_info "clangd installation method: $CLANGD_INSTALL_METHOD"
+
+        case "$CLANGD_INSTALL_METHOD" in
+            apt)
+                if (( DO_SYSTEM )) && command -v sudo >/dev/null 2>&1; then
+                    log_info "Installing clangd from apt..."
+                    refresh_sudo
+                    sudo apt install -y clangd
+                    log_success "clangd installed"
+                else
+                    log_warning "apt-based clangd install requested, but this profile does not permit it."
+                fi
+                ;;
+            git|tar)
+                if ! install_clangd_from_source "$CLANGD_INSTALL_METHOD" "$HOME/.local"; then
+                    log_warning "clangd source installation failed."
+                fi
+                ;;
+            *)
+                log_warning "Unknown CLANGD_INSTALL_METHOD='$CLANGD_INSTALL_METHOD'. Use auto, apt, git, or tar."
+                ;;
+        esac
+    fi
+
+    log_info "Installing Python language server (pylsp)..."
+    if install_python_lsp; then
+        log_success "Python language server installed"
+    else
+        log_warning "Skipping Python LSP installation"
+    fi
+
+    if [ -x "$SCRIPT_DIR/scripts/wolfram-lsp" ]; then
+        cp "$SCRIPT_DIR/scripts/wolfram-lsp" "$BIN_DIR/wolfram-lsp"
+        chmod +x "$BIN_DIR/wolfram-lsp"
+        log_info "Installed Wolfram LSP launcher to $BIN_DIR/wolfram-lsp"
+    fi
+
+    if command -v wolframscript >/dev/null 2>&1; then
+        log_info "Ensuring Wolfram LSP paclet is installed..."
+        if wolframscript -code 'Needs["PacletManager`"]; If[Length[PacletFind["LSPServer"]]==0, PacletInstall["LSPServer"], Null]' >/dev/null 2>&1; then
+            log_success "Wolfram LSP paclet is available"
+        else
+            log_warning "Could not install the Wolfram LSP paclet automatically."
+            log_warning "If needed, run: wolframscript -code '\''PacletInstall[\"LSPServer\"]'\''"
+        fi
+    elif command -v WolframKernel >/dev/null 2>&1; then
+        log_warning "WolframKernel is present but wolframscript is not; skipping paclet bootstrap."
+        log_warning "Install the LSP paclet manually from a Wolfram session if needed."
+    else
+        log_warning "Wolfram tools not found on PATH; skipping Mathematica LSP bootstrap."
+    fi
+
+    if command -v vim >/dev/null 2>&1; then
+        log_info "Installing/updating Vim plugins for LSP support..."
+        vim +'silent! PlugInstall --sync' +qa || log_warning "Vim plugin installation did not complete cleanly."
+    else
+        log_warning "vim not found on PATH; skipping plugin installation."
+    fi
+
+    log_success "Language server tooling setup completed"
+fi
+
+# =============================================================================
+# SECTION 10: RUST TOOLS (FZF, RIPGREP, FD, BAT)
 # =============================================================================
 
 if \
@@ -822,7 +1015,7 @@ else
 fi
 
 # =============================================================================
-# SECTION 10: pre NUCLEAR OPTION: WIPE ALL SUCKLESS TOOLS
+# SECTION 11: pre NUCLEAR OPTION: WIPE ALL SUCKLESS TOOLS
 # =============================================================================
 
 # Nuclear option - wipe all suckless tools and start completely fresh
@@ -836,7 +1029,7 @@ if \
 fi
 
 # =============================================================================
-# SECTION 11: SUCKLESS TOOLS (DWM)
+# SECTION 12: SUCKLESS TOOLS (DWM)
 # =============================================================================
 
 if \
@@ -885,7 +1078,7 @@ EOF
 fi
 
 # =============================================================================
-# SECTION 12: SUCKLESS TOOLS (DMENU)
+# SECTION 13: SUCKLESS TOOLS (DMENU)
 # =============================================================================
 
 if \
@@ -927,7 +1120,7 @@ EOF
 fi
 
 # =============================================================================
-# SECTION 13: SUCKLESS TOOLS (ST TERMINAL)
+# SECTION 14: SUCKLESS TOOLS (ST TERMINAL)
 # =============================================================================
 
 if \
@@ -972,7 +1165,7 @@ EOF
 fi
 
 # =============================================================================
-# SECTION 14: SUCKLESS TOOLS (SLSTATUS)
+# SECTION 15: SUCKLESS TOOLS (SLSTATUS)
 # =============================================================================
 if \
 	(( DO_DWM )) && \
@@ -1019,7 +1212,7 @@ EOF
 fi
 
 # =============================================================================
-# SECTION 15: SUCKLESS TOOLS (SLOCK)
+# SECTION 16: SUCKLESS TOOLS (SLOCK)
 # =============================================================================
 if \
     (( DO_DWM )) && \
@@ -1054,7 +1247,7 @@ EOF
 fi
 
 # =============================================================================
-# SECTION 16: FILE MANAGER AND PDF VIEWER
+# SECTION 17: FILE MANAGER AND PDF VIEWER
 # =============================================================================
 
 if \
@@ -1083,7 +1276,7 @@ if \
 fi
 
 # =============================================================================
-# SECTION 17: NEOVIM SETUP
+# SECTION 18: NEOVIM SETUP
 # =============================================================================
 
 if \
@@ -1147,7 +1340,7 @@ if \
 fi
 
 # =============================================================================
-# SECTION 18: DWM SESSION CONFIGURATION
+# SECTION 19: DWM SESSION CONFIGURATION
 # =============================================================================
 
 if \
@@ -1229,7 +1422,7 @@ EOF
 fi
 
 # =============================================================================
-# SECTION 19: FIX TOUCHPAD CLICK GESTURES
+# SECTION 20: FIX TOUCHPAD CLICK GESTURES
 # =============================================================================
 
 if \
@@ -1261,7 +1454,7 @@ EOF
 fi
 
 # =============================================================================
-# SECTION 20: DOTFILES SETUP
+# SECTION 21: DOTFILES SETUP
 # =============================================================================
 
 if \
@@ -1362,7 +1555,7 @@ fi
 
 
 # =============================================================================
-# SECTION 21: SSH-FIND-AGENT INSTALLATION
+# SECTION 22: SSH-FIND-AGENT INSTALLATION
 # =============================================================================
 
 if \
@@ -1433,7 +1626,7 @@ EOF
 fi
 
 # =============================================================================
-# SECTION 22: SUCKLESS TOOLS CONFIGURATION
+# SECTION 23: SUCKLESS TOOLS CONFIGURATION
 # =============================================================================
 if \
 	(( DO_DWM )) && \
@@ -1851,7 +2044,7 @@ fi
 
 
 # =============================================================================
-# SECTION 23: MAC KEYBOARD CONFIGURATION
+# SECTION 24: MAC KEYBOARD CONFIGURATION
 # =============================================================================
 if \
 	(( DO_MAC )) && \
@@ -1879,7 +2072,7 @@ if \
 fi
 
 # =============================================================================
-# SECTION 24: MESSENGERS 
+# SECTION 25: MESSENGERS 
 # =============================================================================
 if \
 	(( DO_GUI )) && \
@@ -2118,7 +2311,7 @@ if \
 fi
 
 # =============================================================================
-# SECTION 25: MEDIA 
+# SECTION 26: MEDIA 
 # =============================================================================
 if \
 	(( DO_GUI )) && \
@@ -2142,7 +2335,7 @@ if \
 fi
 
 # =============================================================================
-# SECTION 26: MACBOOK FUNCTION KEYS
+# SECTION 27: MACBOOK FUNCTION KEYS
 # =============================================================================
 
 if \
@@ -2184,7 +2377,7 @@ if \
 fi
 
 # =============================================================================
-# SECTION 27: SCIENTIFIC SOFTWARE (GMP, FLINT, FINITEFLOW)
+# SECTION 28: SCIENTIFIC SOFTWARE (GMP, FLINT, FINITEFLOW)
 # =============================================================================
 
 if \
@@ -2501,7 +2694,7 @@ if \
 fi
 
 # =============================================================================
-# SECTION 28: OPENXM + Risa/Asir (from source, XDG-compliant)
+# SECTION 29: OPENXM + Risa/Asir (from source, XDG-compliant)
 # =============================================================================
 
 if \
@@ -2705,7 +2898,7 @@ OPENXM_IGNORE
 fi
 
 # =============================================================================
-# SECTION 29: TEXLIVE INSTALLATION
+# SECTION 30: TEXLIVE INSTALLATION
 # =============================================================================
 if \
 	(( DO_TEX )) && \
@@ -2808,7 +3001,7 @@ EOF
 fi
 
 # =============================================================================
-# SECTION 30: krita and write
+# SECTION 31: krita and write
 # =============================================================================
 if \
 	(( DO_KRITA )) && \
@@ -2898,7 +3091,7 @@ EOF
 fi
 
 # =============================================================================
-# SECTION 31: SINGULAR COMPUTER ALGEBRA SYSTEM
+# SECTION 32: SINGULAR COMPUTER ALGEBRA SYSTEM
 # =============================================================================
 if \
 	(( DO_SCI )) && \
@@ -2963,7 +3156,7 @@ if \
 fi
 
 # =============================================================================
-# SECTION 32: SINGULAR COMPUTER ALGEBRA SYSTEM (LOCAL INSTALL, NO SUDO)
+# SECTION 33: SINGULAR COMPUTER ALGEBRA SYSTEM (LOCAL INSTALL, NO SUDO)
 # =============================================================================
 if \
     # (( DO_SCI )) && \
@@ -3113,7 +3306,7 @@ if \
 fi
 
 # =============================================================================
-# SECTION 33: MACAULAY2 COMPUTER ALGEBRA SYSTEM
+# SECTION 34: MACAULAY2 COMPUTER ALGEBRA SYSTEM
 # =============================================================================
 if \
     (( DO_SCI )) && \
@@ -3172,7 +3365,7 @@ if \
 fi
 
 # =============================================================================
-# SECTION 34: ZATHURA PDF VIEWER (SOURCE BUILD)
+# SECTION 35: ZATHURA PDF VIEWER (SOURCE BUILD)
 # =============================================================================
 if \
 	(( DO_GUI )) && \
@@ -3332,7 +3525,7 @@ if \
 fi
 
 # =============================================================================
-# SECTION 35: PYTHON TOOLS
+# SECTION 36: PYTHON TOOLS
 # =============================================================================
 
 if \
@@ -3382,7 +3575,7 @@ if \
 fi
 
 # =============================================================================
-# SECTION 36: PASS PASSWORD STORE & GIT CREDENTIAL HELPER
+# SECTION 37: PASS PASSWORD STORE & GIT CREDENTIAL HELPER
 # =============================================================================
 
 if \
@@ -3437,7 +3630,7 @@ if \
 fi
 
 # =============================================================================
-# SECTION 37: GPG TERMINAL PINENTRY (for pass, git-credential-pass)
+# SECTION 38: GPG TERMINAL PINENTRY (for pass, git-credential-pass)
 # =============================================================================
 if \
 	(( DO_GPG )) && \
@@ -3472,7 +3665,7 @@ fi
 
 
 # =============================================================================
-# SECTION 38: FINAL OWNERSHIP AND CLEANUP
+# SECTION 39: FINAL OWNERSHIP AND CLEANUP
 # =============================================================================
 
 if \

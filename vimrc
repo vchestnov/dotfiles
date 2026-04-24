@@ -22,6 +22,8 @@ Plug 'scrooloose/nerdtree'
 Plug 'tpope/vim-commentary'
 
 Plug 'ervandew/supertab'
+Plug 'prabirshrestha/vim-lsp'
+Plug 'mattn/vim-lsp-settings'
 Plug 'tpope/vim-surround'
 
 Plug 'godlygeek/tabular'
@@ -53,6 +55,71 @@ call plug#end()
 
 syntax on
 filetype plugin indent on
+
+" let g:SuperTabDefaultCompletionType = '<c-x><c-o>'
+" set completeopt=menuone,noselect
+
+" let g:lsp_diagnostics_enabled = 1
+" let g:lsp_document_code_action_signs_enabled = 0
+" let g:lsp_preview_keep_focus = 1
+" let g:lsp_fold_enabled = 0
+
+" function! s:OnLspBufferEnabled() abort
+"     setlocal omnifunc=lsp#complete
+"     if exists('+tagfunc')
+"         setlocal tagfunc=lsp#tagfunc
+"     endif
+
+"     nmap <buffer> gd <plug>(lsp-definition)
+"     nmap <buffer> gD <plug>(lsp-declaration)
+"     nmap <buffer> gi <plug>(lsp-implementation)
+"     nmap <buffer> gr <plug>(lsp-references)
+"     nmap <buffer> K <plug>(lsp-hover)
+"     nmap <buffer> <leader>rn <plug>(lsp-rename)
+"     nmap <buffer> <leader>ca <plug>(lsp-code-action)
+"     nmap <buffer> [d <plug>(lsp-previous-diagnostic)
+"     nmap <buffer> ]d <plug>(lsp-next-diagnostic)
+"     nmap <buffer> <leader>ds <plug>(lsp-document-symbol-search)
+"     nmap <buffer> <leader>ws <plug>(lsp-workspace-symbol-search)
+" endfunction
+
+" function! s:RegisterLspServers() abort
+"     if get(g:, 'dotfiles_lsp_registered', 0)
+"         return
+"     endif
+"     let g:dotfiles_lsp_registered = 1
+
+"     if executable('clangd')
+"         call lsp#register_server({
+"             \ 'name': 'clangd',
+"             \ 'cmd': {server_info->['clangd', '--background-index', '--clang-tidy']},
+"             \ 'allowlist': ['c', 'cpp', 'objc', 'objcpp'],
+"             \ })
+"     endif
+
+"     if executable('pylsp')
+"         call lsp#register_server({
+"             \ 'name': 'pylsp',
+"             \ 'cmd': {server_info->['pylsp']},
+"             \ 'allowlist': ['python'],
+"             \ })
+"     endif
+
+"     if executable('wolfram-lsp')
+"         call lsp#register_server({
+"             \ 'name': 'wolfram-lsp',
+"             \ 'cmd': {server_info->['wolfram-lsp']},
+"             \ 'allowlist': ['mma'],
+"             \ 'root_uri_patterns': ['PacletInfo.wl', '.git/'],
+"             \ })
+"     endif
+" endfunction
+
+" augroup lsp_setup
+"     autocmd!
+"     autocmd User lsp_setup call s:RegisterLspServers()
+"     autocmd User lsp_buffer_enabled call s:OnLspBufferEnabled()
+" augroup END
 
 function! NERDTreeQuit()
     redir => buffersoutput
