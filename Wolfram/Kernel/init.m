@@ -34,6 +34,8 @@
     "soft/Singular",
     "soft/MultivariateApart",
     "soft/Subtropica",
+    "soft/blade",
+    "soft/Canonica/src",
     Nothing
 } // Map[RightComposition[
     ToFileName[$HomeDirectory, #]&,

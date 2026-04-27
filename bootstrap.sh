@@ -3157,6 +3157,8 @@ if \
 		clone_or_update "$url" "$dest"
     }
 
+: <<'DEBUG'
+
     # ========================================
     # GMP
     # ========================================
@@ -3624,6 +3626,9 @@ if \
             log_warning "Skipping private repo ff_ext_packages (SSH keys not configured or access denied)."
         fi
     fi
+DEBUG
+    # Canonica
+    clone_sci_repo "Canonica" "https://github.com/christophmeyer/CANONICA.git"
 
     if (( DO_SCI_EXTRA )); then
         log_success "Extra scientific packages cloned into $SCI_REPOS_DIR"
