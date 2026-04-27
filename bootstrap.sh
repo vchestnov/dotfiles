@@ -225,18 +225,30 @@ install_launcher_script() {
 }
 
 install_python_lsp() {
+    local pylsp_venv
+
     if command -v pipx >/dev/null 2>&1; then
         pipx install --force 'python-lsp-server[all]'
         return 0
     fi
 
     if command -v python3 >/dev/null 2>&1; then
-        if python3 -m pip --version >/dev/null 2>&1; then
-            python3 -m pip install --user --upgrade 'python-lsp-server[all]'
+        : "${XDG_DATA_HOME:=$HOME/.local/share}"
+        pylsp_venv="${PYLSP_VENV_DIR:-$XDG_DATA_HOME/python-lsp-server}"
+
+        if python3 -m venv --help >/dev/null 2>&1; then
+            mkdir -p "$(dirname "$pylsp_venv")" "$HOME/.local/bin"
+            if [ ! -x "$pylsp_venv/bin/python" ]; then
+                python3 -m venv "$pylsp_venv"
+            fi
+
+            "$pylsp_venv/bin/python" -m pip install --upgrade pip
+            "$pylsp_venv/bin/python" -m pip install --upgrade 'python-lsp-server[all]'
+            ln -sfn "$pylsp_venv/bin/pylsp" "$HOME/.local/bin/pylsp"
             return 0
         fi
 
-        log_warning "python3 is available, but python3 -m pip is not."
+        log_warning "python3 is available, but python3 -m venv is not."
         return 1
     fi
 
@@ -351,6 +363,7 @@ install_clangd_from_source() {
     local git_ref="${CLANGD_GIT_REF:-llvmorg-21.1.6}"
     local tar_version="${CLANGD_TARBALL_VERSION:-21.1.6}"
     local source_root=""
+    local source_dir=""
     local build_dir="$BUILD_DIR/llvm-project-clangd"
     local repo_dir="$SRC_DIR/llvm-project"
     local tarball="$SRC_DIR/llvm-project-${tar_version}.src.tar.xz"
@@ -396,6 +409,12 @@ install_clangd_from_source() {
             if [ ! -f "$tarball" ]; then
                 wget "$tar_url" -O "$tarball"
             fi
+
+            if [ -d "$tar_src_dir" ] && [ ! -d "$tar_src_dir/llvm/utils/TableGen" ] && [ ! -d "$tar_src_dir/utils/TableGen" ]; then
+                log_warning "Existing llvm-project tarball source tree looks incomplete; re-extracting it."
+                rm -rf "$tar_src_dir"
+            fi
+
             if [ ! -d "$tar_src_dir" ]; then
                 tar -xf "$tarball"
             fi
@@ -407,8 +426,18 @@ install_clangd_from_source() {
             ;;
     esac
 
+    if [ -f "$source_root/llvm/CMakeLists.txt" ] && [ -d "$source_root/llvm/utils/TableGen" ]; then
+        source_dir="$source_root/llvm"
+    elif [ -f "$source_root/CMakeLists.txt" ] && [ -d "$source_root/utils/TableGen" ]; then
+        source_dir="$source_root"
+    else
+        log_warning "Could not find a valid LLVM source directory under $source_root."
+        log_warning "Expected either llvm/CMakeLists.txt with llvm/utils/TableGen, or a top-level CMakeLists.txt with utils/TableGen."
+        return 1
+    fi
+
     cmake -G Ninja \
-        -S "$source_root/llvm" \
+        -S "$source_dir" \
         -B "$build_dir" \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_INSTALL_PREFIX="$install_prefix" \
