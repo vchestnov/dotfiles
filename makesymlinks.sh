@@ -229,7 +229,24 @@ case "$BOOTSTRAP_PROFILE" in
         DO_WOLFRAM=0
         DO_TEMPLATES=0
         DO_KRITA=0
-        DO_NPM=1
+        DO_NPM=0
+        ;;
+    test)
+        DO_CORE=0
+        DO_EXPERIMENTAL=0
+        DO_FZF=0
+        DO_GIT=0
+        DO_GPG=0
+        DO_GUI=0
+        DO_SCI=0
+        DO_SSH=0
+        DO_TEX=0
+        DO_USER=1
+        DO_VIFM=0
+        DO_WOLFRAM=0
+        DO_TEMPLATES=0
+        DO_KRITA=0
+        DO_NPM=0
         ;;
     *)
         log_error "Unknown profile '$BOOTSTRAP_PROFILE'!"
@@ -423,7 +440,7 @@ if \
 fi
 
 # =============================================================================
-# SECTION 06: User scripts -> ~/.local/bin
+# SECTION 06: User scripts and launchers -> ~/.local/bin
 # =============================================================================
 
 if \
@@ -433,6 +450,7 @@ if \
     ensure_dir "$HOME/.local/bin"
 
     if [ -d "$DOTFILES_DIR/scripts" ]; then
+        log_info "Linking repo-managed scripts from $DOTFILES_DIR/scripts into $HOME/.local/bin"
         for script in "$DOTFILES_DIR"/scripts/*; do
             [ -f "$script" ] || continue
             dest="$HOME/.local/bin/$(basename "$script")"

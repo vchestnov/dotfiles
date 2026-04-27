@@ -206,20 +206,22 @@ build_and_install() {
 install_launcher_script() {
     local source_script=$1
     local target_script=$2
+    local resolved_source
 
     if [ ! -f "$source_script" ]; then
         return 1
     fi
 
     mkdir -p "$(dirname "$target_script")"
+    resolved_source="$(readlink -f "$source_script" 2>/dev/null || printf '%s\n' "$source_script")"
 
-    if [ "$(readlink -f "$source_script" 2>/dev/null || printf '%s\n' "$source_script")" = "$(readlink -f "$target_script" 2>/dev/null || printf '%s\n' "$target_script")" ]; then
+    if [ "$resolved_source" = "$(readlink -f "$target_script" 2>/dev/null || printf '%s\n' "$target_script")" ]; then
         chmod +x "$source_script"
         return 0
     fi
 
-    cp "$source_script" "$target_script"
-    chmod +x "$target_script"
+    chmod +x "$source_script"
+    ln -sfn "$resolved_source" "$target_script"
 }
 
 install_python_lsp() {
