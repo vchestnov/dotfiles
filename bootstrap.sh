@@ -974,6 +974,7 @@ DO_GPG=1          # gpg-agent + pinentry tweaks
 DO_POETRY=1       # poetry / arxivterminal
 DO_RUST_TOOLS=1   # rustup + fzf, rg, fd, bat
 DO_LSP=1          # language servers + vim LSP tooling
+DO_NEOVIM=1       # Neovim from source + kickstart.nvim runtime
 CLANGD_INSTALL_METHOD_DEFAULT=tar # default clangd install path for profiles
 DO_SCI=1          # scientific stack (GMP, NTL, MPFR, FLINT, FiniteFlow, etc.)
 DO_GMP=1          # GMP from source inside scientific stack
@@ -1012,6 +1013,7 @@ case "$BOOTSTRAP_PROFILE" in
         DO_POETRY=0
         DO_RUST_TOOLS=1
         DO_LSP=1
+        DO_NEOVIM=1
         DO_SCI=1
         DO_GMP=1
         DO_NTL=1
@@ -1046,6 +1048,7 @@ case "$BOOTSTRAP_PROFILE" in
         DO_POETRY=0
         DO_RUST_TOOLS=0
         DO_LSP=0
+        DO_NEOVIM=0
         DO_SCI=0
         DO_GMP=0
         DO_NTL=0
@@ -1078,7 +1081,8 @@ case "$BOOTSTRAP_PROFILE" in
         DO_GPG=0
         DO_POETRY=0
         DO_RUST_TOOLS=0
-        DO_LSP=1
+        DO_LSP=0
+        DO_NEOVIM=1
         DO_SCI=0
         DO_GMP=0
         DO_NTL=0
@@ -2049,63 +2053,97 @@ fi
 # =============================================================================
 
 if \
-	(( DO_SYSTEM )) && \
-	prompt_continue "Install Neovim and kickstart.nvim?" && \
-	: \
+    (( DO_NEOVIM )) && \
+    prompt_continue "Build Neovim from source and install kickstart.nvim?" && \
+    : \
 ; then
     log_section "NEOVIM SETUP"
-    
-    # # Install Neovim and kickstart.nvim
-    # log_info "Installing Neovim..."
 
-    # # Remove old neovim if installed via apt
-    # refresh_sudo
-    # sudo apt remove -y neovim 2>/dev/null || true
+    : "${XDG_CONFIG_HOME:=$HOME/.config}"
+    : "${XDG_DATA_HOME:=$HOME/.local/share}"
+    : "${XDG_CACHE_HOME:=$HOME/.cache}"
+    : "${XDG_STATE_HOME:=$HOME/.local/state}"
 
-    # # Install latest Neovim from GitHub releases
-    # log_info "Downloading latest Neovim..."
-    # NVIM_VERSION=$(curl -s https://api.github.com/repos/neovim/neovim/releases/latest | grep -Po '"tag_name": "\K[^"]*')
-    # wget "https://github.com/neovim/neovim/releases/download/${NVIM_VERSION}/nvim-linux64.tar.gz" -O /tmp/nvim-linux64.tar.gz
-    # tar -xzf /tmp/nvim-linux64.tar.gz -C /tmp/
-    # cp -r /tmp/nvim-linux64/* "$HOME/.local/"
-    # rm -rf /tmp/nvim-linux64*
+    NVIM_INSTALL_PREFIX="${NVIM_INSTALL_PREFIX:-$HOME/.local}"
+    NVIM_SOURCE_DIR="${NVIM_SOURCE_DIR:-$SRC_DIR/neovim}"
+    NVIM_CONFIG_SOURCE="${NVIM_CONFIG_SOURCE:-$SCRIPT_DIR/config/nvim}"
+    NVIM_CONFIG_TARGET="${NVIM_CONFIG_TARGET:-$XDG_CONFIG_HOME/nvim}"
+    KICKSTART_DIR="${KICKSTART_DIR:-$XDG_DATA_HOME/nvim/kickstart.nvim}"
+    NEOVIM_GIT_BRANCH="${NEOVIM_GIT_BRANCH:-stable}"
 
-    # # Ensure proper ownership of Neovim files
-    # chown -R "$USER:$(id -gn)" "$HOME/.local/bin/nvim" "$HOME/.local/share/nvim" "$HOME/.local/lib/nvim" 2>/dev/null || true
-    
-    log_info "Building Neovim from source..."
-    clone_or_update "https://github.com/neovim/neovim.git" "$SRC_DIR/neovim"
+    mkdir -p \
+        "$NVIM_INSTALL_PREFIX/bin" \
+        "$XDG_CONFIG_HOME" \
+        "$XDG_CACHE_HOME/nvim" \
+        "$XDG_STATE_HOME/nvim" \
+        "$(dirname "$KICKSTART_DIR")"
 
-    cd "$SRC_DIR/neovim"
-    # Clean previous build artefacts if any
-    make distclean 2>/dev/null || true
-    rm -rf build .deps 2>/dev/null || true
+    missing_neovim_build_tools=()
+    for required_cmd in git cc make cmake ninja curl unzip gettext; do
+        if ! command -v "$required_cmd" >/dev/null 2>&1; then
+            missing_neovim_build_tools+=("$required_cmd")
+        fi
+    done
 
-    # Use the helper to build + install into ~/.local
-    #   - CMAKE_BUILD_TYPE=RelWithDebInfo for a “release-ish” build
-    #   - CMAKE_INSTALL_PREFIX=$HOME/.local so nvim ends up in ~/.local/bin
-    build_and_install \
-        "Neovim" \
-        "make CMAKE_BUILD_TYPE=RelWithDebInfo CMAKE_INSTALL_PREFIX=$HOME/.local" \
-        "make install" \
-        true
+    if [ "${#missing_neovim_build_tools[@]}" -gt 0 ]; then
+        log_warning "Skipping Neovim build; missing required tools: ${missing_neovim_build_tools[*]}"
+        if (( DO_SYSTEM )) && command -v sudo >/dev/null 2>&1; then
+            log_warning "Run Section 02 first or install the missing tools, then retry Section 18."
+        else
+            log_warning "This profile avoids sudo. Install the missing tools in user space or via your admin, then retry Section 18."
+        fi
+    else
+        log_info "Building Neovim from source (branch: $NEOVIM_GIT_BRANCH)..."
+        clone_or_update "https://github.com/neovim/neovim.git" "$NVIM_SOURCE_DIR" "$NEOVIM_GIT_BRANCH"
 
-    # Sanity check: ensure nvim on PATH
-    if ! command -v nvim >/dev/null 2>&1; then
-        log_warning "nvim is not on PATH; ensure $HOME/.local/bin is in your PATH."
+        cd "$NVIM_SOURCE_DIR"
+        make distclean 2>/dev/null || true
+        rm -rf build .deps 2>/dev/null || true
+
+        build_and_install \
+            "Neovim" \
+            "make CMAKE_BUILD_TYPE=RelWithDebInfo CMAKE_INSTALL_PREFIX=$NVIM_INSTALL_PREFIX" \
+            "make install" \
+            true
+        hash -r 2>/dev/null || true
     fi
 
-    # Install kickstart.nvim
-    log_info "Setting up kickstart.nvim..."
-    if [ -d "$HOME/.config/nvim" ]; then
-        log_warning "Existing nvim config found, backing up to ~/.config/nvim.backup"
-        mv "$HOME/.config/nvim" "$HOME/.config/nvim.backup.$(date +%Y%m%d_%H%M%S)"
+    if [ -d "$NVIM_CONFIG_SOURCE" ]; then
+        if [ -e "$NVIM_CONFIG_TARGET" ] && [ ! -L "$NVIM_CONFIG_TARGET" ]; then
+            backup_path="${NVIM_CONFIG_TARGET}.backup.$(date +%Y%m%d_%H%M%S)"
+            log_warning "Backing up existing Neovim config: $NVIM_CONFIG_TARGET -> $backup_path"
+            mv "$NVIM_CONFIG_TARGET" "$backup_path"
+        fi
+
+        if [ -L "$NVIM_CONFIG_TARGET" ]; then
+            current_link=$(readlink -- "$NVIM_CONFIG_TARGET" || true)
+            if [ "$current_link" != "$NVIM_CONFIG_SOURCE" ]; then
+                log_warning "Replacing existing Neovim config symlink: $NVIM_CONFIG_TARGET -> $current_link"
+                rm -f -- "$NVIM_CONFIG_TARGET"
+            fi
+        fi
+
+        ln -sfn "$NVIM_CONFIG_SOURCE" "$NVIM_CONFIG_TARGET"
+        log_info "Linked repo-managed Neovim config: $NVIM_CONFIG_TARGET -> $NVIM_CONFIG_SOURCE"
+    else
+        log_warning "Repo-managed Neovim config not found at $NVIM_CONFIG_SOURCE; skipping config link."
     fi
 
-    git clone https://github.com/nvim-lua/kickstart.nvim.git "$HOME/.config/nvim"
-    chown -R "$USER:$(id -gn)" "$HOME/.config/nvim"
+    if command -v git >/dev/null 2>&1; then
+        log_info "Installing/updating kickstart.nvim runtime in $KICKSTART_DIR..."
+        clone_or_update "https://github.com/nvim-lua/kickstart.nvim.git" "$KICKSTART_DIR"
+        log_success "kickstart.nvim runtime is available at $KICKSTART_DIR"
+    else
+        log_warning "git is not available; skipping kickstart.nvim checkout."
+    fi
 
-    log_success "Neovim and kickstart.nvim installed"
+    if command -v nvim >/dev/null 2>&1; then
+        log_success "Neovim is available at $(command -v nvim)"
+    elif [ -x "$NVIM_INSTALL_PREFIX/bin/nvim" ]; then
+        log_success "Neovim is available at $NVIM_INSTALL_PREFIX/bin/nvim"
+    else
+        log_warning "nvim is not on PATH; ensure $HOME/.local/bin is exported before launching it."
+    fi
 fi
 
 # =============================================================================
@@ -4679,10 +4717,6 @@ if \
     log_info "Ensuring proper ownership of all created directories..."
     chown -R "$USER:$(id -gn)" "$HOME/.local" "$HOME/.config" "$HOME/dev" "$HOME/docs" "$HOME/soft" 2>/dev/null || true
     
-    # Clean up any temporary files
-    log_info "Cleaning up temporary files..."
-    rm -f /tmp/nvim-linux64* 2>/dev/null || true
-    
     log_success "Final cleanup completed"
 fi
 
@@ -4698,7 +4732,7 @@ echo "  • Vim (from git) with terminal and xclip support"
 echo "  • fzf, ripgrep (rg), fd (from git)"
 echo "  • dwm, dmenu, st (from suckless.org) with font-based emoji crash fix"
 echo "  • vifm, zathura"
-echo "  • Neovim with kickstart.nvim"
+echo "  • Neovim (from source) with repo-managed config and kickstart.nvim runtime"
 echo "  • tmux, htop"
 echo "  • Clean home directory structure: ~/dev, ~/docs, ~/soft"
 echo

@@ -192,6 +192,7 @@ DO_WOLFRAM=1
 DO_TEMPLATES=1
 DO_KRITA=1
 DO_NPM=1
+DO_NEOVIM=1
 
 case "$BOOTSTRAP_PROFILE" in
     desktop)
@@ -213,6 +214,7 @@ case "$BOOTSTRAP_PROFILE" in
         DO_TEMPLATES=0
         DO_KRITA=0
         DO_NPM=0
+        DO_NEOVIM=1
         ;;
     nothing)
         DO_CORE=0
@@ -230,6 +232,7 @@ case "$BOOTSTRAP_PROFILE" in
         DO_TEMPLATES=0
         DO_KRITA=0
         DO_NPM=0
+        DO_NEOVIM=0
         ;;
     test)
         DO_CORE=0
@@ -241,12 +244,13 @@ case "$BOOTSTRAP_PROFILE" in
         DO_SCI=0
         DO_SSH=0
         DO_TEX=0
-        DO_USER=1
+        DO_USER=0
         DO_VIFM=0
         DO_WOLFRAM=0
         DO_TEMPLATES=0
         DO_KRITA=0
         DO_NPM=0
+        DO_NEOVIM=1
         ;;
     *)
         log_error "Unknown profile '$BOOTSTRAP_PROFILE'!"
@@ -359,6 +363,17 @@ if \
               "fzf bash integration"
 fi
 
+if \
+    (( DO_NEOVIM )) && \
+    : \
+; then
+    if [ -d "$DOTFILES_DIR/config/nvim" ]; then
+        ensure_dir "$XDG_CONFIG_HOME"
+        link_file "$DOTFILES_DIR/config/nvim" \
+                  "$XDG_CONFIG_HOME/nvim" \
+                  "Neovim config (XDG)"
+    fi
+fi
 
 if \
     (( DO_VIFM )) && \
