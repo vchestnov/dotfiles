@@ -67,6 +67,9 @@ let g:lsp_settings = {
 \ 'clangd': {
 \   'cmd': ['clangd', '--background-index', '--clang-tidy', '--query-driver=/usr/bin/c++,/usr/bin/g++'],
 \ },
+\ 'julia-language-server': {
+\   'disabled': v:true,
+\ },
 \}
 if !exists('g:wolfram_definition_search_paths')
     let g:wolfram_definition_search_paths = ['~/.local/share/Wolfram/ApplicationData/Applications']
@@ -234,6 +237,20 @@ function! s:WolframDefinitionSpec(command) abort
         \ })
 endfunction
 
+function! s:ToggleLspDiagnostics() abort
+    let l:bufnr = bufnr('%')
+
+    if get(b:, 'dotfiles_lsp_diagnostics_disabled', 0)
+        call lsp#enable_diagnostics_for_buffer(l:bufnr)
+        let b:dotfiles_lsp_diagnostics_disabled = 0
+        echo 'LSP diagnostics enabled'
+    else
+        call lsp#disable_diagnostics_for_buffer(l:bufnr)
+        let b:dotfiles_lsp_diagnostics_disabled = 1
+        echo 'LSP diagnostics disabled'
+    endif
+endfunction
+
 function! s:WolframRuntimePaths() abort
     let l:paths = []
     let l:raw_paths = []
@@ -392,6 +409,7 @@ function! s:OnLspBufferEnabled() abort
     nmap <buffer> ]d <plug>(lsp-next-diagnostic)
     nmap <buffer> <leader>ds <plug>(lsp-document-symbol-search)
     nmap <buffer> <leader>ws <plug>(lsp-workspace-symbol-search)
+    nnoremap <buffer> <leader>ld :LspToggleDiagnostics<CR>
     if &filetype ==# 'mma'
         nnoremap <buffer> <leader>wd :WolframGotoDefinition<CR>
     endif
@@ -438,6 +456,7 @@ augroup END
 
 command! WolframGotoDefinition call s:WolframGotoDefinition()
 command! WolframRefreshPaths call s:WolframRefreshPaths()
+command! LspToggleDiagnostics call s:ToggleLspDiagnostics()
 
 function! NERDTreeQuit()
     redir => buffersoutput
