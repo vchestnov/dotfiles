@@ -69,10 +69,17 @@ let g:lsp_settings = {
 \ },
 \}
 if !exists('g:wolfram_definition_search_paths')
-    let g:wolfram_definition_search_paths = ['~/dev', '~/soft', '~/.local/share/Wolfram/ApplicationData/Applications']
+    let g:wolfram_definition_search_paths = ['~/.local/share/Wolfram/ApplicationData/Applications']
 endif
 if !exists('g:wolfram_definition_query_runtime_path')
     let g:wolfram_definition_query_runtime_path = 1
+endif
+if !exists('g:wolfram_definition_path_exclude_patterns')
+    let g:wolfram_definition_path_exclude_patterns = [
+        \ '/Documentation/',
+        \ '/SystemFiles/Data/',
+        \ '/SystemFiles/Links/',
+        \ ]
 endif
 
 function! s:WolframRuntimePathsCacheFile() abort
@@ -93,6 +100,140 @@ function! s:WolframPathQueryCode() abort
         \ ], '; ')
 endfunction
 
+function! s:WolframPathStartsWith(path, prefix) abort
+    return stridx(a:path, a:prefix) == 0
+endfunction
+
+function! s:WolframPathRelevant(path) abort
+    let l:path = fnamemodify(a:path, ':p')
+    let l:home = fnamemodify($HOME, ':p')
+
+    if l:path ==# l:home
+        return 0
+    endif
+
+    for l:pattern in get(g:, 'wolfram_definition_path_exclude_patterns', [])
+        if l:path =~# l:pattern
+            return 0
+        endif
+    endfor
+
+    return 1
+endfunction
+
+function! s:WolframPathRank(path) abort
+    let l:path = fnamemodify(a:path, ':p')
+    let l:dev = fnamemodify($HOME . '/dev/', ':p')
+    let l:soft = fnamemodify($HOME . '/soft/', ':p')
+    let l:user_apps = fnamemodify($HOME . '/.Wolfram/Applications/', ':p')
+    let l:user_autoload = fnamemodify($HOME . '/.Wolfram/Autoload/', ':p')
+    let l:user_kernel = fnamemodify($HOME . '/.Wolfram/Kernel/', ':p')
+    let l:xdg_apps = fnamemodify($HOME . '/.local/share/Wolfram/ApplicationData/Applications/', ':p')
+
+    if s:WolframPathStartsWith(l:path, l:dev) || s:WolframPathStartsWith(l:path, l:soft)
+        return 10
+    endif
+    if s:WolframPathStartsWith(l:path, l:user_apps) || s:WolframPathStartsWith(l:path, l:xdg_apps)
+        return 20
+    endif
+    if s:WolframPathStartsWith(l:path, l:user_autoload)
+        return 30
+    endif
+    if s:WolframPathStartsWith(l:path, l:user_kernel)
+        return 40
+    endif
+    if l:path =~# '/AddOns/\%(Applications\|Packages\|Autoload\|ExtraPackages\)/'
+        return 50
+    endif
+    if l:path =~# '/SystemFiles/\%(Kernel/Packages\|Autoload\)/'
+        return 60
+    endif
+    return 90
+endfunction
+
+function! s:CompareWolframPaths(left, right) abort
+    let l:left_rank = s:WolframPathRank(a:left)
+    let l:right_rank = s:WolframPathRank(a:right)
+
+    if l:left_rank == l:right_rank
+        return a:left ==# a:right ? 0 : (a:left <# a:right ? -1 : 1)
+    endif
+
+    return l:left_rank < l:right_rank ? -1 : 1
+endfunction
+
+function! s:CurateWolframRuntimePaths(paths) abort
+    let l:curated = []
+
+    for l:path in a:paths
+        let l:expanded = fnamemodify(expand(l:path), ':p')
+        if isdirectory(l:expanded) && s:WolframPathRelevant(l:expanded) && index(l:curated, l:expanded) < 0
+            call add(l:curated, l:expanded)
+        endif
+    endfor
+
+    call sort(l:curated, function('s:CompareWolframPaths'))
+    return l:curated
+endfunction
+
+function! s:BuildWolframRgCommand(pattern, paths, color_mode) abort
+    let l:cmd = 'rg --column --line-number --no-heading --smart-case --color=' . a:color_mode . ' --glob "*.m" --glob "*.wl" ' . shellescape(a:pattern)
+
+    for l:path in a:paths
+        let l:cmd .= ' ' . shellescape(l:path)
+    endfor
+
+    return l:cmd
+endfunction
+
+function! s:WolframRgLineToLocation(line) abort
+    let l:clean = substitute(a:line, '\e\[[0-9;]*m', '', 'g')
+    let l:match = matchlist(l:clean, '^\(.\{-}\):\(\d\+\):\(\d\+\):')
+
+    if empty(l:match)
+        return {}
+    endif
+
+    return {
+        \ 'filename': l:match[1],
+        \ 'lnum': str2nr(l:match[2]),
+        \ 'col': str2nr(l:match[3]),
+        \ }
+endfunction
+
+function! s:OpenWolframLocation(location) abort
+    if empty(a:location)
+        return
+    endif
+
+    execute 'edit ' . fnameescape(a:location.filename)
+    execute a:location.lnum
+    call cursor(a:location.lnum, a:location.col)
+    normal! zvzz
+endfunction
+
+function! s:WolframDefinitionSink(lines) abort
+    if empty(a:lines)
+        return
+    endif
+
+    call s:OpenWolframLocation(s:WolframRgLineToLocation(a:lines[0]))
+endfunction
+
+function! s:WolframDefinitionSpec(command) abort
+    return fzf#vim#with_preview({
+        \ 'source': a:command,
+        \ 'sink*': function('s:WolframDefinitionSink'),
+        \ 'options': [
+        \   '--ansi',
+        \   '--prompt', 'WolframDef> ',
+        \   '--delimiter', ':',
+        \   '--select-1',
+        \   '--exit-0',
+        \ ],
+        \ })
+endfunction
+
 function! s:WolframRuntimePaths() abort
     let l:paths = []
     let l:raw_paths = []
@@ -107,13 +248,8 @@ function! s:WolframRuntimePaths() abort
     endif
 
     if filereadable(l:cache_file)
-        for l:path in readfile(l:cache_file)
-            let l:expanded = fnamemodify(expand(l:path), ':p')
-            if isdirectory(l:expanded) && index(l:paths, l:expanded) < 0
-                call add(l:paths, l:expanded)
-            endif
-        endfor
-
+        let l:paths = s:CurateWolframRuntimePaths(readfile(l:cache_file))
+        call writefile(l:paths, l:cache_file)
         let s:wolfram_runtime_paths = l:paths
         return copy(s:wolfram_runtime_paths)
     endif
@@ -147,12 +283,7 @@ function! s:WolframRuntimePaths() abort
         let l:raw_paths = l:output[l:start + 1 : l:end - 1]
     endif
 
-    for l:path in l:raw_paths
-        let l:expanded = fnamemodify(expand(l:path), ':p')
-        if isdirectory(l:expanded) && index(l:paths, l:expanded) < 0
-            call add(l:paths, l:expanded)
-        endif
-    endfor
+    let l:paths = s:CurateWolframRuntimePaths(l:raw_paths)
 
     call writefile(l:paths, l:cache_file)
     let s:wolfram_runtime_paths = l:paths
@@ -200,6 +331,9 @@ endfunction
 function! s:WolframGotoDefinition() abort
     let l:symbol = expand('<cword>')
     let l:paths = s:WolframSearchPaths()
+    let l:symbol_pattern = ''
+    let l:pattern = ''
+    let l:cmd = ''
 
     if empty(l:symbol)
         echoerr 'No Wolfram symbol under cursor'
@@ -212,13 +346,15 @@ function! s:WolframGotoDefinition() abort
     endif
 
     let l:symbol_pattern = escape(l:symbol, '\.^$~[]*+?()|{}')
-    let l:pattern = '^\s*' . l:symbol_pattern . '\s*(::usage\s*=|\[|:=|=)'
-    let l:cmd = 'rg --vimgrep --no-heading --smart-case --glob "*.m" --glob "*.wl" ' . shellescape(l:pattern)
+    let l:pattern = '^\s*' . l:symbol_pattern . '(\s*::usage\s*=|\s*\[.*\]\s*(:=|=)|\s*(:=|=))'
 
-    for l:path in l:paths
-        let l:cmd .= ' ' . shellescape(l:path)
-    endfor
+    if exists('g:loaded_fzf') && exists('g:loaded_fzf_vim')
+        let l:cmd = s:BuildWolframRgCommand(l:pattern, l:paths, 'always')
+        call fzf#run(fzf#wrap('wolfram-definitions', s:WolframDefinitionSpec(l:cmd)))
+        return
+    endif
 
+    let l:cmd = s:BuildWolframRgCommand(l:pattern, l:paths, 'never')
     let l:matches = systemlist(l:cmd)
 
     if v:shell_error != 0 || empty(l:matches)
