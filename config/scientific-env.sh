@@ -15,5 +15,9 @@ export LIBRARY_PATH="${HOME}/.local/lib${LIBRARY_PATH:+:$LIBRARY_PATH}"
 # Convenience
 export SCIENCE_REPOS_DIR="${HOME}/soft"
 
+# Julia
+export JULIA_DEPOT_PATH="${XDG_DATA_HOME:-${HOME}/.local/share}/julia"
+export JULIA_HISTORY="${XDG_STATE_HOME:-${HOME}/.local/state}/julia/repl_history.jl"
+
 # Fermat
 export FERMATPATH="${HOME}/.local/bin/fer64"

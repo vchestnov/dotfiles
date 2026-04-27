@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+if [ "${WOLFRAM_LSP_DEBUG_TRACE:-0}" = "1" ]; then
+    set -x
+fi
+
+log_dir="${WOLFRAM_LSP_LOG_DIR:-}"
+
+build_run_expr() {
+    local escaped_log_dir=$1
+    local wl_statements=(
+        'Needs["LSPServer`"]'
+        'SetOptions[CodeInspector`CodeInspectCST, "TagExclusions" -> {"SuspiciousSessionSymbol"}]'
+        'SetOptions[CodeInspector`CodeInspectAgg, "TagExclusions" -> {"SuspiciousSessionSymbol"}]'
+        'SetOptions[CodeInspector`CodeInspectAST, "TagExclusions" -> {"SuspiciousSessionSymbol"}]'
+    )
+    local run_expr
+
+    if [ -n "$escaped_log_dir" ]; then
+        wl_statements+=("LSPServer\`StartServer[\"$escaped_log_dir\"]")
+    else
+        wl_statements+=('LSPServer`StartServer[]')
+    fi
+
+    printf -v run_expr '%s; ' "${wl_statements[@]}"
+    printf '%s\n' "${run_expr%; }"
+}
+
+if [ -n "$log_dir" ]; then
+    mkdir -p "$log_dir"
+    wl_log_dir=${log_dir//\\/\\\\}
+    wl_log_dir=${wl_log_dir//\"/\\\"}
+    run_expr=$(build_run_expr "$wl_log_dir")
+else
+    run_expr=$(build_run_expr "")
+fi
+
+if command -v WolframKernel >/dev/null 2>&1; then
+    exec WolframKernel -noinit -noprompt -nopaclet -nostartuppaclets -noicon -run "$run_expr"
+fi
+
+if command -v wolfram >/dev/null 2>&1; then
+    exec wolfram -noinit -noprompt -nopaclet -nostartuppaclets -noicon -run "$run_expr"
+fi
+
+if command -v wolframscript >/dev/null 2>&1; then
+    exec wolframscript -code "$run_expr"
+fi
+
+if command -v math >/dev/null 2>&1; then
+    exec math -noinit -noprompt -run "$run_expr"
+fi
+
+printf '%s\n' "wolfram-lsp: none of WolframKernel, wolfram, wolframscript, or math is available on PATH" >&2
+exit 1

@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+: "${XDG_DATA_HOME:=$HOME/.local/share}"
+
+if ! command -v julia >/dev/null 2>&1; then
+    printf '%s\n' "julia-lsp: julia is not available on PATH" >&2
+    exit 1
+fi
+
+julia_lsp_env="${JULIA_LSP_ENV:-$XDG_DATA_HOME/julia/environments/lsp}"
+project_path="${1:-$PWD}"
+
+exec julia --startup-file=no --history-file=no --project="$julia_lsp_env" \
+    -e 'using LanguageServer; runserver()' \
+    "$project_path"

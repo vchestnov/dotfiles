@@ -56,70 +56,252 @@ call plug#end()
 syntax on
 filetype plugin indent on
 
-" let g:SuperTabDefaultCompletionType = '<c-x><c-o>'
-" set completeopt=menuone,noselect
+let g:SuperTabDefaultCompletionType = '<c-x><c-o>'
+set completeopt=menuone,noselect
 
-" let g:lsp_diagnostics_enabled = 1
-" let g:lsp_document_code_action_signs_enabled = 0
-" let g:lsp_preview_keep_focus = 1
-" let g:lsp_fold_enabled = 0
+let g:lsp_diagnostics_enabled = 1
+let g:lsp_document_code_action_signs_enabled = 0
+let g:lsp_preview_keep_focus = 1
+let g:lsp_fold_enabled = 0
+let g:lsp_settings = {
+\ 'clangd': {
+\   'cmd': ['clangd', '--background-index', '--clang-tidy', '--query-driver=/usr/bin/c++,/usr/bin/g++'],
+\ },
+\}
+if !exists('g:wolfram_definition_search_paths')
+    let g:wolfram_definition_search_paths = ['~/dev', '~/soft', '~/.local/share/Wolfram/ApplicationData/Applications']
+endif
+if !exists('g:wolfram_definition_query_runtime_path')
+    let g:wolfram_definition_query_runtime_path = 1
+endif
 
-" function! s:OnLspBufferEnabled() abort
-"     setlocal omnifunc=lsp#complete
-"     if exists('+tagfunc')
-"         setlocal tagfunc=lsp#tagfunc
-"     endif
+function! s:WolframRuntimePathsCacheFile() abort
+    let l:cache_root = expand($XDG_CACHE_HOME !=# '' ? $XDG_CACHE_HOME : '~/.cache')
+    let l:cache_dir = l:cache_root . '/vim'
+    call mkdir(l:cache_dir, 'p')
+    return l:cache_dir . '/wolfram-runtime-paths.txt'
+endfunction
 
-"     nmap <buffer> gd <plug>(lsp-definition)
-"     nmap <buffer> gD <plug>(lsp-declaration)
-"     nmap <buffer> gi <plug>(lsp-implementation)
-"     nmap <buffer> gr <plug>(lsp-references)
-"     nmap <buffer> K <plug>(lsp-hover)
-"     nmap <buffer> <leader>rn <plug>(lsp-rename)
-"     nmap <buffer> <leader>ca <plug>(lsp-code-action)
-"     nmap <buffer> [d <plug>(lsp-previous-diagnostic)
-"     nmap <buffer> ]d <plug>(lsp-next-diagnostic)
-"     nmap <buffer> <leader>ds <plug>(lsp-document-symbol-search)
-"     nmap <buffer> <leader>ws <plug>(lsp-workspace-symbol-search)
-" endfunction
+function! s:WolframPathQueryCode() abort
+    return join([
+        \ 'userInit = FileNameJoin[{$UserBaseDirectory, "Kernel", "init.m"}]',
+        \ 'If[FileExistsQ[userInit], Get[userInit]]',
+        \ 'WriteString[$Output, "__WOLFRAM_PATH_BEGIN__\n"]',
+        \ 'Scan[If[StringQ[#], WriteString[$Output, # <> "\n"]] &, $Path]',
+        \ 'WriteString[$Output, "__WOLFRAM_PATH_END__\n"]',
+        \ 'Exit[]',
+        \ ], '; ')
+endfunction
 
-" function! s:RegisterLspServers() abort
-"     if get(g:, 'dotfiles_lsp_registered', 0)
-"         return
-"     endif
-"     let g:dotfiles_lsp_registered = 1
+function! s:WolframRuntimePaths() abort
+    let l:paths = []
+    let l:raw_paths = []
+    let l:start = -1
+    let l:end = -1
+    let l:code = s:WolframPathQueryCode()
+    let l:cmd = ''
+    let l:cache_file = s:WolframRuntimePathsCacheFile()
 
-"     if executable('clangd')
-"         call lsp#register_server({
-"             \ 'name': 'clangd',
-"             \ 'cmd': {server_info->['clangd', '--background-index', '--clang-tidy']},
-"             \ 'allowlist': ['c', 'cpp', 'objc', 'objcpp'],
-"             \ })
-"     endif
+    if exists('s:wolfram_runtime_paths')
+        return copy(s:wolfram_runtime_paths)
+    endif
 
-"     if executable('pylsp')
-"         call lsp#register_server({
-"             \ 'name': 'pylsp',
-"             \ 'cmd': {server_info->['pylsp']},
-"             \ 'allowlist': ['python'],
-"             \ })
-"     endif
+    if filereadable(l:cache_file)
+        for l:path in readfile(l:cache_file)
+            let l:expanded = fnamemodify(expand(l:path), ':p')
+            if isdirectory(l:expanded) && index(l:paths, l:expanded) < 0
+                call add(l:paths, l:expanded)
+            endif
+        endfor
 
-"     if executable('wolfram-lsp')
-"         call lsp#register_server({
-"             \ 'name': 'wolfram-lsp',
-"             \ 'cmd': {server_info->['wolfram-lsp']},
-"             \ 'allowlist': ['mma'],
-"             \ 'root_uri_patterns': ['PacletInfo.wl', '.git/'],
-"             \ })
-"     endif
-" endfunction
+        let s:wolfram_runtime_paths = l:paths
+        return copy(s:wolfram_runtime_paths)
+    endif
 
-" augroup lsp_setup
-"     autocmd!
-"     autocmd User lsp_setup call s:RegisterLspServers()
-"     autocmd User lsp_buffer_enabled call s:OnLspBufferEnabled()
-" augroup END
+    if !get(g:, 'wolfram_definition_query_runtime_path', 1)
+        return []
+    endif
+
+    if executable('WolframKernel')
+        let l:cmd = 'WolframKernel -noprompt -nopaclet -nostartuppaclets -noicon -run ' . shellescape(l:code)
+    elseif executable('wolfram')
+        let l:cmd = 'wolfram -noprompt -nopaclet -nostartuppaclets -noicon -run ' . shellescape(l:code)
+    elseif executable('wolframscript')
+        let l:cmd = 'wolframscript -code ' . shellescape(l:code)
+    elseif executable('math')
+        let l:cmd = 'math -noprompt -run ' . shellescape(l:code)
+    else
+        let s:wolfram_runtime_paths = []
+        return []
+    endif
+
+    let l:output = systemlist(l:cmd)
+    if v:shell_error != 0
+        let s:wolfram_runtime_paths = []
+        return []
+    endif
+
+    let l:start = index(l:output, '__WOLFRAM_PATH_BEGIN__')
+    let l:end = index(l:output, '__WOLFRAM_PATH_END__')
+    if l:start >= 0 && l:end > l:start
+        let l:raw_paths = l:output[l:start + 1 : l:end - 1]
+    endif
+
+    for l:path in l:raw_paths
+        let l:expanded = fnamemodify(expand(l:path), ':p')
+        if isdirectory(l:expanded) && index(l:paths, l:expanded) < 0
+            call add(l:paths, l:expanded)
+        endif
+    endfor
+
+    call writefile(l:paths, l:cache_file)
+    let s:wolfram_runtime_paths = l:paths
+    return copy(s:wolfram_runtime_paths)
+endfunction
+
+function! s:WolframRefreshPaths() abort
+    let l:cache_file = s:WolframRuntimePathsCacheFile()
+
+    unlet! s:wolfram_runtime_paths
+    if filereadable(l:cache_file)
+        call delete(l:cache_file)
+    endif
+
+    let l:paths = s:WolframRuntimePaths()
+    echo 'Refreshed Wolfram $Path cache (' . len(l:paths) . ' entries)'
+endfunction
+
+function! s:WolframSearchPaths() abort
+    let l:paths = []
+    let l:project_root = finddir('.git', expand('%:p:h') . ';')
+
+    if !empty(l:project_root)
+        call add(l:paths, fnamemodify(l:project_root, ':h'))
+    elseif expand('%:p:h') !=# ''
+        call add(l:paths, expand('%:p:h'))
+    endif
+
+    for l:path in s:WolframRuntimePaths()
+        if index(l:paths, l:path) < 0
+            call add(l:paths, l:path)
+        endif
+    endfor
+
+    for l:path in get(g:, 'wolfram_definition_search_paths', [])
+        let l:expanded = expand(l:path)
+        if isdirectory(l:expanded) && index(l:paths, l:expanded) < 0
+            call add(l:paths, l:expanded)
+        endif
+    endfor
+
+    return l:paths
+endfunction
+
+function! s:WolframGotoDefinition() abort
+    let l:symbol = expand('<cword>')
+    let l:paths = s:WolframSearchPaths()
+
+    if empty(l:symbol)
+        echoerr 'No Wolfram symbol under cursor'
+        return
+    endif
+
+    if empty(l:paths)
+        echoerr 'No Wolfram definition search paths are configured'
+        return
+    endif
+
+    let l:symbol_pattern = escape(l:symbol, '\.^$~[]*+?()|{}')
+    let l:pattern = '^\s*' . l:symbol_pattern . '\s*(::usage\s*=|\[|:=|=)'
+    let l:cmd = 'rg --vimgrep --no-heading --smart-case --glob "*.m" --glob "*.wl" ' . shellescape(l:pattern)
+
+    for l:path in l:paths
+        let l:cmd .= ' ' . shellescape(l:path)
+    endfor
+
+    let l:matches = systemlist(l:cmd)
+
+    if v:shell_error != 0 || empty(l:matches)
+        echo 'No Wolfram definition found for ' . l:symbol
+        return
+    endif
+
+    call setqflist([], 'r', {
+        \ 'title': 'Wolfram definitions for ' . l:symbol,
+        \ 'lines': l:matches,
+        \ 'efm': '%f:%l:%c:%m',
+        \ })
+
+    if len(l:matches) == 1
+        cfirst
+    else
+        copen
+    endif
+endfunction
+
+function! s:OnLspBufferEnabled() abort
+    setlocal omnifunc=lsp#complete
+    if exists('+tagfunc')
+        setlocal tagfunc=lsp#tagfunc
+    endif
+
+    nmap <buffer> gd <plug>(lsp-definition)
+    nmap <buffer> gD <plug>(lsp-declaration)
+    nmap <buffer> gi <plug>(lsp-implementation)
+    nmap <buffer> gr <plug>(lsp-references)
+    nmap <buffer> K <plug>(lsp-hover)
+    nmap <buffer> <leader>rn <plug>(lsp-rename)
+    nmap <buffer> <leader>ca <plug>(lsp-code-action)
+    nmap <buffer> [d <plug>(lsp-previous-diagnostic)
+    nmap <buffer> ]d <plug>(lsp-next-diagnostic)
+    nmap <buffer> <leader>ds <plug>(lsp-document-symbol-search)
+    nmap <buffer> <leader>ws <plug>(lsp-workspace-symbol-search)
+    if &filetype ==# 'mma'
+        nnoremap <buffer> <leader>wd :WolframGotoDefinition<CR>
+    endif
+endfunction
+
+function! s:RegisterLspServers() abort
+    if get(g:, 'dotfiles_lsp_registered', 0)
+        return
+    endif
+    let g:dotfiles_lsp_registered = 1
+
+    if executable('pylsp')
+        call lsp#register_server({
+            \ 'name': 'pylsp',
+            \ 'cmd': {server_info->['pylsp']},
+            \ 'allowlist': ['python'],
+            \ })
+    endif
+
+    if executable('julia-lsp')
+        call lsp#register_server({
+            \ 'name': 'julia-lsp',
+            \ 'cmd': {server_info->['julia-lsp']},
+            \ 'allowlist': ['julia'],
+            \ 'root_uri_patterns': ['Project.toml', 'Manifest.toml', '.git/'],
+            \ })
+    endif
+
+    if executable('wolfram-lsp')
+        call lsp#register_server({
+            \ 'name': 'wolfram-lsp',
+            \ 'cmd': {server_info->['wolfram-lsp']},
+            \ 'allowlist': ['mma'],
+            \ 'root_uri_patterns': ['PacletInfo.wl', '.git/'],
+            \ })
+    endif
+endfunction
+
+augroup lsp_setup
+    autocmd!
+    autocmd User lsp_setup call s:RegisterLspServers()
+    autocmd User lsp_buffer_enabled call s:OnLspBufferEnabled()
+augroup END
+
+command! WolframGotoDefinition call s:WolframGotoDefinition()
+command! WolframRefreshPaths call s:WolframRefreshPaths()
 
 function! NERDTreeQuit()
     redir => buffersoutput

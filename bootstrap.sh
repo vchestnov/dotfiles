@@ -203,6 +203,25 @@ build_and_install() {
     fi
 }
 
+install_launcher_script() {
+    local source_script=$1
+    local target_script=$2
+
+    if [ ! -f "$source_script" ]; then
+        return 1
+    fi
+
+    mkdir -p "$(dirname "$target_script")"
+
+    if [ "$(readlink -f "$source_script" 2>/dev/null || printf '%s\n' "$source_script")" = "$(readlink -f "$target_script" 2>/dev/null || printf '%s\n' "$target_script")" ]; then
+        chmod +x "$source_script"
+        return 0
+    fi
+
+    cp "$source_script" "$target_script"
+    chmod +x "$target_script"
+}
+
 install_python_lsp() {
     if command -v pipx >/dev/null 2>&1; then
         pipx install --force 'python-lsp-server[all]'
@@ -221,6 +240,107 @@ install_python_lsp() {
 
     log_warning "Neither pipx nor python3 is available for installing pylsp."
     return 1
+}
+
+install_julia_lsp() {
+    local julia_lsp_env
+
+    if ! command -v julia >/dev/null 2>&1; then
+        log_warning "julia is not available on PATH; skipping Julia LSP installation."
+        return 1
+    fi
+
+    : "${XDG_DATA_HOME:=$HOME/.local/share}"
+    julia_lsp_env="${JULIA_LSP_ENV:-$XDG_DATA_HOME/julia/environments/lsp}"
+    mkdir -p "$julia_lsp_env"
+
+    julia --startup-file=no --history-file=no --project="$julia_lsp_env" \
+        -e 'using Pkg; Pkg.add("LanguageServer"); Pkg.precompile()'
+}
+
+install_julia_from_tarball() {
+    local install_prefix="${1:-$HOME/.local}"
+    local repos_dir="${2:-$HOME/soft}"
+    local version="${JULIA_VERSION:-1.12.6}"
+    local series="${JULIA_SERIES:-${version%.*}}"
+    local machine
+    local arch
+    local arch_dir
+    local archive
+    local archive_path
+    local install_dir
+    local current_link
+    local url
+
+    machine=$(uname -m)
+    case "$machine" in
+        x86_64|amd64)
+            arch="x86_64"
+            arch_dir="x64"
+            ;;
+        aarch64|arm64)
+            arch="aarch64"
+            arch_dir="aarch64"
+            ;;
+        *)
+            log_warning "Unsupported Julia architecture '$machine'. Set JULIA_TARBALL_URL manually if you want to install Julia."
+            return 1
+            ;;
+    esac
+
+    archive="julia-${version}-linux-${arch}.tar.gz"
+    archive_path="$SRC_DIR/$archive"
+    install_dir="${JULIA_INSTALL_DIR:-$repos_dir/julia-$version}"
+    current_link="${JULIA_CURRENT_LINK:-$repos_dir/julia}"
+    url="${JULIA_TARBALL_URL:-https://julialang-s3.julialang.org/bin/linux/${arch_dir}/${series}/${archive}}"
+
+    mkdir -p "$SRC_DIR" "$repos_dir" "$install_prefix/bin"
+
+    log_info "Downloading Julia ${version} from $url"
+    download_file "$url" "$archive_path"
+
+    rm -rf "$install_dir"
+    mkdir -p "$install_dir"
+    tar -xzf "$archive_path" -C "$install_dir" --strip-components=1
+
+    ln -sfn "$install_dir" "$current_link"
+    ln -sfn "$install_dir/bin/julia" "$install_prefix/bin/julia"
+
+    if [ -x "$install_prefix/bin/julia" ]; then
+        log_success "Julia installed to $install_dir"
+        log_info "Julia launcher available at $install_prefix/bin/julia"
+        return 0
+    fi
+
+    log_warning "Julia install finished, but $install_prefix/bin/julia was not found."
+    return 1
+}
+
+run_wolfram_code() {
+    local code=$1
+    local wrapped_code="${code}; Exit[]"
+
+    if command -v WolframKernel >/dev/null 2>&1; then
+        WolframKernel -noinit -noprompt -nopaclet -nostartuppaclets -noicon -run "$wrapped_code"
+        return $?
+    fi
+
+    if command -v wolfram >/dev/null 2>&1; then
+        wolfram -noinit -noprompt -nopaclet -nostartuppaclets -noicon -run "$wrapped_code"
+        return $?
+    fi
+
+    if command -v wolframscript >/dev/null 2>&1; then
+        wolframscript -code "$code"
+        return $?
+    fi
+
+    if command -v math >/dev/null 2>&1; then
+        math -noinit -noprompt -run "$wrapped_code"
+        return $?
+    fi
+
+    return 127
 }
 
 install_clangd_from_source() {
@@ -294,7 +414,7 @@ install_clangd_from_source() {
         -DLLVM_TARGETS_TO_BUILD="host"
 
     cmake --build "$build_dir" --target clangd -j"${CLANGD_JOBS:-${BUILD_JOBS:-$(default_build_jobs)}}"
-    cmake --install "$build_dir"
+    cmake --build "$build_dir" --target install-clang-resource-headers install-clangd
 
     if [ -x "$install_prefix/bin/clangd" ]; then
         log_success "clangd installed from source to $install_prefix/bin/clangd"
@@ -823,11 +943,13 @@ DO_GPG=1          # gpg-agent + pinentry tweaks
 DO_POETRY=1       # poetry / arxivterminal
 DO_RUST_TOOLS=1   # rustup + fzf, rg, fd, bat
 DO_LSP=1          # language servers + vim LSP tooling
+CLANGD_INSTALL_METHOD_DEFAULT=tar # default clangd install path for profiles
 DO_SCI=1          # scientific stack (GMP, NTL, MPFR, FLINT, FiniteFlow, etc.)
 DO_GMP=1          # GMP from source inside scientific stack
 DO_NTL=1          # NTL from source inside scientific stack
 DO_MPFR=1         # MPFR from source inside scientific stack
 DO_FLINT=1        # FLINT from source inside scientific stack
+DO_JULIA=1        # Julia from official tarball inside scientific stack
 DO_FINITEFLOW=1   # FiniteFlow from GitHub inside scientific stack
 DO_GFAN=1         # Gfan from upstream tarball inside scientific stack
 DO_FERMAT=1       # Fermat binary helper inside scientific stack
@@ -864,6 +986,7 @@ case "$BOOTSTRAP_PROFILE" in
         DO_NTL=1
         DO_MPFR=1
         DO_FLINT=1
+        DO_JULIA=1
         DO_FINITEFLOW=1
         DO_GFAN=1
         DO_FERMAT=1
@@ -881,6 +1004,7 @@ case "$BOOTSTRAP_PROFILE" in
         DO_ZK=0
         DO_KRITA=0
         DO_ASIR=1
+        CLANGD_INSTALL_METHOD_DEFAULT=tar
         ;;
     nothing)
         DO_CORE=0
@@ -896,6 +1020,7 @@ case "$BOOTSTRAP_PROFILE" in
         DO_NTL=0
         DO_MPFR=0
         DO_FLINT=0
+        DO_JULIA=0
         DO_FINITEFLOW=0
         DO_GFAN=0
         DO_FERMAT=0
@@ -912,6 +1037,7 @@ case "$BOOTSTRAP_PROFILE" in
         DO_ZK=0
         DO_KRITA=0
         DO_ASIR=0
+        CLANGD_INSTALL_METHOD_DEFAULT=tar
         ;;
     test)
         DO_CORE=0
@@ -921,14 +1047,15 @@ case "$BOOTSTRAP_PROFILE" in
         DO_GPG=0
         DO_POETRY=0
         DO_RUST_TOOLS=0
-        DO_LSP=0
-        DO_SCI=1
+        DO_LSP=1
+        DO_SCI=0
         DO_GMP=0
         DO_NTL=0
         DO_MPFR=0
         DO_FLINT=0
+        DO_JULIA=0
         DO_FINITEFLOW=0
-        DO_GFAN=1
+        DO_GFAN=0
         DO_FERMAT=0
         DO_LITERED=0
         DO_SINGULAR_MMA=0
@@ -943,6 +1070,7 @@ case "$BOOTSTRAP_PROFILE" in
         DO_ZK=0
         DO_KRITA=0
         DO_ASIR=0
+        CLANGD_INSTALL_METHOD_DEFAULT=tar
         ;;
     *)
         log_error "Unknown profile '$BOOTSTRAP_PROFILE'!"
@@ -1469,43 +1597,42 @@ if \
     log_section "LANGUAGE SERVER TOOLING"
 
     mkdir -p "$BIN_DIR"
+    CLANGD_INSTALL_METHOD="${CLANGD_INSTALL_METHOD:-${CLANGD_INSTALL_METHOD_DEFAULT:-git}}"
+    if [ "$CLANGD_INSTALL_METHOD" = "auto" ]; then
+        if (( DO_SYSTEM )) && command -v sudo >/dev/null 2>&1; then
+            CLANGD_INSTALL_METHOD="apt"
+        else
+            CLANGD_INSTALL_METHOD="${CLANGD_SOURCE_KIND:-git}"
+        fi
+    fi
 
     if command -v clangd >/dev/null 2>&1; then
-        log_info "clangd already available at $(command -v clangd)"
-    else
-        CLANGD_INSTALL_METHOD="${CLANGD_INSTALL_METHOD:-auto}"
-
-        if [ "$CLANGD_INSTALL_METHOD" = "auto" ]; then
-            if (( DO_SYSTEM )) && command -v sudo >/dev/null 2>&1; then
-                CLANGD_INSTALL_METHOD="apt"
-            else
-                CLANGD_INSTALL_METHOD="${CLANGD_SOURCE_KIND:-git}"
-            fi
-        fi
-
-        log_info "clangd installation method: $CLANGD_INSTALL_METHOD"
-
-        case "$CLANGD_INSTALL_METHOD" in
-            apt)
-                if (( DO_SYSTEM )) && command -v sudo >/dev/null 2>&1; then
-                    log_info "Installing clangd from apt..."
-                    refresh_sudo
-                    sudo apt install -y clangd
-                    log_success "clangd installed"
-                else
-                    log_warning "apt-based clangd install requested, but this profile does not permit it."
-                fi
-                ;;
-            git|tar)
-                if ! install_clangd_from_source "$CLANGD_INSTALL_METHOD" "$HOME/.local"; then
-                    log_warning "clangd source installation failed."
-                fi
-                ;;
-            *)
-                log_warning "Unknown CLANGD_INSTALL_METHOD='$CLANGD_INSTALL_METHOD'. Use auto, apt, git, or tar."
-                ;;
-        esac
+        log_info "Existing clangd found at $(command -v clangd)"
     fi
+
+    log_info "clangd installation method: $CLANGD_INSTALL_METHOD"
+
+    case "$CLANGD_INSTALL_METHOD" in
+        apt)
+            if (( DO_SYSTEM )) && command -v sudo >/dev/null 2>&1; then
+                log_info "Installing clangd from apt..."
+                refresh_sudo
+                sudo apt install -y clangd
+                log_success "clangd installed"
+            else
+                log_warning "apt-based clangd install requested, but this profile does not permit it."
+            fi
+            ;;
+        git|tar)
+            log_info "Installing clangd from source into $HOME/.local"
+            if ! install_clangd_from_source "$CLANGD_INSTALL_METHOD" "$HOME/.local"; then
+                log_warning "clangd source installation failed."
+            fi
+            ;;
+        *)
+            log_warning "Unknown CLANGD_INSTALL_METHOD='$CLANGD_INSTALL_METHOD'. Use auto, apt, git, or tar."
+            ;;
+    esac
 
     log_info "Installing Python language server (pylsp)..."
     if install_python_lsp; then
@@ -1514,23 +1641,32 @@ if \
         log_warning "Skipping Python LSP installation"
     fi
 
+    if [ -f "$SCRIPT_DIR/scripts/julia-lsp" ]; then
+        install_launcher_script "$SCRIPT_DIR/scripts/julia-lsp" "$BIN_DIR/julia-lsp"
+        log_info "Installed Julia LSP launcher to $BIN_DIR/julia-lsp"
+    fi
+
+    log_info "Installing Julia language server (LanguageServer.jl)..."
+    if install_julia_lsp; then
+        log_success "Julia language server installed"
+    else
+        log_warning "Skipping Julia LSP installation"
+    fi
+
     if [ -x "$SCRIPT_DIR/scripts/wolfram-lsp" ]; then
-        cp "$SCRIPT_DIR/scripts/wolfram-lsp" "$BIN_DIR/wolfram-lsp"
-        chmod +x "$BIN_DIR/wolfram-lsp"
+        install_launcher_script "$SCRIPT_DIR/scripts/wolfram-lsp" "$BIN_DIR/wolfram-lsp"
         log_info "Installed Wolfram LSP launcher to $BIN_DIR/wolfram-lsp"
     fi
 
-    if command -v wolframscript >/dev/null 2>&1; then
-        log_info "Ensuring Wolfram LSP paclet is installed..."
-        if wolframscript -code 'Needs["PacletManager`"]; If[Length[PacletFind["LSPServer"]]==0, PacletInstall["LSPServer"], Null]' >/dev/null 2>&1; then
-            log_success "Wolfram LSP paclet is available"
+    if command -v WolframKernel >/dev/null 2>&1 || command -v wolfram >/dev/null 2>&1 || command -v wolframscript >/dev/null 2>&1 || command -v math >/dev/null 2>&1; then
+        log_info "Ensuring official Wolfram LSP paclets are installed..."
+        if run_wolfram_code 'Needs["PacletManager`"]; PacletInstall["CodeParser"]; PacletInstall["CodeInspector"]; PacletInstall["CodeFormatter"]; PacletInstall["LSPServer"];' >/dev/null 2>&1; then
+            log_success "Wolfram LSP paclets are available"
         else
-            log_warning "Could not install the Wolfram LSP paclet automatically."
-            log_warning "If needed, run: wolframscript -code '\''PacletInstall[\"LSPServer\"]'\''"
+            log_warning "Could not install the official Wolfram LSP paclets automatically."
+            log_warning "If needed, run from a Wolfram session:"
+            log_warning '  PacletInstall["CodeParser"]; PacletInstall["CodeInspector"]; PacletInstall["CodeFormatter"]; PacletInstall["LSPServer"];'
         fi
-    elif command -v WolframKernel >/dev/null 2>&1; then
-        log_warning "WolframKernel is present but wolframscript is not; skipping paclet bootstrap."
-        log_warning "Install the LSP paclet manually from a Wolfram session if needed."
     else
         log_warning "Wolfram tools not found on PATH; skipping Mathematica LSP bootstrap."
     fi
@@ -2984,7 +3120,7 @@ fi
 
 if \
 	(( DO_SCI )) && \
-    (( DO_GMP || DO_NTL || DO_MPFR || DO_FLINT || DO_QD || DO_FINITEFLOW || DO_GFAN || DO_FERMAT || DO_LITERED || DO_SINGULAR_MMA || DO_MSOLVE || DO_SCI_EXTRA )) && \
+    (( DO_GMP || DO_NTL || DO_MPFR || DO_FLINT || DO_JULIA || DO_QD || DO_FINITEFLOW || DO_GFAN || DO_FERMAT || DO_LITERED || DO_SINGULAR_MMA || DO_MSOLVE || DO_SCI_EXTRA )) && \
 	prompt_continue "Install enabled scientific software components?" && \
 	: \
 ; then
@@ -3098,6 +3234,18 @@ if \
             --with-mpfr="$SCI_PREFIX"
         build_and_install "FLINT" "make -j$SCI_JOBS" "make install" true
         log_success "FLINT installed to $SCI_PREFIX"
+    fi
+
+    # ========================================
+    # Julia
+    # ========================================
+    if (( DO_JULIA )); then
+        log_info "Installing Julia from the official generic Linux tarball..."
+        if install_julia_from_tarball "$SCI_PREFIX" "$SCI_REPOS_DIR"; then
+            log_success "Julia installed locally; binaries live under $SCI_REPOS_DIR"
+        else
+            log_warning "Julia installation failed."
+        fi
     fi
 
     # ========================================
@@ -3227,11 +3375,15 @@ if \
         fi
         
         cmake -DCMAKE_INSTALL_PREFIX="$SCI_PREFIX" \
+              -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
               -DCMAKE_PREFIX_PATH="$FINITEFLOW_PREFIX_PATH" \
               -DMATHLIBINSTALL="$FINITEFLOW_MATHLIB" \
               .
         build_and_install "FiniteFlow" "make -j$SCI_JOBS" "make install" true
         log_success "FiniteFlow installed to $SCI_PREFIX; sources are in $FINITEFLOW_DEV_DIR"
+        if [ -f "$FINITEFLOW_DEV_DIR/compile_commands.json" ]; then
+            log_info "clangd compilation database available at $FINITEFLOW_DEV_DIR/compile_commands.json"
+        fi
     fi
 
     # ========================================
