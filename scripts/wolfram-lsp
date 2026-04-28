@@ -44,6 +44,11 @@ if command -v wolfram >/dev/null 2>&1; then
     exec wolfram -noinit -noprompt -nopaclet -nostartuppaclets -noicon -run "$run_expr"
 fi
 
+if [ -x /opt/mathematica/SystemFiles/Kernel/Binaries/Linux-x86-64/WolframKernel ]; then
+    exec /opt/mathematica/SystemFiles/Kernel/Binaries/Linux-x86-64/WolframKernel \
+        -noinit -noprompt -nopaclet -nostartuppaclets -noicon -run "$run_expr"
+fi
+
 if command -v wolframscript >/dev/null 2>&1; then
     exec wolframscript -code "$run_expr"
 fi
