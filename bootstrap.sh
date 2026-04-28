@@ -985,8 +985,8 @@ DO_JULIA=1        # Julia from official tarball inside scientific stack
 DO_FINITEFLOW=1   # FiniteFlow from GitHub inside scientific stack
 DO_GFAN=1         # Gfan from upstream tarball inside scientific stack
 DO_FERMAT=1       # Fermat binary helper inside scientific stack
-DO_LITERED=1      # LiteRed and Mathematica helpers inside scientific stack
-DO_SINGULAR_MMA=1 # Singular Mathematica interface inside scientific stack
+# DO_LITERED=1      # LiteRed and Mathematica helpers inside scientific stack
+# DO_SINGULAR_MMA=1 # Singular Mathematica interface inside scientific stack
 DO_MSOLVE=1       # msolve from GitHub inside scientific stack
 DO_SCI_EXTRA=1    # extra scientific repositories and helper tools
 DO_SAGE=1         # SageMath via Miniforge/conda, defaulting to GitHub checkout
@@ -1023,8 +1023,8 @@ case "$BOOTSTRAP_PROFILE" in
         DO_FINITEFLOW=1
         DO_GFAN=1
         DO_FERMAT=1
-        DO_LITERED=1
-        DO_SINGULAR_MMA=1
+        # DO_LITERED=1
+        # DO_SINGULAR_MMA=1
         DO_MSOLVE=1
         DO_SCI_EXTRA=1
         DO_SAGE=1
@@ -1058,8 +1058,8 @@ case "$BOOTSTRAP_PROFILE" in
         DO_FINITEFLOW=0
         DO_GFAN=0
         DO_FERMAT=0
-        DO_LITERED=0
-        DO_SINGULAR_MMA=0
+        # DO_LITERED=0
+        # DO_SINGULAR_MMA=0
         DO_MSOLVE=0
         DO_SCI_EXTRA=0
         DO_SAGE=0
@@ -1092,8 +1092,8 @@ case "$BOOTSTRAP_PROFILE" in
         DO_FINITEFLOW=0
         DO_GFAN=0
         DO_FERMAT=0
-        DO_LITERED=0
-        DO_SINGULAR_MMA=0
+        # DO_LITERED=0
+        # DO_SINGULAR_MMA=0
         DO_MSOLVE=0
         DO_SCI_EXTRA=0
         DO_SAGE=0
@@ -3189,7 +3189,7 @@ fi
 
 if \
 	(( DO_SCI )) && \
-    (( DO_GMP || DO_NTL || DO_MPFR || DO_FLINT || DO_JULIA || DO_QD || DO_FINITEFLOW || DO_GFAN || DO_FERMAT || DO_LITERED || DO_SINGULAR_MMA || DO_MSOLVE || DO_SCI_EXTRA )) && \
+    (( DO_GMP || DO_NTL || DO_MPFR || DO_FLINT || DO_JULIA || DO_QD || DO_FINITEFLOW || DO_GFAN || DO_FERMAT || DO_MSOLVE || DO_SCI_EXTRA )) && \
 	prompt_continue "Install enabled scientific software components?" && \
 	: \
 ; then
@@ -3226,7 +3226,7 @@ if \
 		clone_or_update "$url" "$dest"
     }
 
-: <<'DEBUG'
+# : <<'DEBUG'
 
     # ========================================
     # GMP
@@ -3588,46 +3588,46 @@ if \
         fi
     fi
 
-	###############################################################################
-	# LiteRed (legacy version 1.84)
-	###############################################################################
+	# ###############################################################################
+	# # LiteRed (legacy version 1.84)
+	# ###############################################################################
 
-    if (( DO_LITERED )); then
-	    LITERED_URL="https://www.inp.nsk.su/~lee/programs/LiteRed/LiteRedV1/LiteRedV1.84.zip"
-	    LITERED_DIR="$SCI_REPOS_DIR/LiteRed"
+    # if (( DO_LITERED )); then
+	#     LITERED_URL="https://www.inp.nsk.su/~lee/programs/LiteRed/LiteRedV1/LiteRedV1.84.zip"
+	#     LITERED_DIR="$SCI_REPOS_DIR/LiteRed"
 
-	    if [ ! -d "$LITERED_DIR" ]; then
-		    log_info "Installing LiteRed (v1.84) into $LITERED_DIR"
+	#     if [ ! -d "$LITERED_DIR" ]; then
+	# 	    log_info "Installing LiteRed (v1.84) into $LITERED_DIR"
 
-		    mkdir -p "$SCI_REPOS_DIR"
-		    tmpzip="$(mktemp)"
+	# 	    mkdir -p "$SCI_REPOS_DIR"
+	# 	    tmpzip="$(mktemp)"
 
-		    curl -L "$LITERED_URL" -o "$tmpzip"
-		    unzip -q "$tmpzip" -d "$LITERED_DIR"
+	# 	    curl -L "$LITERED_URL" -o "$tmpzip"
+	# 	    unzip -q "$tmpzip" -d "$LITERED_DIR"
 
-		    rm -f "$tmpzip"
-	    else
-		    log_info "LiteRed already installed at $LITERED_DIR"
-	    fi
-    fi
+	# 	    rm -f "$tmpzip"
+	#     else
+	# 	    log_info "LiteRed already installed at $LITERED_DIR"
+	#     fi
+    # fi
 
-	###############################################################################
-	# Singular interface for Mathematica
-	###############################################################################
+	# ###############################################################################
+	# # Singular interface for Mathematica
+	# ###############################################################################
 
-    if (( DO_SINGULAR_MMA )); then
-	    SINGULAR_INTERFACE_URL="https://www3.risc.jku.at/research/combinat/software/Singular/Singular.m"
-	    SINGULAR_INTERFACE_DIR="$SCI_REPOS_DIR/Singular"
+    # if (( DO_SINGULAR_MMA )); then
+	#     SINGULAR_INTERFACE_URL="https://www3.risc.jku.at/research/combinat/software/Singular/Singular.m"
+	#     SINGULAR_INTERFACE_DIR="$SCI_REPOS_DIR/Singular"
 
-	    if [ ! -d "$SINGULAR_INTERFACE_DIR" ]; then
-		    log_info "Installing Singular Mathematica interface into $SINGULAR_INTERFACE_DIR"
+	#     if [ ! -d "$SINGULAR_INTERFACE_DIR" ]; then
+	# 	    log_info "Installing Singular Mathematica interface into $SINGULAR_INTERFACE_DIR"
 
-		    mkdir -p "$SINGULAR_INTERFACE_DIR"
-		    curl -L "$SINGULAR_INTERFACE_URL" -o "$SINGULAR_INTERFACE_DIR/Singular.m"
-	    else
-		    log_info "Singular Mathematica interface already present at $SINGULAR_INTERFACE_DIR"
-	    fi
-    fi
+	# 	    mkdir -p "$SINGULAR_INTERFACE_DIR"
+	# 	    curl -L "$SINGULAR_INTERFACE_URL" -o "$SINGULAR_INTERFACE_DIR/Singular.m"
+	#     else
+	# 	    log_info "Singular Mathematica interface already present at $SINGULAR_INTERFACE_DIR"
+	#     fi
+    # fi
 
     # ========================================
     # Extra tools 
@@ -3690,14 +3690,19 @@ if \
         # Subtropica
         clone_sci_repo "Subtropica" "https://github.com/SubTropica/SubTropica.git"
 
+        # Canonica
+        clone_sci_repo "Canonica" "https://github.com/christophmeyer/CANONICA.git"
+
         # Private FiniteFlow external packages 
         if ! clone_sci_repo "ff_ext_packages" "git@github.com:peraro/ff_ext_packages.git"; then
             log_warning "Skipping private repo ff_ext_packages (SSH keys not configured or access denied)."
         fi
+
+        # Private modification of Singular interface for Mathematica
+        if ! clone_sci_repo "singular" "git@github.com:vchestnov/singular.git"; then
+            log_warning "Skipping private repo singular (SSH keys not configured or access denied)."
+        fi
     fi
-DEBUG
-    # Canonica
-    clone_sci_repo "Canonica" "https://github.com/christophmeyer/CANONICA.git"
 
     if (( DO_SCI_EXTRA )); then
         log_success "Extra scientific packages cloned into $SCI_REPOS_DIR"
