@@ -21,7 +21,9 @@ Plug 'scrooloose/nerdtree'
 " Plug 'scrooloose/nerdcommenter'
 Plug 'tpope/vim-commentary'
 
-Plug 'ervandew/supertab'
+Plug 'prabirshrestha/asyncomplete.vim'
+Plug 'prabirshrestha/asyncomplete-lsp.vim'
+Plug 'prabirshrestha/asyncomplete-buffer.vim'
 Plug 'prabirshrestha/vim-lsp'
 Plug 'mattn/vim-lsp-settings'
 Plug 'tpope/vim-surround'
@@ -56,8 +58,172 @@ call plug#end()
 syntax on
 filetype plugin indent on
 
-let g:SuperTabDefaultCompletionType = '<c-x><c-o>'
-set completeopt=menuone,noselect
+let g:asyncomplete_auto_popup = 0
+let g:asyncomplete_auto_completeopt = 0
+set completeopt=menuone,noinsert,noselect
+
+function! s:CheckBackSpace() abort
+    let l:col = col('.') - 1
+    return !l:col || getline('.')[l:col - 1] =~# '\s'
+endfunction
+
+inoremap <expr> <Tab> pumvisible() ? "\<C-n>" :
+    \ <SID>CheckBackSpace() ? "\<Tab>" :
+    \ asyncomplete#force_refresh()
+inoremap <expr> <S-Tab> pumvisible() ? "\<C-p>" : "\<S-Tab>"
+imap <C-Space> <Plug>(asyncomplete_force_refresh)
+if !has('nvim')
+    imap <C-@> <Plug>(asyncomplete_force_refresh)
+endif
+
+augroup dotfiles_asyncomplete
+    autocmd!
+    autocmd User asyncomplete_setup call s:RegisterAsyncompleteBufferSource()
+    " autocmd User asyncomplete_setup call s:RegisterAsyncompleteWolframSource()
+augroup END
+
+function! s:RegisterAsyncompleteBufferSource() abort
+    let l:source = {
+        \ 'name': 'buffer',
+        \ 'allowlist': ['*'],
+        \ 'events': ['BufEnter', 'BufWinEnter', 'BufWritePost', 'BufDelete', 'BufUnload', 'BufWipeout'],
+        \ 'on_event': function('s:OnAsyncompleteBufferEvent'),
+        \ 'completor': function('s:AsyncompleteAllBuffersCompletor'),
+        \ }
+    call asyncomplete#register_source(l:source)
+
+    call s:WarmAsyncompleteBufferWords()
+endfunction
+
+function! s:AsyncompleteBufferMaxSize() abort
+    return get(g:, 'asyncomplete_buffer_max_buffer_size', 5000000)
+endfunction
+
+function! s:AsyncompleteBufferShouldSkip(bufnr) abort
+    if !bufloaded(a:bufnr) || !buflisted(a:bufnr)
+        return 1
+    endif
+
+    let l:max_buffer_size = s:AsyncompleteBufferMaxSize()
+    if l:max_buffer_size == -1
+        return 0
+    endif
+
+    let l:byte_size = len(join(getbufline(a:bufnr, 1, '$'), "\n"))
+    return l:byte_size > l:max_buffer_size
+endfunction
+
+function! s:RefreshAsyncompleteBufferWords(bufnr) abort
+    if s:AsyncompleteBufferShouldSkip(a:bufnr)
+        if has_key(s:asyncomplete_buffer_words, a:bufnr)
+            call remove(s:asyncomplete_buffer_words, a:bufnr)
+        endif
+        return
+    endif
+
+    let l:words = {}
+    let l:text = join(getbufline(a:bufnr, 1, '$'), "\n")
+
+    for l:word in split(l:text, '\W\+')
+        if len(l:word) > 1
+            let l:words[l:word] = 1
+        endif
+    endfor
+
+    let s:asyncomplete_buffer_words[a:bufnr] = l:words
+endfunction
+
+function! s:WarmAsyncompleteBufferWords() abort
+    let s:asyncomplete_buffer_words = {}
+
+    for l:info in getbufinfo({'buflisted': 1})
+        if l:info.loaded
+            call s:RefreshAsyncompleteBufferWords(l:info.bufnr)
+        endif
+    endfor
+endfunction
+
+function! s:OnAsyncompleteBufferEvent(opt, ctx, event) abort
+    if !exists('s:asyncomplete_buffer_words')
+        let s:asyncomplete_buffer_words = {}
+    endif
+
+    let l:bufnr = str2nr(expand('<abuf>'))
+    if l:bufnr <= 0
+        let l:bufnr = a:ctx['bufnr']
+    endif
+
+    if index(['BufDelete', 'BufUnload', 'BufWipeout'], a:event) >= 0
+        if has_key(s:asyncomplete_buffer_words, l:bufnr)
+            call remove(s:asyncomplete_buffer_words, l:bufnr)
+        endif
+        return
+    endif
+
+    call s:RefreshAsyncompleteBufferWords(l:bufnr)
+endfunction
+
+function! s:AddAsyncompleteTypedWords(bufnr, typed) abort
+    if !has_key(s:asyncomplete_buffer_words, a:bufnr)
+        let s:asyncomplete_buffer_words[a:bufnr] = {}
+    endif
+
+    for l:word in split(a:typed, '\W\+')
+        if len(l:word) > 1
+            let s:asyncomplete_buffer_words[a:bufnr][l:word] = 1
+        endif
+    endfor
+endfunction
+
+function! s:AsyncompleteAllBuffersCompletor(opt, ctx) abort
+    if !exists('s:asyncomplete_buffer_words')
+        call s:WarmAsyncompleteBufferWords()
+    endif
+
+    call s:RefreshAsyncompleteBufferWords(a:ctx['bufnr'])
+    call s:AddAsyncompleteTypedWords(a:ctx['bufnr'], a:ctx['typed'])
+
+    let l:kw = matchstr(a:ctx['typed'], '\k\+$')
+    let l:kwlen = len(l:kw)
+    if l:kwlen == 0
+        return
+    endif
+
+    let l:seen = {}
+    for l:words in values(s:asyncomplete_buffer_words)
+        for l:word in keys(l:words)
+            if stridx(l:word, l:kw) == 0
+                let l:seen[l:word] = 1
+            endif
+        endfor
+    endfor
+
+    if empty(l:seen)
+        return
+    endif
+
+    let l:matches = []
+    for l:word in sort(keys(l:seen))
+        call add(l:matches, {
+            \ 'word': l:word,
+            \ 'dup': 1,
+            \ 'icase': 1,
+            \ 'menu': '[buffer]',
+            \ })
+    endfor
+
+    call asyncomplete#complete(a:opt['name'], a:ctx, a:ctx['col'] - l:kwlen, l:matches)
+endfunction
+
+function! s:RegisterAsyncompleteWolframSource() abort
+    call asyncomplete#register_source({
+        \ 'name': 'wolfram',
+        \ 'allowlist': ['mma'],
+        \ 'completor': function('s:WolframAsyncompleteCompletor'),
+        \ 'min_chars': 2,
+        \ 'refresh_pattern': '[$[:alnum:]`]\+$',
+        \ })
+endfunction
 
 let g:lsp_diagnostics_enabled = 1
 let g:lsp_document_code_action_signs_enabled = 0
@@ -90,6 +256,13 @@ function! s:WolframRuntimePathsCacheFile() abort
     let l:cache_dir = l:cache_root . '/vim'
     call mkdir(l:cache_dir, 'p')
     return l:cache_dir . '/wolfram-runtime-paths.txt'
+endfunction
+
+function! s:WolframSymbolsCacheFile(paths) abort
+    let l:cache_root = expand($XDG_CACHE_HOME !=# '' ? $XDG_CACHE_HOME : '~/.cache')
+    let l:cache_dir = l:cache_root . '/vim'
+    call mkdir(l:cache_dir, 'p')
+    return l:cache_dir . '/wolfram-symbols-' . s:WolframSymbolsCacheKey(a:paths) . '.txt'
 endfunction
 
 function! s:WolframPathQueryCode() abort
@@ -187,6 +360,142 @@ function! s:BuildWolframRgCommand(pattern, paths, color_mode) abort
     endfor
 
     return l:cmd
+endfunction
+
+function! s:BuildWolframSymbolRgCommand(paths) abort
+    let l:pattern = '^\s*[A-Za-z$`][A-Za-z0-9$`]*(\s*::usage\s*=|\s*\[.*\]\s*(:=|=)|\s*(:=|=))'
+    let l:cmd = 'rg --no-filename --no-heading --color=never --glob "*.m" --glob "*.wl" ' . shellescape(l:pattern)
+
+    for l:path in a:paths
+        let l:cmd .= ' ' . shellescape(l:path)
+    endfor
+
+    return l:cmd
+endfunction
+
+function! s:WolframExtractDefinitionSymbol(line) abort
+    return matchstr(a:line, '^\s*\zs[A-Za-z$`][A-Za-z0-9$`]*\ze\%(\s*::usage\s*=\|\s*\[.\{-}\]\s*\%(:=\|=\)\|\s*\%(:=\|=\)\)')
+endfunction
+
+function! s:WolframAddCompletionSymbol(symbols, symbol) abort
+    if empty(a:symbol)
+        return
+    endif
+
+    let a:symbols[a:symbol] = 1
+
+    if stridx(a:symbol, '`') >= 0
+        let l:tail = substitute(a:symbol, '^.*`', '', '')
+        if !empty(l:tail)
+            let a:symbols[l:tail] = 1
+        endif
+    endif
+endfunction
+
+function! s:LoadWolframCompletionSymbols(lines) abort
+    let l:symbols = {}
+
+    for l:line in a:lines
+        call s:WolframAddCompletionSymbol(l:symbols, trim(l:line))
+    endfor
+
+    return sort(keys(l:symbols))
+endfunction
+
+function! s:WolframSymbolsCacheKey(paths) abort
+    let l:hash = 5381
+
+    for l:char in split(join(map(copy(a:paths), 'fnamemodify(v:val, ":p")'), "\n"), '\zs')
+        let l:hash = (l:hash * 33 + char2nr(l:char)) % 2147483647
+    endfor
+
+    return printf('%08x', l:hash)
+endfunction
+
+function! s:BuildWolframCompletionSymbols(paths) abort
+    if empty(a:paths) || !executable('rg')
+        return []
+    endif
+
+    let l:lines = systemlist(s:BuildWolframSymbolRgCommand(a:paths))
+    if v:shell_error != 0
+        return []
+    endif
+
+    let l:symbols = {}
+    for l:line in l:lines
+        call s:WolframAddCompletionSymbol(l:symbols, s:WolframExtractDefinitionSymbol(l:line))
+    endfor
+
+    return sort(keys(l:symbols))
+endfunction
+
+function! s:WolframCompletionSymbols() abort
+    let l:paths = s:WolframSearchPaths()
+    let l:cache_key = s:WolframSymbolsCacheKey(l:paths)
+    let l:cache_file = s:WolframSymbolsCacheFile(l:paths)
+
+    if !exists('s:wolfram_completion_symbols')
+        let s:wolfram_completion_symbols = {}
+    endif
+
+    if has_key(s:wolfram_completion_symbols, l:cache_key)
+        return copy(s:wolfram_completion_symbols[l:cache_key])
+    endif
+
+    if filereadable(l:cache_file)
+        let s:wolfram_completion_symbols[l:cache_key] = s:LoadWolframCompletionSymbols(readfile(l:cache_file))
+        return copy(s:wolfram_completion_symbols[l:cache_key])
+    endif
+
+    let s:wolfram_completion_symbols[l:cache_key] = s:BuildWolframCompletionSymbols(l:paths)
+    if !empty(s:wolfram_completion_symbols[l:cache_key])
+        call writefile(s:wolfram_completion_symbols[l:cache_key], l:cache_file)
+    endif
+
+    return copy(s:wolfram_completion_symbols[l:cache_key])
+endfunction
+
+function! s:ClearWolframCompletionSymbols() abort
+    let l:cache_root = expand($XDG_CACHE_HOME !=# '' ? $XDG_CACHE_HOME : '~/.cache')
+    let l:cache_dir = l:cache_root . '/vim'
+
+    unlet! s:wolfram_completion_symbols
+    for l:cache_file in glob(l:cache_dir . '/wolfram-symbols-*.txt', 0, 1)
+        call delete(l:cache_file)
+    endfor
+endfunction
+
+function! s:WolframRefreshCompletionSymbols() abort
+    call s:ClearWolframCompletionSymbols()
+
+    let l:symbols = s:WolframCompletionSymbols()
+    echo 'Refreshed Wolfram symbol cache (' . len(l:symbols) . ' entries)'
+endfunction
+
+function! s:WolframAsyncompleteCompletor(opt, ctx) abort
+    let l:symbols = s:WolframCompletionSymbols()
+    let l:kw = matchstr(a:ctx['typed'], '[$[:alnum:]`]\+$')
+    let l:kwlen = len(l:kw)
+
+    if empty(l:symbols) || l:kwlen < get(a:opt, 'min_chars', 0)
+        return
+    endif
+
+    let l:startcol = a:ctx['col'] - l:kwlen
+    let l:matches = []
+
+    for l:symbol in l:symbols
+        if stridx(l:symbol, l:kw) == 0
+            call add(l:matches, {
+                \ 'word': l:symbol,
+                \ 'dup': 1,
+                \ 'menu': '[wolfram]',
+                \ })
+        endif
+    endfor
+
+    call asyncomplete#complete(a:opt['name'], a:ctx, l:startcol, l:matches)
 endfunction
 
 function! s:WolframRgLineToLocation(line) abort
@@ -314,9 +623,10 @@ function! s:WolframRefreshPaths() abort
     if filereadable(l:cache_file)
         call delete(l:cache_file)
     endif
+    call s:ClearWolframCompletionSymbols()
 
     let l:paths = s:WolframRuntimePaths()
-    echo 'Refreshed Wolfram $Path cache (' . len(l:paths) . ' entries)'
+    echo 'Refreshed Wolfram $Path cache (' . len(l:paths) . ' entries) and cleared symbol cache'
 endfunction
 
 function! s:WolframSearchPaths() abort
@@ -456,6 +766,7 @@ augroup END
 
 command! WolframGotoDefinition call s:WolframGotoDefinition()
 command! WolframRefreshPaths call s:WolframRefreshPaths()
+command! WolframRefreshSymbols call s:WolframRefreshCompletionSymbols()
 command! LspToggleDiagnostics call s:ToggleLspDiagnostics()
 
 function! NERDTreeQuit()
