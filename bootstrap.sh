@@ -269,7 +269,7 @@ install_julia_lsp() {
     mkdir -p "$julia_lsp_env"
 
     julia --startup-file=no --history-file=no --project="$julia_lsp_env" \
-        -e 'using Pkg; Pkg.add("LanguageServer"); Pkg.precompile()'
+        -e 'using Pkg; Pkg.add(["LanguageServer", "SymbolServer", "StaticLint"]); Pkg.precompile()'
 }
 
 install_julia_from_tarball() {
@@ -974,7 +974,7 @@ DO_GPG=1          # gpg-agent + pinentry tweaks
 DO_POETRY=1       # poetry / arxivterminal
 DO_RUST_TOOLS=1   # rustup + fzf, rg, fd, bat
 DO_LSP=1          # language servers + vim LSP tooling
-DO_NEOVIM=1       # Neovim from source + kickstart.nvim runtime
+DO_NEOVIM=1       # Neovim from source + repo-managed config
 CLANGD_INSTALL_METHOD_DEFAULT=tar # default clangd install path for profiles
 DO_SCI=1          # scientific stack (GMP, NTL, MPFR, FLINT, FiniteFlow, etc.)
 DO_GMP=1          # GMP from source inside scientific stack
@@ -2054,7 +2054,7 @@ fi
 
 if \
     (( DO_NEOVIM )) && \
-    prompt_continue "Build Neovim from source and install kickstart.nvim?" && \
+    prompt_continue "Build Neovim from source and link the repo-managed config?" && \
     : \
 ; then
     log_section "NEOVIM SETUP"
@@ -2068,15 +2068,13 @@ if \
     NVIM_SOURCE_DIR="${NVIM_SOURCE_DIR:-$SRC_DIR/neovim}"
     NVIM_CONFIG_SOURCE="${NVIM_CONFIG_SOURCE:-$SCRIPT_DIR/config/nvim}"
     NVIM_CONFIG_TARGET="${NVIM_CONFIG_TARGET:-$XDG_CONFIG_HOME/nvim}"
-    KICKSTART_DIR="${KICKSTART_DIR:-$XDG_DATA_HOME/nvim/kickstart.nvim}"
     NEOVIM_GIT_BRANCH="${NEOVIM_GIT_BRANCH:-stable}"
 
     mkdir -p \
         "$NVIM_INSTALL_PREFIX/bin" \
         "$XDG_CONFIG_HOME" \
         "$XDG_CACHE_HOME/nvim" \
-        "$XDG_STATE_HOME/nvim" \
-        "$(dirname "$KICKSTART_DIR")"
+        "$XDG_STATE_HOME/nvim"
 
     missing_neovim_build_tools=()
     for required_cmd in git cc make cmake ninja curl unzip gettext; do
@@ -2127,14 +2125,6 @@ if \
         log_info "Linked repo-managed Neovim config: $NVIM_CONFIG_TARGET -> $NVIM_CONFIG_SOURCE"
     else
         log_warning "Repo-managed Neovim config not found at $NVIM_CONFIG_SOURCE; skipping config link."
-    fi
-
-    if command -v git >/dev/null 2>&1; then
-        log_info "Installing/updating kickstart.nvim runtime in $KICKSTART_DIR..."
-        clone_or_update "https://github.com/nvim-lua/kickstart.nvim.git" "$KICKSTART_DIR"
-        log_success "kickstart.nvim runtime is available at $KICKSTART_DIR"
-    else
-        log_warning "git is not available; skipping kickstart.nvim checkout."
     fi
 
     if command -v nvim >/dev/null 2>&1; then
@@ -4737,7 +4727,7 @@ echo "  • Vim (from git) with terminal and xclip support"
 echo "  • fzf, ripgrep (rg), fd (from git)"
 echo "  • dwm, dmenu, st (from suckless.org) with font-based emoji crash fix"
 echo "  • vifm, zathura"
-echo "  • Neovim (from source) with repo-managed config and kickstart.nvim runtime"
+echo "  • Neovim (from source) with repo-managed config"
 echo "  • tmux, htop"
 echo "  • Clean home directory structure: ~/dev, ~/docs, ~/soft"
 echo
@@ -4752,7 +4742,7 @@ echo "  1. Restart your shell or run: source ~/.bashrc"
 echo "  2. Logout and login again - select 'dwm' from session menu"
 echo "  3. Check patches_info.txt files in each suckless tool directory for popular patches"
 echo "  4. Customize your tools by editing their config.h files and rebuilding"
-echo "  5. Open nvim to let kickstart.nvim install plugins automatically"
+echo "  5. Open nvim to let lazy.nvim install plugins automatically"
 echo "  6. MacBook Air startup sound should be disabled"
 echo
 log_info "Directory structure:"

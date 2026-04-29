@@ -119,6 +119,12 @@ vim.schedule(function() vim.o.clipboard = 'unnamedplus' end)
 -- Enable break indent
 vim.o.breakindent = true
 
+-- Use 4-space indentation by default
+vim.o.expandtab = true
+vim.o.shiftwidth = 4
+vim.o.tabstop = 4
+vim.o.softtabstop = 4
+
 -- Enable undo/redo changes even after closing and reopening a file
 vim.o.undofile = true
 
@@ -148,7 +154,7 @@ vim.o.splitbelow = true
 --   See `:help lua-options`
 --   and `:help lua-guide-options`
 vim.o.list = true
-vim.opt.listchars = { tab = '» ', trail = '·', nbsp = '␣' }
+vim.opt.listchars = { tab = '> ', trail = '.', nbsp = '_' }
 
 -- Preview substitutions live, as you type!
 vim.o.inccommand = 'split'
@@ -157,7 +163,7 @@ vim.o.inccommand = 'split'
 vim.o.cursorline = true
 
 -- Minimal number of screen lines to keep above and below the cursor.
-vim.o.scrolloff = 10
+vim.o.scrolloff = 3
 
 -- if performing an operation that would fail due to unsaved changes in the buffer (like `:q`),
 -- instead raise a dialog asking if you wish to save the current file(s)
@@ -236,6 +242,25 @@ vim.api.nvim_create_autocmd('TextYankPost', {
   desc = 'Highlight when yanking (copying) text',
   group = vim.api.nvim_create_augroup('kickstart-highlight-yank', { clear = true }),
   callback = function() vim.hl.on_yank() end,
+})
+
+vim.filetype.add {
+  extension = {
+    m = 'mma',
+    wl = 'mma',
+  },
+}
+
+vim.api.nvim_create_autocmd('FileType', {
+  pattern = 'mma',
+  group = vim.api.nvim_create_augroup('dotfiles-wolfram-filetype', { clear = true }),
+  callback = function(event)
+    vim.bo[event.buf].commentstring = '(*%s*)'
+    vim.keymap.set('n', '<leader>wd', '<cmd>WolframGotoDefinition<CR>', {
+      buffer = event.buf,
+      desc = 'Wolfram: goto definition',
+    })
+  end,
 })
 
 -- [[ REPL helpers ]]
@@ -411,6 +436,329 @@ vim.api.nvim_create_user_command('ReplH', function(command_opts)
   open_repl('horizontal', command_opts.fargs)
 end, { nargs = '+' })
 
+-- [[ Wolfram helpers ]]
+
+vim.g.wolfram_definition_search_paths = vim.g.wolfram_definition_search_paths or { '~/.local/share/Wolfram/ApplicationData/Applications' }
+vim.g.wolfram_definition_query_runtime_path = vim.g.wolfram_definition_query_runtime_path
+if vim.g.wolfram_definition_query_runtime_path == nil then vim.g.wolfram_definition_query_runtime_path = 1 end
+vim.g.wolfram_definition_path_exclude_patterns = vim.g.wolfram_definition_path_exclude_patterns
+  or {
+    '/Documentation/',
+    '/SystemFiles/Data/',
+    '/SystemFiles/Links/',
+  }
+
+local wolfram_runtime_paths_cache = nil
+local wolfram_completion_symbols_cache = {}
+
+local function wolfram_cache_dir()
+  local cache_dir = vim.fs.joinpath(vim.fn.stdpath 'cache', 'wolfram')
+  vim.fn.mkdir(cache_dir, 'p')
+  return cache_dir
+end
+
+local function wolfram_runtime_paths_cache_file()
+  return vim.fs.joinpath(wolfram_cache_dir(), 'runtime-paths.txt')
+end
+
+local function wolfram_symbols_cache_key(paths)
+  local hash = 5381
+  local joined = table.concat(paths, '\n')
+  for i = 1, #joined do
+    hash = (hash * 33 + joined:byte(i)) % 2147483647
+  end
+  return string.format('%08x', hash)
+end
+
+local function wolfram_symbols_cache_file(paths)
+  return vim.fs.joinpath(wolfram_cache_dir(), 'symbols-' .. wolfram_symbols_cache_key(paths) .. '.txt')
+end
+
+local function wolfram_path_query_code()
+  return table.concat({
+    'userInit = FileNameJoin[{$UserBaseDirectory, "Kernel", "init.m"}]',
+    'If[FileExistsQ[userInit], Get[userInit]]',
+    'WriteString[$Output, "__WOLFRAM_PATH_BEGIN__\\n"]',
+    'Scan[If[StringQ[#], WriteString[$Output, # <> "\\n"]] &, $Path]',
+    'WriteString[$Output, "__WOLFRAM_PATH_END__\\n"]',
+    'Exit[]',
+  }, '; ')
+end
+
+local function wolfram_path_relevant(path)
+  local expanded = vim.fn.fnamemodify(path, ':p')
+  local home = vim.fn.fnamemodify(vim.env.HOME, ':p')
+
+  if expanded == home then return false end
+
+  for _, pattern in ipairs(vim.g.wolfram_definition_path_exclude_patterns or {}) do
+    if expanded:find(pattern) then return false end
+  end
+
+  return true
+end
+
+local function wolfram_path_rank(path)
+  local expanded = vim.fn.fnamemodify(path, ':p')
+  local home = vim.env.HOME
+  local prefixes = {
+    { 10, vim.fn.fnamemodify(home .. '/dev/', ':p') },
+    { 10, vim.fn.fnamemodify(home .. '/soft/', ':p') },
+    { 20, vim.fn.fnamemodify(home .. '/.Wolfram/Applications/', ':p') },
+    { 20, vim.fn.fnamemodify(home .. '/.local/share/Wolfram/ApplicationData/Applications/', ':p') },
+    { 30, vim.fn.fnamemodify(home .. '/.Wolfram/Autoload/', ':p') },
+    { 40, vim.fn.fnamemodify(home .. '/.Wolfram/Kernel/', ':p') },
+  }
+
+  for _, item in ipairs(prefixes) do
+    if expanded:sub(1, #item[2]) == item[2] then return item[1] end
+  end
+  if expanded:find '/AddOns/%f[^/](Applications|Packages|Autoload|ExtraPackages)/' then return 50 end
+  if expanded:find '/SystemFiles/%f[^/](Kernel/Packages|Autoload)/' then return 60 end
+  return 90
+end
+
+local function curate_wolfram_runtime_paths(paths)
+  local curated = {}
+  local seen = {}
+
+  for _, path in ipairs(paths) do
+    local expanded = vim.fn.fnamemodify(vim.fn.expand(path), ':p')
+    if vim.fn.isdirectory(expanded) == 1 and wolfram_path_relevant(expanded) and not seen[expanded] then
+      seen[expanded] = true
+      table.insert(curated, expanded)
+    end
+  end
+
+  table.sort(curated, function(left, right)
+    local left_rank = wolfram_path_rank(left)
+    local right_rank = wolfram_path_rank(right)
+    if left_rank == right_rank then return left < right end
+    return left_rank < right_rank
+  end)
+
+  return curated
+end
+
+local function wolfram_kernel_command(run_expr)
+  local candidates = {
+    { 'WolframKernel', '-noprompt', '-nopaclet', '-nostartuppaclets', '-noicon', '-run', run_expr },
+    { 'wolfram', '-noprompt', '-nopaclet', '-nostartuppaclets', '-noicon', '-run', run_expr },
+    { 'wolframscript', '-code', run_expr },
+    { 'math', '-noprompt', '-run', run_expr },
+  }
+
+  for _, cmd in ipairs(candidates) do
+    if vim.fn.executable(cmd[1]) == 1 then return cmd end
+  end
+
+  return nil
+end
+
+local function wolfram_runtime_paths()
+  if wolfram_runtime_paths_cache then return vim.deepcopy(wolfram_runtime_paths_cache) end
+
+  local cache_file = wolfram_runtime_paths_cache_file()
+  if vim.fn.filereadable(cache_file) == 1 then
+    local paths = curate_wolfram_runtime_paths(vim.fn.readfile(cache_file))
+    vim.fn.writefile(paths, cache_file)
+    wolfram_runtime_paths_cache = paths
+    return vim.deepcopy(paths)
+  end
+
+  if tonumber(vim.g.wolfram_definition_query_runtime_path or 0) == 0 then return {} end
+
+  local cmd = wolfram_kernel_command(wolfram_path_query_code())
+  if not cmd then
+    wolfram_runtime_paths_cache = {}
+    return {}
+  end
+
+  local output = vim.fn.systemlist(cmd)
+  if vim.v.shell_error ~= 0 then
+    wolfram_runtime_paths_cache = {}
+    return {}
+  end
+
+  local start_idx = vim.fn.index(output, '__WOLFRAM_PATH_BEGIN__')
+  local end_idx = vim.fn.index(output, '__WOLFRAM_PATH_END__')
+  local raw_paths = {}
+  if start_idx >= 0 and end_idx > start_idx then raw_paths = vim.list_slice(output, start_idx + 2, end_idx) end
+
+  local paths = curate_wolfram_runtime_paths(raw_paths)
+  vim.fn.writefile(paths, cache_file)
+  wolfram_runtime_paths_cache = paths
+  return vim.deepcopy(paths)
+end
+
+local function wolfram_search_paths(bufnr)
+  local paths = {}
+  local seen = {}
+  local filename = vim.api.nvim_buf_get_name(bufnr)
+  local root = vim.fs.root(bufnr, { '.git' })
+
+  local function add_path(path)
+    if not path or path == '' then return end
+    local expanded = vim.fn.fnamemodify(vim.fn.expand(path), ':p')
+    if vim.fn.isdirectory(expanded) == 1 and not seen[expanded] then
+      seen[expanded] = true
+      table.insert(paths, expanded)
+    end
+  end
+
+  add_path(root or (filename ~= '' and vim.fs.dirname(filename) or nil))
+
+  for _, path in ipairs(wolfram_runtime_paths()) do
+    add_path(path)
+  end
+  for _, path in ipairs(vim.g.wolfram_definition_search_paths or {}) do
+    add_path(path)
+  end
+
+  return paths
+end
+
+local function wolfram_extract_definition_symbol(line)
+  return line:match '^%s*([A-Za-z$`][A-Za-z0-9$`]*)'
+end
+
+local function wolfram_add_completion_symbol(symbols, symbol)
+  if not symbol or symbol == '' then return end
+  symbols[symbol] = true
+
+  local tail = symbol:match '.*`(.*)$'
+  if tail and tail ~= '' then symbols[tail] = true end
+end
+
+local function wolfram_build_completion_symbols(paths)
+  if #paths == 0 or vim.fn.executable 'rg' ~= 1 then return {} end
+
+  local cmd = {
+    'rg',
+    '--no-filename',
+    '--no-heading',
+    '--color=never',
+    '--glob',
+    '*.m',
+    '--glob',
+    '*.wl',
+    '^\\s*[A-Za-z$`][A-Za-z0-9$`]*(\\s*::usage\\s*=|\\s*\\[.*\\]\\s*(:=|=)|\\s*(:=|=))',
+  }
+  vim.list_extend(cmd, paths)
+
+  local lines = vim.fn.systemlist(cmd)
+  if vim.v.shell_error ~= 0 then return {} end
+
+  local symbols = {}
+  for _, line in ipairs(lines) do
+    wolfram_add_completion_symbol(symbols, wolfram_extract_definition_symbol(line))
+  end
+
+  return vim.fn.sort(vim.tbl_keys(symbols))
+end
+
+local function wolfram_completion_symbols(bufnr)
+  local paths = wolfram_search_paths(bufnr)
+  local cache_key = wolfram_symbols_cache_key(paths)
+  local cache_file = wolfram_symbols_cache_file(paths)
+
+  if wolfram_completion_symbols_cache[cache_key] then return vim.deepcopy(wolfram_completion_symbols_cache[cache_key]) end
+
+  if vim.fn.filereadable(cache_file) == 1 then
+    local symbols = vim.fn.readfile(cache_file)
+    wolfram_completion_symbols_cache[cache_key] = symbols
+    return vim.deepcopy(symbols)
+  end
+
+  local symbols = wolfram_build_completion_symbols(paths)
+  if #symbols > 0 then vim.fn.writefile(symbols, cache_file) end
+  wolfram_completion_symbols_cache[cache_key] = symbols
+  return vim.deepcopy(symbols)
+end
+
+local function wolfram_clear_completion_symbols()
+  wolfram_completion_symbols_cache = {}
+  local cache_dir = wolfram_cache_dir()
+  for _, cache_file in ipairs(vim.fn.glob(cache_dir .. '/symbols-*.txt', false, true)) do
+    vim.fn.delete(cache_file)
+  end
+end
+
+local function wolfram_refresh_paths()
+  wolfram_runtime_paths_cache = nil
+  local cache_file = wolfram_runtime_paths_cache_file()
+  if vim.fn.filereadable(cache_file) == 1 then vim.fn.delete(cache_file) end
+  wolfram_clear_completion_symbols()
+
+  local paths = wolfram_runtime_paths()
+  vim.notify(('Refreshed Wolfram $Path cache (%d entries) and cleared symbol cache'):format(#paths), vim.log.levels.INFO)
+end
+
+local function wolfram_refresh_symbols()
+  wolfram_clear_completion_symbols()
+  local symbols = wolfram_completion_symbols(vim.api.nvim_get_current_buf())
+  vim.notify(('Refreshed Wolfram symbol cache (%d entries)'):format(#symbols), vim.log.levels.INFO)
+end
+
+local function wolfram_goto_definition()
+  if vim.fn.executable 'rg' ~= 1 then
+    vim.notify('ripgrep is required for WolframGotoDefinition.', vim.log.levels.ERROR)
+    return
+  end
+
+  local symbol = vim.fn.expand '<cword>'
+  if symbol == '' then
+    vim.notify('No Wolfram symbol under cursor.', vim.log.levels.ERROR)
+    return
+  end
+
+  local paths = wolfram_search_paths(vim.api.nvim_get_current_buf())
+  if #paths == 0 then
+    vim.notify('No Wolfram definition search paths are configured.', vim.log.levels.ERROR)
+    return
+  end
+
+  local pattern = '^\\s*'
+    .. vim.fn.escape(symbol, [[\.^$~[]*+?()|{}]])
+    .. '(\\s*::usage\\s*=|\\s*\\[.*\\]\\s*(:=|=)|\\s*(:=|=))'
+  local cmd = {
+    'rg',
+    '--column',
+    '--line-number',
+    '--no-heading',
+    '--smart-case',
+    '--color=never',
+    '--glob',
+    '*.m',
+    '--glob',
+    '*.wl',
+    pattern,
+  }
+  vim.list_extend(cmd, paths)
+
+  local matches = vim.fn.systemlist(cmd)
+  if vim.v.shell_error ~= 0 or vim.tbl_isempty(matches) then
+    vim.notify('No Wolfram definition found for ' .. symbol, vim.log.levels.INFO)
+    return
+  end
+
+  vim.fn.setqflist({}, 'r', {
+    title = 'Wolfram definitions for ' .. symbol,
+    lines = matches,
+    efm = '%f:%l:%c:%m',
+  })
+
+  if #matches == 1 then
+    vim.cmd.cfirst()
+  else
+    vim.cmd.copen()
+  end
+end
+
+vim.api.nvim_create_user_command('WolframGotoDefinition', wolfram_goto_definition, {})
+vim.api.nvim_create_user_command('WolframRefreshPaths', wolfram_refresh_paths, {})
+vim.api.nvim_create_user_command('WolframRefreshSymbols', wolfram_refresh_symbols, {})
+
 -- [[ Install `lazy.nvim` plugin manager ]]
 --    See `:help lazy.nvim.txt` or https://github.com/folke/lazy.nvim for more info
 local lazypath = vim.fn.stdpath 'data' .. '/lazy/lazy.nvim'
@@ -482,10 +830,14 @@ require('lazy').setup({
         add = { text = '+' }, ---@diagnostic disable-line: missing-fields
         change = { text = '~' }, ---@diagnostic disable-line: missing-fields
         delete = { text = '_' }, ---@diagnostic disable-line: missing-fields
-        topdelete = { text = '‾' }, ---@diagnostic disable-line: missing-fields
+        topdelete = { text = '^' }, ---@diagnostic disable-line: missing-fields
         changedelete = { text = '~' }, ---@diagnostic disable-line: missing-fields
       },
     },
+  },
+
+  {
+    'tpope/vim-fugitive',
   },
 
   -- NOTE: Plugins can also be configured to run Lua code when they are loaded.
@@ -511,7 +863,39 @@ require('lazy').setup({
     opts = {
       -- delay between pressing a key and opening which-key (milliseconds)
       delay = 0,
-      icons = { mappings = vim.g.have_nerd_font },
+      icons = {
+        mappings = vim.g.have_nerd_font,
+        keys = {
+          Up = 'Up ',
+          Down = 'Down ',
+          Left = 'Left ',
+          Right = 'Right ',
+          C = 'Ctrl+',
+          M = 'Alt+',
+          D = 'Super+',
+          S = 'Shift+',
+          CR = 'Enter',
+          Esc = 'Esc',
+          ScrollWheelDown = 'WheelDown',
+          ScrollWheelUp = 'WheelUp',
+          NL = 'Enter',
+          BS = 'Backspace',
+          Space = 'Space',
+          Tab = 'Tab',
+          F1 = 'F1',
+          F2 = 'F2',
+          F3 = 'F3',
+          F4 = 'F4',
+          F5 = 'F5',
+          F6 = 'F6',
+          F7 = 'F7',
+          F8 = 'F8',
+          F9 = 'F9',
+          F10 = 'F10',
+          F11 = 'F11',
+          F12 = 'F12',
+        },
+      },
 
       -- Document existing key chains
       spec = {
@@ -562,6 +946,8 @@ require('lazy').setup({
       { 'nvim-tree/nvim-web-devicons', enabled = vim.g.have_nerd_font },
     },
     config = function()
+      local actions = require 'telescope.actions'
+
       -- Telescope is a fuzzy finder that comes with a lot of different things that
       -- it can fuzzy find! It's more than just a "file finder", it can search
       -- many different aspects of Neovim, your workspace, LSP, and more!
@@ -584,15 +970,18 @@ require('lazy').setup({
       -- [[ Configure Telescope ]]
       -- See `:help telescope` and `:help telescope.setup()`
       require('telescope').setup {
-        -- You can put your default mappings / updates / etc. in here
-        --  All the info you're looking for is in `:help telescope.setup()`
-        --
-        -- defaults = {
-        --   mappings = {
-        --     i = { ['<c-enter>'] = 'to_fuzzy_refine' },
-        --   },
-        -- },
-        -- pickers = {}
+        defaults = {
+          mappings = {
+            i = {
+              ['<C-j>'] = actions.move_selection_next,
+              ['<C-k>'] = actions.move_selection_previous,
+            },
+            n = {
+              ['<C-j>'] = actions.move_selection_next,
+              ['<C-k>'] = actions.move_selection_previous,
+            },
+          },
+        },
         extensions = {
           ['ui-select'] = { require('telescope.themes').get_dropdown() },
         },
@@ -799,9 +1188,16 @@ require('lazy').setup({
       --  See `:help lsp-config` for information about keys and how to configure
       ---@type table<string, vim.lsp.Config>
       local servers = {
-        -- clangd = {},
+        clangd = {
+          cmd = {
+            'clangd',
+            '--background-index',
+            '--clang-tidy',
+            '--query-driver=/usr/bin/c++,/usr/bin/g++',
+          },
+        },
         -- gopls = {},
-        -- pyright = {},
+        pylsp = {},
         -- rust_analyzer = {},
         --
         -- Some languages (like typescript) have entire language plugins that can be useful:
@@ -809,6 +1205,52 @@ require('lazy').setup({
         --
         -- But for many setups, the LSP (`ts_ls`) will work just fine
         -- ts_ls = {},
+        julials = {
+          cmd = function(dispatchers, config)
+            local julia_lsp = vim.fn.expand '~/.local/bin/julia-lsp'
+
+            if vim.fn.executable(julia_lsp) ~= 1 then julia_lsp = vim.fn.exepath 'julia-lsp' end
+
+            if julia_lsp == '' then
+              local mason_julia_lsp = vim.fs.joinpath(vim.fn.stdpath 'data', 'mason', 'bin', 'julia-lsp')
+              if vim.fn.executable(mason_julia_lsp) == 1 then julia_lsp = mason_julia_lsp end
+            end
+
+            local root = (config or {}).root_dir or vim.fn.getcwd()
+            return vim.lsp.rpc.start({ julia_lsp, root }, dispatchers)
+          end,
+          root_dir = function(bufnr, on_dir)
+            local root = vim.fs.root(bufnr, { { 'Project.toml', 'JuliaProject.toml' }, { '.git' } })
+            local filename = vim.api.nvim_buf_get_name(bufnr)
+
+            if not root and filename ~= '' then root = vim.fs.dirname(filename) end
+            if not root or root == '' then root = vim.fn.getcwd() end
+
+            on_dir(root)
+          end,
+          single_file_support = true,
+        },
+        wolfram_lsp = {
+          cmd = function(dispatchers, config)
+            local wolfram_lsp = vim.fn.expand '~/.local/bin/wolfram-lsp'
+
+            if vim.fn.executable(wolfram_lsp) ~= 1 then wolfram_lsp = vim.fn.exepath 'wolfram-lsp' end
+            if wolfram_lsp == '' then return nil end
+
+            return vim.lsp.rpc.start({ wolfram_lsp }, dispatchers, { cwd = (config or {}).root_dir or vim.fn.getcwd() })
+          end,
+          filetypes = { 'mma' },
+          root_dir = function(bufnr, on_dir)
+            local root = vim.fs.root(bufnr, { 'PacletInfo.wl', '.git' })
+            local filename = vim.api.nvim_buf_get_name(bufnr)
+
+            if not root and filename ~= '' then root = vim.fs.dirname(filename) end
+            if not root or root == '' then root = vim.fn.getcwd() end
+
+            on_dir(root)
+          end,
+          single_file_support = true,
+        },
 
         stylua = {}, -- Used to format Lua code
 
@@ -854,7 +1296,13 @@ require('lazy').setup({
       --    :Mason
       --
       -- You can press `g?` for help in this menu.
-      local ensure_installed = vim.tbl_keys(servers or {})
+      local manual_servers = {
+        wolfram_lsp = true,
+      }
+      local ensure_installed = {}
+      for name, _ in pairs(servers or {}) do
+        if not manual_servers[name] then table.insert(ensure_installed, name) end
+      end
       vim.list_extend(ensure_installed, {
         -- You can add other tools here that you want Mason to install
       })
@@ -938,7 +1386,119 @@ require('lazy').setup({
           --   end,
           -- },
         },
-        opts = {},
+        config = function()
+          local ls = require 'luasnip'
+          local s = ls.snippet
+          local i = ls.insert_node
+          local t = ls.text_node
+          local fmt = require('luasnip.extras.fmt').fmt
+          local rep = require('luasnip.extras').rep
+
+          ls.setup {}
+
+          ls.add_snippets('mma', {
+            s(
+              'mod',
+              fmt(
+                [[
+                  Module[{{{}}}, 
+                    {}
+                  ]
+                ]],
+                { i(1), i(0) }
+              )
+            ),
+            s(
+              'blk',
+              fmt(
+                [[
+                  Block[{{{}}}, 
+                    {}
+                  ]
+                ]],
+                { i(1), i(0) }
+              )
+            ),
+            s(
+              'wh',
+              fmt(
+                [[
+                  Which[
+                    {}, {},
+                    True, {}
+                  ]
+                ]],
+                { i(1, 'condition'), i(2, 'value'), i(0) }
+              )
+            ),
+            s('usage', fmt([[{}::usage = "{}";]], { i(1, 'symbol'), i(0, 'description') })),
+            s(
+              'rcomp',
+              fmt(
+                [[
+                  RightComposition[
+                    {},
+                    Identity
+                  ]
+                ]],
+                { i(0) }
+              )
+            ),
+          })
+
+          local tex_snippets = {
+            s(
+              'beg',
+              fmt(
+                [[
+                  \begin{{{}}}
+                    {}
+                  \end{{{}}}
+                ]],
+                { i(1, 'env'), i(0), rep(1) }
+              )
+            ),
+            s(
+              'ali',
+              fmt(
+                [[
+                  \begin{{align}}
+                    {}
+                  \end{{align}}
+                ]],
+                { i(0) }
+              )
+            ),
+            s(
+              'fig',
+              fmt(
+                [[
+                  \begin{{figure}}[{}]
+                    \centering
+                    \includegraphics[width={}\textwidth]{{{}}}
+                    \caption{{{}}}
+                    \label{{fig:{}}}
+                  \end{{figure}}
+                ]],
+                { i(1, 'tbp'), i(2, '0.8'), i(3, 'file'), i(4, 'caption'), i(5, 'label') }
+              )
+            ),
+            s(
+              'thm',
+              fmt(
+                [[
+                  \begin{{theorem}}[{}]
+                    {}
+                  \end{{theorem}}
+                ]],
+                { i(1, 'name'), i(0) }
+              )
+            ),
+          }
+
+          ls.add_snippets('tex', tex_snippets)
+          ls.add_snippets('plaintex', tex_snippets)
+        end,
       },
     },
     ---@module 'blink.cmp'
@@ -1166,21 +1726,21 @@ require('lazy').setup({
 }, { ---@diagnostic disable-line: missing-fields
   ui = {
     -- If you are using a Nerd Font: set icons to an empty table which will use the
-    -- default lazy.nvim defined Nerd Font icons, otherwise define a unicode icons table
+    -- default lazy.nvim defined Nerd Font icons, otherwise define an ASCII table
     icons = vim.g.have_nerd_font and {} or {
-      cmd = '⌘',
-      config = '🛠',
-      event = '📅',
-      ft = '📂',
-      init = '⚙',
-      keys = '🗝',
-      plugin = '🔌',
-      runtime = '💻',
-      require = '🌙',
-      source = '📄',
-      start = '🚀',
-      task = '📌',
-      lazy = '💤 ',
+      cmd = '[cmd]',
+      config = '[cfg]',
+      event = '[evt]',
+      ft = '[ft]',
+      init = '[init]',
+      keys = '[keys]',
+      plugin = '[plug]',
+      runtime = '[rt]',
+      require = '[req]',
+      source = '[src]',
+      start = '[run]',
+      task = '[todo]',
+      lazy = '[lazy]',
     },
   },
 })
