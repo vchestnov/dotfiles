@@ -11,7 +11,12 @@ if g:dotfiles_completion_backend ==# 'asyncomplete'
 endif
 
 " Check if vim-plug is installed, and install it if missing
-let data_dir = has('nvim') ? stdpath('data') . '/site' : '~/.vim'
+" let data_dir = has('nvim') ? stdpath('data') . '/site' : '~/.vim'
+if has('nvim')
+    let data_dir = call(function('stdpath'), ['data']) . '/site'
+else
+    let data_dir = '~/.vim'
+endif
 if empty(glob(data_dir . '/autoload/plug.vim'))
   silent execute '!curl -fLo '.data_dir.'/autoload/plug.vim --create-dirs  https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim'
   autocmd VimEnter * PlugInstall --sync | source $MYVIMRC
@@ -67,6 +72,7 @@ filetype plugin indent on
 
 let s:dotfiles_vim_config_dir = fnamemodify(resolve(expand('<sfile>:p')), ':h') . '/vim/config'
 execute 'source ' . fnameescape(s:dotfiles_vim_config_dir . '/appearance.vim')
+execute 'source ' . fnameescape(s:dotfiles_vim_config_dir . '/buffers.vim')
 execute 'source ' . fnameescape(s:dotfiles_vim_config_dir . '/fzf.vim')
 execute 'source ' . fnameescape(s:dotfiles_vim_config_dir . '/wolfram.vim')
 execute 'source ' . fnameescape(s:dotfiles_vim_config_dir . '/lsp.vim')
@@ -277,67 +283,10 @@ autocmd BufNewFile,BufRead *.md set filetype=markdown
 "let g:fastfold_fold_command_suffixes =  []
 "let g:fastfold_fold_movement_commands = []
 
-" https://vi.stackexchange.com/a/37045
-function! s:bswitch_normal(count, direction)
-    " This function switches to the previous or next normal buffer excluding
-    " all special buffers like quickfix or terminals
-    " Modified version of https://vi.stackexchange.com/a/16710/37509
-    let l:count = a:count
-    let l:cmd = (a:direction ==# 'previous') ? 'bprevious' : 'bnext'
-    let l:start_buffer = bufnr('%')
-    while 1
-        execute 'keepalt ' . l:cmd
-        if &buftype == ''
-            let l:count -= 1
-            if l:count <= 0
-                break
-            endif
-        endif
-        " Prevent infinite loops if no buffer is a normal buffer
-        if bufnr('%') == l:start_buffer && l:count == a:count
-            break
-        endif
-    endwhile
-    if bufnr('%') != l:start_buffer
-        " Jump back to the start buffer once to set the alternate buffer
-        execute 'buffer ' . l:start_buffer
-        buffer #
-    endif
-endfunction
-
-
-" function! s:bswitch_normal(count, direction)
-"     " This function switches to the previous or next normal buffer excluding
-"     " all special buffers like quickfix or terminals
-"     let l:normal_buffers = filter(
-"                 \ range(1, bufnr('$')),
-"                 \ 'buflisted(v:val) && getbufvar(v:val, "&buftype") == ""'
-"                 \ )
-"     if a:direction ==# 'previous'
-"         call reverse(l:normal_buffers)
-"     endif
-"     let l:next_buffer_index = 0
-"     " while
-"     "   `l:next_buffer_index` is not out of range and
-"     "   direction is 'next'      =>  buffer number <= active buffer number and
-"     "   direction is 'previous'  =>  buffer number >= active buffer number
-"     " `a => b` is expressed with `!a || b`
-"     while l:next_buffer_index < len(l:normal_buffers) &&
-"                 \ (a:direction ==# 'previous' || l:normal_buffers[l:next_buffer_index] <= bufnr('%')) &&
-"                 \ (a:direction !=# 'previous' || l:normal_buffers[l:next_buffer_index] >= bufnr('%'))
-"         let l:next_buffer_index += 1
-"     endwhile
-"     let l:next_buffer_index = (l:next_buffer_index + a:count - 1) % len(l:normal_buffers)
-"     execute 'buffer ' . l:normal_buffers[l:next_buffer_index]
-" endfunction
-
 " Taken from `:help SID`
 function! s:SID()
     return matchstr(expand('<SID>'), '<SNR>\zs\d\+\ze_')
 endfunction
-
-nnoremap <silent> <leader>bp :<C-u>execute 'call <SNR>' . <SID>SID() . '_bswitch_normal(' . v:count1 . ', "previous")'<CR>
-nnoremap <silent> <leader>bn :<C-u>execute 'call <SNR>' . <SID>SID() . '_bswitch_normal(' . v:count1 . ', "next")'<CR>
 
 " Enable enhanced command-line completion
 set wildmenu
@@ -423,24 +372,6 @@ function! RefreshSSHAuthSock() abort
 endfunction
 
 command! RefreshSSHAuthSock call RefreshSSHAuthSock()
-
-command! MathematicaClean call s:MathematicaClean()
-function! s:MathematicaClean() abort
-  " " 1) Uncomment whole-line Mathematica comments that are NOT cell markers
-  " "    (* code *)  -> code
-  " "    (*(* c *)*) -> (* c *)
-  " silent! g/^\s*(\*.\{-}\*)\s*$/ if getline('.') !~# '^\s*(\*\s*::' | s/^\s*(\*\(.\{-}\)\*)\s*$/\1/ | endif
-
-  " 2) Delete Input marker lines (including ::Input::Initialization:: etc.)
-  silent! g/^\s*(\*\s*::Input::.\{-}::\s*\*)\s*$/d
-
-  " 3) For remaining cell markers, remove only the Initialization token, keep Closed/Open state
-  silent! g/^\s*(\*\s*::/ s/::Initialization//g
-
-  " 4) Normalize spacing for real comment lines (not markers):
-  "    (*foo*) -> (* foo *)
-  silent! g/^\s*(\*[^:]/ s/(\*\s*/(* / | s/\s*\*)/ *)/
-endfunction
 
 
 set viminfo+=n$XDG_STATE_HOME/vim/viminfo

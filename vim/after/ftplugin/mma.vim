@@ -25,6 +25,15 @@ function! MathematicaFoldText()
     return repeat("+", v:foldlevel) . repeat(" ", offset - len(foldsize) - v:foldlevel) . foldsize . ': ' . line
 endfunction
 
+function! s:MathematicaClean() abort
+    " Delete notebook-style Input markers and normalize comment spacing.
+    silent! g/^\s*(\*\s*::Input::.\{-}::\s*\*)\s*$/d
+    silent! g/^\s*(\*\s*::/ s/::Initialization//g
+    silent! g/^\s*(\*[^:]/ s/(\*\s*/(* / | s/\s*\*)/ *)/
+endfunction
+
 setlocal foldmethod=expr
 setlocal foldexpr=MathematicaFolds()
 setlocal foldtext=MathematicaFoldText()
+
+command! -buffer MathematicaClean call <SID>MathematicaClean()
