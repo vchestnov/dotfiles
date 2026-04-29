@@ -165,6 +165,11 @@ vim.o.cursorline = true
 -- Minimal number of screen lines to keep above and below the cursor.
 vim.o.scrolloff = 3
 
+-- Compute folds, but keep them open by default until explicitly closed.
+vim.o.foldlevel = 99
+vim.o.foldlevelstart = 99
+vim.o.foldenable = true
+
 -- if performing an operation that would fail due to unsaved changes in the buffer (like `:q`),
 -- instead raise a dialog asking if you wish to save the current file(s)
 -- See `:help 'confirm'`
@@ -256,6 +261,11 @@ vim.api.nvim_create_autocmd('FileType', {
   group = vim.api.nvim_create_augroup('dotfiles-wolfram-filetype', { clear = true }),
   callback = function(event)
     vim.bo[event.buf].commentstring = '(*%s*)'
+    -- The current Wolfram tree-sitter grammar is good enough for highlighting,
+    -- but some real-world definitions still parse with errors and produce broken folds.
+    -- Use indentation-based folding for mma buffers until the grammar improves.
+    vim.wo.foldmethod = 'indent'
+    vim.wo.foldexpr = '0'
     vim.keymap.set('n', '<leader>wd', '<cmd>WolframGotoDefinition<CR>', {
       buffer = event.buf,
       desc = 'Wolfram: goto definition',
@@ -1644,12 +1654,48 @@ require('lazy').setup({
     'nvim-treesitter/nvim-treesitter',
     lazy = false,
     build = ':TSUpdate',
-    branch = 'main',
+    branch = 'master',
     -- [[ Configure Treesitter ]] See `:help nvim-treesitter-intro`
     config = function()
+      local nvim_treesitter = require 'nvim-treesitter'
+      local ts_install = require 'nvim-treesitter.install'
+      local ts_info = require 'nvim-treesitter.info'
+      local ts_parsers = require 'nvim-treesitter.parsers'
+      local ts_site_dir = vim.fn.stdpath 'data' .. '/site'
+
+      nvim_treesitter.setup()
+      ts_install.ts_generate_args = { 'generate', '--abi', tostring(vim.treesitter.language_version) }
+      require('nvim-treesitter.configs').setup {
+        parser_install_dir = ts_site_dir,
+      }
+      vim.opt.runtimepath:prepend(ts_site_dir)
+
+      local function register_wolfram_parser()
+        ts_parsers.get_parser_configs().wolfram = {
+          install_info = {
+            url = 'https://github.com/LumaKernel/tree-sitter-wolfram',
+            branch = 'main',
+            files = { 'src/parser.c', 'src/scanner.c' },
+            queries = 'queries',
+            generate = true,
+            generate_from_json = false,
+          },
+          filetype = 'mma',
+          tier = 2,
+        }
+        vim.treesitter.language.register('wolfram', 'mma')
+      end
+
+      register_wolfram_parser()
+      vim.api.nvim_create_autocmd('User', {
+        pattern = 'TSUpdate',
+        group = vim.api.nvim_create_augroup('dotfiles-wolfram-treesitter', { clear = true }),
+        callback = register_wolfram_parser,
+      })
+
       -- ensure basic parser are installed
-      local parsers = { 'bash', 'c', 'diff', 'html', 'lua', 'luadoc', 'markdown', 'markdown_inline', 'query', 'vim', 'vimdoc' }
-      require('nvim-treesitter').install(parsers)
+      local parsers = { 'bash', 'c', 'diff', 'html', 'lua', 'luadoc', 'markdown', 'markdown_inline', 'query', 'vim', 'vimdoc', 'wolfram' }
+      ts_install.ensure_installed(parsers)
 
       ---@param buf integer
       ---@param language string
@@ -1661,8 +1707,8 @@ require('lazy').setup({
 
         -- enables treesitter based folds
         -- for more info on folds see `:help folds`
-        -- vim.wo.foldexpr = 'v:lua.vim.treesitter.foldexpr()'
-        -- vim.wo.foldmethod = 'expr'
+        vim.wo[0].foldexpr = 'v:lua.vim.treesitter.foldexpr()'
+        vim.wo[0].foldmethod = 'expr'
 
         -- check if treesitter indentation is available for this language, and if so enable it
         -- in case there is no indent query, the indentexpr will fallback to the vim's built in one
@@ -1672,7 +1718,7 @@ require('lazy').setup({
         if has_indent_query then vim.bo.indentexpr = "v:lua.require'nvim-treesitter'.indentexpr()" end
       end
 
-      local available_parsers = require('nvim-treesitter').get_available()
+      local available_parsers = ts_parsers.available_parsers()
       vim.api.nvim_create_autocmd('FileType', {
         callback = function(args)
           local buf, filetype = args.buf, args.match
@@ -1680,14 +1726,14 @@ require('lazy').setup({
           local language = vim.treesitter.language.get_lang(filetype)
           if not language then return end
 
-          local installed_parsers = require('nvim-treesitter').get_installed 'parsers'
+          local installed_parsers = ts_info.installed_parsers()
 
           if vim.tbl_contains(installed_parsers, language) then
             -- enable the parser if it is installed
             treesitter_try_attach(buf, language)
           elseif vim.tbl_contains(available_parsers, language) then
-            -- if a parser is available in `nvim-treesitter` auto install it, and enable it after the installation is done
-            require('nvim-treesitter').install(language):await(function() treesitter_try_attach(buf, language) end)
+            -- Trigger installation in the background; attach on the next FileType/BufRead after install.
+            ts_install.ensure_installed { language }
           else
             -- try to enable treesitter features in case the parser exists but is not available from `nvim-treesitter`
             treesitter_try_attach(buf, language)

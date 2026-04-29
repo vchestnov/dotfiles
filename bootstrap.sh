@@ -973,6 +973,7 @@ DO_TEX=1          # TeX Live & tex-related env
 DO_GPG=1          # gpg-agent + pinentry tweaks
 DO_POETRY=1       # poetry / arxivterminal
 DO_RUST_TOOLS=1   # rustup + fzf, rg, fd, bat
+DO_TREE_SITTER=1  # tree-sitter CLI for custom Neovim parsers
 DO_LSP=1          # language servers + vim LSP tooling
 DO_NEOVIM=1       # Neovim from source + repo-managed config
 CLANGD_INSTALL_METHOD_DEFAULT=tar # default clangd install path for profiles
@@ -1012,6 +1013,7 @@ case "$BOOTSTRAP_PROFILE" in
         DO_GPG=0
         DO_POETRY=0
         DO_RUST_TOOLS=1
+        DO_TREE_SITTER=1
         DO_LSP=1
         DO_NEOVIM=1
         DO_SCI=1
@@ -1047,6 +1049,7 @@ case "$BOOTSTRAP_PROFILE" in
         DO_GPG=0
         DO_POETRY=0
         DO_RUST_TOOLS=0
+        DO_TREE_SITTER=0
         DO_LSP=0
         DO_NEOVIM=0
         DO_SCI=0
@@ -1081,8 +1084,9 @@ case "$BOOTSTRAP_PROFILE" in
         DO_GPG=0
         DO_POETRY=0
         DO_RUST_TOOLS=0
+        DO_TREE_SITTER=1
         DO_LSP=0
-        DO_NEOVIM=1
+        DO_NEOVIM=0
         DO_SCI=0
         DO_GMP=0
         DO_NTL=0
@@ -1183,6 +1187,25 @@ XDG_STATE_HOME="${XDG_STATE_HOME:-$HOME/.local/state}"
 BUILD_DIR="${BUILD_DIR:-$HOME/.local/build}"
 BIN_DIR="${BIN_DIR:-$HOME/.local/bin}"
 SRC_DIR="${SRC_DIR:-$HOME/.local/src}"
+
+ensure_cargo_toolchain() {
+    export CARGO_HOME="${CARGO_HOME:-$XDG_DATA_HOME/cargo}"
+    export RUSTUP_HOME="${RUSTUP_HOME:-$XDG_DATA_HOME/rustup}"
+
+    mkdir -p "$BIN_DIR" "$CARGO_HOME" "$RUSTUP_HOME"
+
+    if ! command -v cargo >/dev/null 2>&1; then
+        log_info "Installing Rust..."
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+    fi
+
+    if [ -f "$CARGO_HOME/env" ]; then
+        # shellcheck disable=SC1090
+        source "$CARGO_HOME/env"
+    fi
+
+    export PATH="$BIN_DIR:$CARGO_HOME/bin:$PATH"
+}
 
 # : <<'DEBUG'
 
@@ -1727,14 +1750,8 @@ if \
 ; then
 
     log_section "RUST TOOLS INSTALLATION"
-    
-    # Install Rust if needed
-    if ! command -v cargo &> /dev/null; then
-        log_info "Installing Rust..."
-        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-        source "$CARGO_HOME/env"
-        export PATH="$HOME/.cargo/bin:$PATH"
-    fi
+
+    ensure_cargo_toolchain
 
     # Install fzf from git
     log_info "Installing fzf..."
@@ -1785,6 +1802,44 @@ if \
 	log_success "bat installed"
 else
     log_info "Skipping Rust tools installation."
+fi
+
+# =============================================================================
+# SECTION 10A: TREE-SITTER CLI
+# =============================================================================
+
+if \
+    (( DO_TREE_SITTER )) && \
+    prompt_continue "Install tree-sitter CLI for custom Neovim parsers?" && \
+    : \
+; then
+
+    log_section "TREE-SITTER CLI INSTALLATION"
+
+    ensure_cargo_toolchain
+
+    TREE_SITTER_CLI_ROOT="${TREE_SITTER_CLI_ROOT:-$HOME/.local}"
+
+    log_info "Installing/updating tree-sitter CLI..."
+    if cargo install --locked tree-sitter-cli --root "$TREE_SITTER_CLI_ROOT"; then
+        :
+    else
+        log_warning "Full tree-sitter CLI build failed; retrying without the QuickJS runtime feature."
+        log_warning "This fallback is usually enough for building parsers from repos that already ship generated C sources."
+        cargo install --locked --no-default-features tree-sitter-cli --root "$TREE_SITTER_CLI_ROOT"
+    fi
+
+    hash -r 2>/dev/null || true
+
+    if [ -x "$TREE_SITTER_CLI_ROOT/bin/tree-sitter" ]; then
+        log_success "tree-sitter CLI installed at $TREE_SITTER_CLI_ROOT/bin/tree-sitter"
+    elif command -v tree-sitter >/dev/null 2>&1; then
+        log_success "tree-sitter CLI installed at $(command -v tree-sitter)"
+    else
+        log_warning "tree-sitter install completed, but the binary is not on PATH yet."
+    fi
+else
+    log_info "Skipping tree-sitter CLI installation."
 fi
 
 # =============================================================================

@@ -193,6 +193,7 @@ DO_TEMPLATES=1
 DO_KRITA=1
 DO_NPM=1
 DO_NEOVIM=1
+DO_TREE_SITTER=1  # bootstrap-only tool install flag; kept here for profile parity
 
 case "$BOOTSTRAP_PROFILE" in
     desktop)
@@ -215,6 +216,7 @@ case "$BOOTSTRAP_PROFILE" in
         DO_KRITA=0
         DO_NPM=0
         DO_NEOVIM=1
+        DO_TREE_SITTER=1
         ;;
     nothing)
         DO_CORE=0
@@ -233,6 +235,7 @@ case "$BOOTSTRAP_PROFILE" in
         DO_KRITA=0
         DO_NPM=0
         DO_NEOVIM=0
+        DO_TREE_SITTER=0
         ;;
     test)
         DO_CORE=0
@@ -251,6 +254,7 @@ case "$BOOTSTRAP_PROFILE" in
         DO_KRITA=0
         DO_NPM=0
         DO_NEOVIM=1
+        DO_TREE_SITTER=1
         ;;
     *)
         log_error "Unknown profile '$BOOTSTRAP_PROFILE'!"
