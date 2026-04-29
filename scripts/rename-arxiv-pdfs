@@ -16,6 +16,11 @@ TARGET_DIR="$HOME/docs/lit/papers/arxiv"
 arxiv_pattern='^[0-9]{4}\.[0-9]{4,5}(v[0-9]+)?$|^arXiv:[0-9]{4}\.[0-9]{4,5}(v[0-9]+)?$'
 # arxiv_pattern='^([0-9]{4}\.[0-9]{4,5})|(arXiv:[0-9]{4}\.[0-9]{4,5})(v[0-9]+)?$'
 
+trim_whitespace() {
+    printf '%s\n' "$1" |
+        sed -E 's/[[:space:]]+/ /g; s/^ //; s/ $//'
+}
+
 get_metadata() {
     local id=$1
     local url="https://export.arxiv.org/api/query?id_list=$id"
@@ -29,23 +34,25 @@ get_metadata() {
 
     [[ -n $metadata ]] || return 1
 
-    title=$(printf '%s\n' "$metadata" |
-        tr '\n' ' ' |
-        grep -oP '(?<=<title>)[^<]+' |
-        tail -n 1 |
-        xargs)
+    title=$(trim_whitespace "$(
+        printf '%s\n' "$metadata" |
+            tr '\n' ' ' |
+            grep -oP '(?<=<title>)[^<]+' |
+            tail -n 1
+    )")
 
-    authors=$(printf '%s\n' "$metadata" |
-        tr '\n' ' ' |
-        grep -oP '(?<=<name>)[^<]+' |
-        awk '{print $NF}' |
-        paste -sd ',' - |
-        sed 's/,/, /g' |
-        xargs)
+    authors=$(trim_whitespace "$(
+        printf '%s\n' "$metadata" |
+            tr '\n' ' ' |
+            grep -oP '(?<=<name>)[^<]+' |
+            awk '{print $NF}' |
+            paste -sd ',' - |
+            sed 's/,/, /g'
+    )")
 
     [[ -n $title && -n $authors ]] || return 1
 
-    printf '%s | %s\n' "$title" "$authors"
+    printf '%s\t%s\n' "$title" "$authors"
 }
 
 # # Function to get metadata from arXiv
@@ -89,8 +96,9 @@ for pdf in "$PDF_DIR"/*.pdf; do
             continue
         }
 
-        title=$(echo "$metadata" | cut -d '|' -f 1 | xargs)
-        authors=$(echo "$metadata" | cut -d '|' -f 2- | xargs)
+        IFS=$'\t' read -r title authors <<< "$metadata"
+        title=$(trim_whitespace "$title")
+        authors=$(trim_whitespace "$authors")
 
         if [[ -z $title || -z $authors ]]; then
             echo "Skipping '$pdf' - empty title/authors after trimming"
@@ -186,4 +194,3 @@ done
 #         echo "Skipping '$pdf' - filename does not match arXiv ID pattern"
 #     fi
 # done
-
