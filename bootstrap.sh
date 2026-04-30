@@ -2239,9 +2239,9 @@ xsetroot -solid black
 # xset s off -dpms
 
 # Enable screensaver/DPMS and lock on idle
-xset s 300 60            # start screensaver after 5 min, cycle every 60s
+xset s 900 60            # start screensaver after 15 min, cycle every 60s
 xset +dpms
-xset dpms 300 600 900    # standby/suspend/off (tweak to taste)
+xset dpms 900 1200 1800    # standby/suspend/off
 
 # Lock on idle and on suspend (systemd)
 xss-lock --transfer-sleep-lock -- lock &
