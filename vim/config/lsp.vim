@@ -76,7 +76,7 @@ function! s:RegisterLspServers() abort
             \ })
     endif
 
-    if executable('wolfram-lsp')
+    if !get(g:, 'dotfiles_disable_wolfram_lsp', 0) && executable('wolfram-lsp')
         call lsp#register_server({
             \ 'name': 'wolfram-lsp',
             \ 'cmd': {server_info->['wolfram-lsp']},

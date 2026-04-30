@@ -1,9 +1,12 @@
 set nocompatible
 filetype off
 
+let g:dotfiles_disable_wolfram_lsp = 1
+let wolfram_definition_query_runtime_path = 0
+
 let g:dotfiles_completion_backend = get(g:, 'dotfiles_completion_backend', 'asyncomplete')
 let g:dotfiles_wolfram_completion_enabled = get(g:, 'dotfiles_wolfram_completion_enabled', 0)
-let g:asyncomplete_enable_for_all = g:dotfiles_completion_backend ==# 'asyncomplete' ? 1 : 0
+let g:dotfiles_disable_wolfram_lsp = get(g:, 'dotfiles_disable_wolfram_lsp', 0)
 let mapleader=" "
 if g:dotfiles_completion_backend ==# 'asyncomplete'
     let g:SuperTabMappingForward = '<nul>'
