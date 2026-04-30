@@ -36,4 +36,5 @@ setlocal foldmethod=expr
 setlocal foldexpr=MathematicaFolds()
 setlocal foldtext=MathematicaFoldText()
 
+nnoremap <buffer> <leader>wd :WolframGotoDefinition<CR>
 command! -buffer MathematicaClean call <SID>MathematicaClean()

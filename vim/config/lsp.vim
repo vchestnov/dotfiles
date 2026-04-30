@@ -48,9 +48,6 @@ function! s:OnLspBufferEnabled() abort
     nmap <buffer> <leader>ds <plug>(lsp-document-symbol-search)
     nmap <buffer> <leader>ws <plug>(lsp-workspace-symbol-search)
     nnoremap <buffer> <leader>ld :LspToggleDiagnostics<CR>
-    if &filetype ==# 'mma'
-        nnoremap <buffer> <leader>wd :WolframGotoDefinition<CR>
-    endif
 endfunction
 
 function! s:RegisterLspServers() abort
