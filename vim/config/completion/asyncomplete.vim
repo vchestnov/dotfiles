@@ -143,6 +143,40 @@ function! s:OnAsyncompleteBufferEvent(opt, ctx, event) abort
     call s:RefreshAsyncompleteBufferWords(l:bufnr)
 endfunction
 
+function! s:CollectAsyncompletePrefixMatches(keyword) abort
+    let l:seen = {}
+
+    for l:words in values(s:asyncomplete_buffer_words)
+        for l:word in keys(l:words)
+            if stridx(l:word, a:keyword) == 0 && tolower(l:word) !=# tolower(a:keyword)
+                let l:seen[l:word] = 1
+            endif
+        endfor
+    endfor
+
+    return sort(keys(l:seen))
+endfunction
+
+function! s:CollectAsyncompleteFuzzyMatches(keyword) abort
+    if !get(g:, 'dotfiles_asyncomplete_fuzzy_buffer_fallback', 0) || !exists('*matchfuzzy')
+        return []
+    endif
+
+    let l:candidates = []
+    let l:seen = {}
+
+    for l:words in values(s:asyncomplete_buffer_words)
+        for l:word in keys(l:words)
+            if tolower(l:word) !=# tolower(a:keyword) && !has_key(l:seen, l:word)
+                let l:seen[l:word] = 1
+                call add(l:candidates, l:word)
+            endif
+        endfor
+    endfor
+
+    return matchfuzzy(l:candidates, a:keyword, {'limit': 50})
+endfunction
+
 function! s:AsyncompleteAllBuffersCompletor(opt, ctx) abort
     if !exists('s:asyncomplete_buffer_words')
         call s:WarmAsyncompleteBufferWords()
@@ -159,22 +193,18 @@ function! s:AsyncompleteAllBuffersCompletor(opt, ctx) abort
         return
     endif
 
-    let l:seen = {}
-    for l:words in values(s:asyncomplete_buffer_words)
-        for l:word in keys(l:words)
-            if stridx(l:word, l:kw) == 0 && tolower(l:word) !=# tolower(l:kw)
-                let l:seen[l:word] = 1
-            endif
-        endfor
-    endfor
+    let l:matches = s:CollectAsyncompletePrefixMatches(l:kw)
+    if empty(l:matches)
+        let l:matches = s:CollectAsyncompleteFuzzyMatches(l:kw)
+    endif
 
-    if empty(l:seen)
+    if empty(l:matches)
         return
     endif
 
-    let l:matches = []
-    for l:word in sort(keys(l:seen))
-        call add(l:matches, {
+    let l:items = []
+    for l:word in l:matches
+        call add(l:items, {
             \ 'word': l:word,
             \ 'dup': 1,
             \ 'icase': 1,
@@ -182,5 +212,5 @@ function! s:AsyncompleteAllBuffersCompletor(opt, ctx) abort
             \ })
     endfor
 
-    call asyncomplete#complete(a:opt['name'], a:ctx, a:ctx['col'] - l:kwlen, l:matches)
+    call asyncomplete#complete(a:opt['name'], a:ctx, a:ctx['col'] - l:kwlen, l:items)
 endfunction
