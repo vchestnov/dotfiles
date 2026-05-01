@@ -82,7 +82,74 @@ function! s:BDeleteSink(lines) abort
     endif
 endfunction
 
+function! s:RunRGQuery(query) abort
+    let l:query = trim(a:query)
+    if empty(l:query)
+        return
+    endif
+
+    call fzf#vim#grep2(
+        \ 'rg --column --line-number --no-heading --color=always --smart-case -- ',
+        \ l:query,
+        \ fzf#vim#with_preview(),
+        \ 0)
+endfunction
+
+function! s:VisualSelectionText() abort
+    let l:start = getpos("'<")
+    let l:end = getpos("'>")
+    let l:lines = getline(l:start[1], l:end[1])
+
+    if empty(l:lines)
+        return ''
+    endif
+
+    let l:lines[0] = l:lines[0][l:start[2] - 1 :]
+    let l:lines[-1] = l:lines[-1][: l:end[2] - 1]
+    return trim(join(l:lines, ' '))
+endfunction
+
+function! s:RunRGFromCursorWord() abort
+    call s:RunRGQuery(expand('<cword>'))
+endfunction
+
+function! s:RunRGFromVisualSelection() abort
+    call s:RunRGQuery(s:VisualSelectionText())
+endfunction
+
+function! s:ProjectWordRoot() abort
+    let l:git_root = systemlist('git rev-parse --show-toplevel')
+    if v:shell_error == 0 && !empty(l:git_root)
+        return l:git_root[0]
+    endif
+    return getcwd()
+endfunction
+
+function! s:ProjectWordSourceCommand() abort
+    return "rg --no-filename --no-line-number --color=never -o '[[:alpha:]_][[:alnum:]_]*' . | sort -u"
+endfunction
+
+function! s:ProjectWordSink(lines) abort
+    if empty(a:lines)
+        return
+    endif
+    call s:RunRGQuery(a:lines[0])
+endfunction
+
+function! s:ProjectWordPicker() abort
+    let l:spec = {
+        \ 'source': s:ProjectWordSourceCommand(),
+        \ 'dir': s:ProjectWordRoot(),
+        \ 'sink*': function('s:ProjectWordSink'),
+        \ 'options': ['--prompt', 'RGW> '],
+        \ }
+    call fzf#run(fzf#wrap('project-word-rg', l:spec))
+endfunction
+
 command! -bar BDelete call s:BDeleteSelection()
+command! -bar RGW call s:ProjectWordPicker()
 
 nnoremap <silent> <leader>bb :Buffers<CR>
 nnoremap <silent> <leader>bd :BDelete<CR>
+nnoremap <silent> <leader>rg :<C-u>call <SID>RunRGFromCursorWord()<CR>
+xnoremap <silent> <leader>rg :<C-u>call <SID>RunRGFromVisualSelection()<CR>
