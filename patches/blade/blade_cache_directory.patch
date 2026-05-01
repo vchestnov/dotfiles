@@ -1,0 +1,64 @@
+diff --git a/BLGeneral/Control.wl b/BLGeneral/Control.wl
+index 24b7e6e..2901f4d 100644
+--- a/BLGeneral/Control.wl
++++ b/BLGeneral/Control.wl
+@@ -4,6 +4,7 @@
+ (*Begin*)
+ 
+ 
++$BLCacheDirectory::usage="$BLCacheDirectory, cache directory used during computation. Overwrites other settings";
+ $BLWorkingDirectory::usage="$BLWorkingDirectory, working directory. may be modified during computation";
+ $BLBladeIBPPath::usage="$BLBladeIBPPath, directory where 'BladeIBP.m' should exist";
+ $BLFiniteFlowPath::usage = "$BLFiniteFlowPath, directory where 'FiniteFlow.m' should exist";
+@@ -160,7 +161,37 @@ Print["--------------------------------------------------"];
+ ];
+ 
+ 
+-CacheDirectory[key_]:=FileNameJoin[{If[$FrontEnd===Null, If[$InputFileName==="",Directory[],$InputFileName//DirectoryName], Off[NotebookDirectory::nosv];If[NotebookDirectory[]=!=$Failed,Off[NotebookFileName::nosv];NotebookDirectory[],Off[NotebookFileName::nosv];Directory[]]], "cache", toStringInput[BLFamily]<>"_"<>key}];
++CacheDirectory[key_] := FileNameJoin[{
++    If[Head[$BLCacheDirectory] === String,
++        Print["$BLCacheDirectory was specified to ", $BLCacheDirectory];
++        $BLCacheDirectory
++    ,
++        If[$FrontEnd===Null,
++            If[$InputFileName==="",
++                Print["$InputFileName is empty!"];
++                Print["Using Directory[] = ", Directory[]];
++                Directory[]
++            ,
++                Print["Using $InputFileName = ", $InputFileName//DirectoryName];
++                $InputFileName//DirectoryName
++            ]
++        ,
++            Off[NotebookDirectory::nosv];
++            If[NotebookDirectory[]=!=$Failed,
++                Off[NotebookFileName::nosv];
++                Print["Using NotebookDirectory[] = ", NotebookDirectory[]];
++                NotebookDirectory[]
++            ,
++                Off[NotebookFileName::nosv];
++                Print["NotebookDirectory[] failed!"];
++                Print["Using Directory[] = ", Directory[]];
++                Directory[]
++            ]
++        ]
++    ],
++    "cache",
++    toStringInput[BLFamily]<>"_"<>key
++}];
+ 
+ 
+ (* ::Section:: *)
+diff --git a/Blade.wl b/Blade.wl
+index ed6b4cb..5895060 100644
+--- a/Blade.wl
++++ b/Blade.wl
+@@ -72,7 +72,7 @@ BL::usage= "BL, a symbol represents Feynman integrals, e.g. BL[topo, {1,1,1,1,0,
+ EndPackage[];
+ Protect["Blade`*"];
+ (*Unprotect[$LCVerbose,SUNN,$LCDefinedForm,Pair,$MomentumRelation,LCmonitor,$D,AmplitudeSymbol];*)
+-Unprotect[BLFamilyInf,BLIBPParameter,BLSearchParameter,BLNthreads,BLSSolveNthreads,BLRawMasters,BLPrintLevel,$BLWorkingDirectory];
++Unprotect[BLFamilyInf,BLIBPParameter,BLSearchParameter,BLNthreads,BLSSolveNthreads,BLRawMasters,BLPrintLevel,$BLWorkingDirectory,$BLCacheDirectory];
+ "Unprotect["~~#~~"]"&/@Names["Blade`*Path"]//ToExpression;
+ BLPrintLevel=7;
+ WriteString["stdout","Number of defined symbols="<>

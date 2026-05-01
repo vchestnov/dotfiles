@@ -824,6 +824,55 @@ EOF
     fi
 }
 
+ensure_git_patch_applied() {
+    local patch_file=$1
+    local patch_name="${2:-$(basename "$patch_file" .patch)}"
+
+    if [ ! -f "$patch_file" ]; then
+        log_warning "Local patch not found: $patch_file"
+        return 1
+    fi
+
+    if git apply --check "$patch_file" 2>/dev/null; then
+        git apply "$patch_file"
+        log_success "$patch_name patch applied successfully"
+        return 0
+    fi
+
+    if git apply --reverse --check "$patch_file" 2>/dev/null; then
+        log_info "$patch_name patch already applied"
+        return 0
+    fi
+
+    log_error "$patch_name patch does not apply cleanly"
+    return 1
+}
+
+write_blade_install_config() {
+    local install_file=$1
+    local finiteflow_dir=$2
+    local sci_prefix=$3
+    local escaped_finiteflow_dir=${finiteflow_dir//&/\\&}
+    local escaped_sci_prefix=${sci_prefix//&/\\&}
+
+    if [ ! -f "$install_file" ]; then
+        log_error "Blade install config not found: $install_file"
+        return 1
+    fi
+
+    if grep -q '^DFFLOWMLINK_DIR=' "$install_file"; then
+        sed -i "s|^DFFLOWMLINK_DIR=.*|DFFLOWMLINK_DIR=\"$escaped_finiteflow_dir\"|" "$install_file"
+    else
+        printf '\nDFFLOWMLINK_DIR="%s"\n' "$finiteflow_dir" >> "$install_file"
+    fi
+
+    if grep -q '^DCMAKE_PREFIX_PATH=' "$install_file"; then
+        sed -i "s|^DCMAKE_PREFIX_PATH=.*|DCMAKE_PREFIX_PATH=\"$escaped_sci_prefix\"|" "$install_file"
+    else
+        printf 'DCMAKE_PREFIX_PATH="%s"\n' "$sci_prefix" >> "$install_file"
+    fi
+}
+
 download_file() {
     local url=$1
     local dest=$2
@@ -984,6 +1033,7 @@ DO_MPFR=1         # MPFR from source inside scientific stack
 DO_FLINT=1        # FLINT from source inside scientific stack
 DO_JULIA=1        # Julia from official tarball inside scientific stack
 DO_FINITEFLOW=1   # FiniteFlow from GitHub inside scientific stack
+DO_BLADE=1        # Blade from Gitee with local patch inside scientific stack
 DO_GFAN=1         # Gfan from upstream tarball inside scientific stack
 DO_FERMAT=1       # Fermat binary helper inside scientific stack
 # DO_LITERED=1      # LiteRed and Mathematica helpers inside scientific stack
@@ -1023,6 +1073,7 @@ case "$BOOTSTRAP_PROFILE" in
         DO_FLINT=1
         DO_JULIA=1
         DO_FINITEFLOW=1
+        DO_BLADE=1
         DO_GFAN=1
         DO_FERMAT=1
         # DO_LITERED=1
@@ -1059,6 +1110,7 @@ case "$BOOTSTRAP_PROFILE" in
         DO_FLINT=0
         DO_JULIA=0
         DO_FINITEFLOW=0
+        DO_BLADE=0
         DO_GFAN=0
         DO_FERMAT=0
         # DO_LITERED=0
@@ -1084,16 +1136,17 @@ case "$BOOTSTRAP_PROFILE" in
         DO_GPG=0
         DO_POETRY=0
         DO_RUST_TOOLS=0
-        DO_TREE_SITTER=1
+        DO_TREE_SITTER=0
         DO_LSP=0
         DO_NEOVIM=0
-        DO_SCI=0
+        DO_SCI=1
         DO_GMP=0
         DO_NTL=0
         DO_MPFR=0
         DO_FLINT=0
         DO_JULIA=0
         DO_FINITEFLOW=0
+        DO_BLADE=1
         DO_GFAN=0
         DO_FERMAT=0
         # DO_LITERED=0
@@ -3234,7 +3287,7 @@ fi
 
 if \
 	(( DO_SCI )) && \
-    (( DO_GMP || DO_NTL || DO_MPFR || DO_FLINT || DO_JULIA || DO_QD || DO_FINITEFLOW || DO_GFAN || DO_FERMAT || DO_MSOLVE || DO_SCI_EXTRA )) && \
+    (( DO_GMP || DO_NTL || DO_MPFR || DO_FLINT || DO_JULIA || DO_QD || DO_FINITEFLOW || DO_BLADE || DO_GFAN || DO_FERMAT || DO_MSOLVE || DO_SCI_EXTRA )) && \
 	prompt_continue "Install enabled scientific software components?" && \
 	: \
 ; then
@@ -3503,6 +3556,38 @@ if \
     fi
 
     # ========================================
+    # Blade
+    # ========================================
+    if (( DO_BLADE )); then
+        log_info "Installing Blade from source..."
+
+        FINITEFLOW_DEV_DIR="${FINITEFLOW_DEV_DIR:-$HOME/dev/finiteflow}"
+        BLADE_DEV_DIR="${BLADE_DEV_DIR:-$SCI_REPOS_DIR/blade}"
+        BLADE_BUILD_DIR="${BLADE_BUILD_DIR:-$BLADE_DEV_DIR/build}"
+        BLADE_PATCH_FILE="${BLADE_PATCH_FILE:-${DOTFILES_DIR:-$HOME/dotfiles}/patches/blade/blade_cache_directory.patch}"
+
+        if [ ! -d "$FINITEFLOW_DEV_DIR" ]; then
+            log_info "FiniteFlow sources not found at $FINITEFLOW_DEV_DIR; cloning them for Blade integration."
+            clone_or_update "https://github.com/peraro/finiteflow.git" "$FINITEFLOW_DEV_DIR"
+        fi
+
+        if [ ! -f "$FINITEFLOW_DEV_DIR/fflowmlink.so" ] || [ ! -f "$FINITEFLOW_DEV_DIR/mathlink/FiniteFlow.m" ]; then
+            log_warning "Blade expects fflowmlink.so and mathlink/FiniteFlow.m under $FINITEFLOW_DEV_DIR."
+            log_warning "Build FiniteFlow there before using Blade if CMake configure fails."
+        fi
+
+        clone_or_update "https://gitee.com/multiloop-pku/blade.git" "$BLADE_DEV_DIR"
+        cd "$BLADE_DEV_DIR"
+
+        ensure_git_patch_applied "$BLADE_PATCH_FILE" "blade_cache_directory"
+        write_blade_install_config "$BLADE_DEV_DIR/install.in.txt" "$FINITEFLOW_DEV_DIR" "$SCI_PREFIX"
+
+        cmake -S "$BLADE_DEV_DIR" -B "$BLADE_BUILD_DIR" -DCMAKE_PREFIX_PATH="$SCI_PREFIX"
+        build_and_install "Blade" "cmake --build \"$BLADE_BUILD_DIR\" -j$SCI_JOBS" "cmake --install \"$BLADE_BUILD_DIR\"" true
+        log_success "Blade built in $BLADE_BUILD_DIR and installed into $BLADE_DEV_DIR/bin and $BLADE_DEV_DIR/lib"
+    fi
+
+    # ========================================
     # msolve
     # ========================================
     if (( DO_MSOLVE )); then
@@ -3692,10 +3777,7 @@ if \
         clone_sci_repo "Libra"     "https://github.com/rnlg/Libra.git"
         clone_sci_repo "Fermatica" "https://github.com/rnlg/Fermatica.git"
 
-        # Blade / AMFlow / CalcLoop 
-        if ! clone_sci_repo "blade" "https://gitee.com/multiloop-pku/blade.git"; then
-            log_warning "Skipping repo blade"
-        fi
+        # AMFlow / CalcLoop
         clone_sci_repo "amflow"   "https://gitlab.com/multiloop-pku/amflow.git"
         clone_sci_repo "calcloop" "https://gitlab.com/multiloop-pku/calcloop.git"
 
