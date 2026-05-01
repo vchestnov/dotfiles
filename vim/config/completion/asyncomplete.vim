@@ -6,7 +6,7 @@ let g:dotfiles_completion_asyncomplete_loaded = 1
 let g:asyncomplete_enable_for_all = 1
 let g:asyncomplete_auto_popup = 0
 let g:asyncomplete_auto_completeopt = 0
-set completeopt=menuone,noinsert,noselect
+set completeopt=menuone
 
 function! s:CheckBackSpace() abort
     let l:col = col('.') - 1
@@ -143,18 +143,6 @@ function! s:OnAsyncompleteBufferEvent(opt, ctx, event) abort
     call s:RefreshAsyncompleteBufferWords(l:bufnr)
 endfunction
 
-function! s:AddAsyncompleteTypedWords(bufnr, typed) abort
-    if !has_key(s:asyncomplete_buffer_words, a:bufnr)
-        let s:asyncomplete_buffer_words[a:bufnr] = {}
-    endif
-
-    for l:word in split(a:typed, '\W\+')
-        if len(l:word) > 1
-            let s:asyncomplete_buffer_words[a:bufnr][l:word] = 1
-        endif
-    endfor
-endfunction
-
 function! s:AsyncompleteAllBuffersCompletor(opt, ctx) abort
     if !exists('s:asyncomplete_buffer_words')
         call s:WarmAsyncompleteBufferWords()
@@ -164,7 +152,6 @@ function! s:AsyncompleteAllBuffersCompletor(opt, ctx) abort
     " completion time instead of relying only on buffer events.
     call s:RefreshAsyncompleteTerminalBufferWords()
     call s:RefreshAsyncompleteBufferWords(a:ctx['bufnr'])
-    call s:AddAsyncompleteTypedWords(a:ctx['bufnr'], a:ctx['typed'])
 
     let l:kw = matchstr(a:ctx['typed'], '\k\+$')
     let l:kwlen = len(l:kw)
@@ -175,7 +162,7 @@ function! s:AsyncompleteAllBuffersCompletor(opt, ctx) abort
     let l:seen = {}
     for l:words in values(s:asyncomplete_buffer_words)
         for l:word in keys(l:words)
-            if stridx(l:word, l:kw) == 0
+            if stridx(l:word, l:kw) == 0 && tolower(l:word) !=# tolower(l:kw)
                 let l:seen[l:word] = 1
             endif
         endfor
