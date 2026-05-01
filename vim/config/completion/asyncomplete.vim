@@ -34,7 +34,7 @@ function! s:RegisterAsyncompleteBufferSource() abort
     let l:source = {
         \ 'name': 'buffer',
         \ 'allowlist': ['*'],
-        \ 'events': ['BufEnter', 'BufWinEnter', 'BufWritePost', 'BufDelete', 'BufUnload', 'BufWipeout', 'TerminalOpen', 'TextChangedT'],
+        \ 'events': ['BufEnter', 'BufWinEnter', 'BufWritePost', 'BufDelete', 'BufUnload', 'BufWipeout', 'TerminalOpen'],
         \ 'on_event': function('s:OnAsyncompleteBufferEvent'),
         \ 'completor': function('s:AsyncompleteAllBuffersCompletor'),
         \ }

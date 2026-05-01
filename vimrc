@@ -2,7 +2,7 @@ set nocompatible
 filetype off
 
 let g:dotfiles_disable_wolfram_lsp = 1
-let wolfram_definition_query_runtime_path = 0
+let g:wolfram_definition_query_runtime_path = 0
 
 let g:dotfiles_completion_backend = get(g:, 'dotfiles_completion_backend', 'asyncomplete')
 let g:dotfiles_wolfram_completion_enabled = get(g:, 'dotfiles_wolfram_completion_enabled', 0)
