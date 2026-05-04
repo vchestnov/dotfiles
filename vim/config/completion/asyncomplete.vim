@@ -13,10 +13,13 @@ function! s:CheckBackSpace() abort
     return !l:col || getline('.')[l:col - 1] =~# '\s'
 endfunction
 
-inoremap <expr> <Tab> pumvisible() ? "\<C-n>" :
-    \ <SID>CheckBackSpace() ? "\<Tab>" :
-    \ asyncomplete#force_refresh()
-inoremap <expr> <S-Tab> pumvisible() ? "\<C-p>" : "\<S-Tab>"
+" " 1) popup menu is visible: move to next
+" " 2) check if cursor is after whitespace
+" " 3) call asyncomplete
+" inoremap <expr> <Tab> pumvisible() ? "\<C-n>" :
+"     \ <SID>CheckBackSpace() ? "\<Tab>" :
+"     \ asyncomplete#force_refresh()
+" inoremap <expr> <S-Tab> pumvisible() ? "\<C-p>" : "\<S-Tab>"
 imap <C-Space> <Plug>(asyncomplete_force_refresh)
 if !has('nvim')
     imap <C-@> <Plug>(asyncomplete_force_refresh)
@@ -24,11 +27,14 @@ endif
 
 augroup dotfiles_asyncomplete
     autocmd!
-    autocmd User asyncomplete_setup call s:RegisterAsyncompleteBufferSource()
+    " drop buffer words source for asyncomplete as it's slow :(
+    " autocmd User asyncomplete_setup call s:RegisterAsyncompleteBufferSource()
     if get(g:, 'dotfiles_wolfram_completion_enabled', 0)
         autocmd User asyncomplete_setup call DotfilesWolframRegisterAsyncompleteSource()
     endif
 augroup END
+
+" dead code below if we drop s:RegisterAsyncompleteBufferSource
 
 function! s:RegisterAsyncompleteBufferSource() abort
     let l:source = {

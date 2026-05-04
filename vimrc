@@ -10,10 +10,10 @@ let g:dotfiles_wolfram_completion_enabled = get(g:, 'dotfiles_wolfram_completion
 let g:dotfiles_disable_wolfram_lsp = get(g:, 'dotfiles_disable_wolfram_lsp', 0)
 let g:dotfiles_asyncomplete_fuzzy_buffer_fallback = get(g:, 'dotfiles_asyncomplete_fuzzy_buffer_fallback', 0)
 let mapleader=" "
-if g:dotfiles_completion_backend ==# 'asyncomplete'
-    let g:SuperTabMappingForward = '<nul>'
-    let g:SuperTabMappingBackward = '<s-nul>'
-endif
+" if g:dotfiles_completion_backend ==# 'asyncomplete'
+"     let g:SuperTabMappingForward = '<nul>'
+"     let g:SuperTabMappingBackward = '<s-nul>'
+" endif
 
 " Check if vim-plug is installed, and install it if missing
 " let data_dir = has('nvim') ? stdpath('data') . '/site' : '~/.vim'
