@@ -6,12 +6,14 @@ let g:dotfiles_completion_asyncomplete_loaded = 1
 let g:asyncomplete_enable_for_all = 1
 let g:asyncomplete_auto_popup = 0
 let g:asyncomplete_auto_completeopt = 0
-set completeopt=menuone
 
-function! s:CheckBackSpace() abort
-    let l:col = col('.') - 1
-    return !l:col || getline('.')[l:col - 1] =~# '\s'
-endfunction
+" shared completion menu
+set completeopt=menuone,noselect
+
+" function! s:CheckBackSpace() abort
+"     let l:col = col('.') - 1
+"     return !l:col || getline('.')[l:col - 1] =~# '\s'
+" endfunction
 
 " " 1) popup menu is visible: move to next
 " " 2) check if cursor is after whitespace
@@ -20,6 +22,8 @@ endfunction
 "     \ <SID>CheckBackSpace() ? "\<Tab>" :
 "     \ asyncomplete#force_refresh()
 " inoremap <expr> <S-Tab> pumvisible() ? "\<C-p>" : "\<S-Tab>"
+
+" explict asyncomplete trigger for LSP completion
 imap <C-Space> <Plug>(asyncomplete_force_refresh)
 if !has('nvim')
     imap <C-@> <Plug>(asyncomplete_force_refresh)

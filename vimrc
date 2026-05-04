@@ -4,8 +4,9 @@ filetype off
 let g:dotfiles_disable_wolfram_lsp = 1
 let g:wolfram_definition_query_runtime_path = 0
 let g:dotfiles_asyncomplete_fuzzy_buffer_fallback = 1
+let g:dotfiles_wolfram_completion_enabled = 1
 
-let g:dotfiles_completion_backend = get(g:, 'dotfiles_completion_backend', 'asyncomplete')
+" let g:dotfiles_completion_backend = get(g:, 'dotfiles_completion_backend', 'asyncomplete')
 let g:dotfiles_wolfram_completion_enabled = get(g:, 'dotfiles_wolfram_completion_enabled', 0)
 let g:dotfiles_disable_wolfram_lsp = get(g:, 'dotfiles_disable_wolfram_lsp', 0)
 let g:dotfiles_asyncomplete_fuzzy_buffer_fallback = get(g:, 'dotfiles_asyncomplete_fuzzy_buffer_fallback', 0)
@@ -78,13 +79,19 @@ execute 'source ' . fnameescape(s:dotfiles_vim_config_dir . '/wolfram.vim')
 execute 'source ' . fnameescape(s:dotfiles_vim_config_dir . '/lsp.vim')
 execute 'source ' . fnameescape(s:dotfiles_vim_config_dir . '/slime.vim')
 
-if g:dotfiles_completion_backend ==# 'asyncomplete'
+" if g:dotfiles_completion_backend ==# 'asyncomplete'
     execute 'source ' . fnameescape(s:dotfiles_vim_config_dir . '/completion/asyncomplete.vim')
-elseif g:dotfiles_completion_backend ==# 'supertab'
+" elseif g:dotfiles_completion_backend ==# 'supertab'
     execute 'source ' . fnameescape(s:dotfiles_vim_config_dir . '/completion/supertab.vim')
-else
-    echoerr 'Unknown dotfiles completion backend: ' . g:dotfiles_completion_backend
-endif
+" else
+"     echoerr 'Unknown dotfiles completion backend: ' . g:dotfiles_completion_backend
+" endif
+" completion menu navigation
+inoremap <expr> <C-j> pumvisible() ? "\<C-n>" : "\<C-j>"
+inoremap <expr> <C-k> pumvisible() ? "\<C-p>" : "\<C-k>"
+" accept/cancel
+inoremap <expr> <C-l> pumvisible() ? "\<C-y>" : "\<C-l>"
+inoremap <expr> <C-h> pumvisible() ? "\<C-e>" : "\<C-h>"
 
 function! NERDTreeQuit()
     redir => buffersoutput
