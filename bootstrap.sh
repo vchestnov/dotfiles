@@ -887,6 +887,80 @@ download_file() {
     fi
 }
 
+install_nvm_node_tools() {
+    : "${XDG_CONFIG_HOME:=$HOME/.config}"
+    : "${XDG_DATA_HOME:=$HOME/.local/share}"
+
+    local nvm_version="${NVM_VERSION:-v0.40.4}"
+    local node_version="${NODE_VERSION:-lts/*}"
+    local nvm_dir="${NVM_DIR:-$XDG_DATA_HOME/nvm}"
+    local nvm_env_file="${NVM_ENV_FILE:-$XDG_CONFIG_HOME/nvm/env.sh}"
+
+    local node_packages=(
+        @openai/codex
+        bash-language-server
+        vim-language-server
+        vscode-langservers-extracted
+        yaml-language-server
+        typescript
+        typescript-language-server
+    )
+
+    if ! command -v git >/dev/null 2>&1; then
+        log_warning "git is required to install nvm."
+        return 1
+    fi
+
+    mkdir -p "$XDG_CONFIG_HOME/nvm" "$XDG_DATA_HOME"
+
+    log_info "Installing/updating nvm $nvm_version in $nvm_dir"
+    clone_or_update "https://github.com/nvm-sh/nvm.git" "$nvm_dir" "$nvm_version"
+
+    log_info "Writing nvm environment file: $nvm_env_file"
+    tee "$nvm_env_file" > /dev/null << EOF
+# nvm / Node.js environment
+export NVM_DIR="$nvm_dir"
+
+if [ -s "\$NVM_DIR/nvm.sh" ]; then
+    . "\$NVM_DIR/nvm.sh"
+fi
+
+if [ -s "\$NVM_DIR/bash_completion" ]; then
+    . "\$NVM_DIR/bash_completion"
+fi
+EOF
+
+    # Load nvm in the current bootstrap session.
+    # shellcheck disable=SC1090
+    source "$nvm_env_file"
+
+    if ! command -v nvm >/dev/null 2>&1; then
+        log_warning "nvm did not load correctly from $nvm_env_file"
+        return 1
+    fi
+
+    log_info "Installing Node.js version: $node_version"
+    nvm install "$node_version"
+    nvm alias default "$node_version"
+    nvm use default
+
+    log_info "Node version: $(node --version)"
+    log_info "npm version: $(npm --version)"
+
+    log_info "Installing npm global tools..."
+    npm install -g "${node_packages[@]}"
+
+    if command -v codex >/dev/null 2>&1; then
+        log_success "Codex CLI installed: $(command -v codex)"
+    else
+        log_warning "Codex package installed, but 'codex' is not currently on PATH."
+    fi
+
+    log_success "Node/npm tooling installed via nvm"
+    log_info "For new shells, source this file from your bashrc/profile:"
+    log_info "  source \"$nvm_env_file\""
+}
+
 build_and_install_polymake() {
     local source_dir=$1
     local prefix="${POLYMAKE_PREFIX:-$HOME/.local}"
@@ -1050,6 +1124,7 @@ DO_QD=1           # install QD library
 DO_ZK=1           # Zettelkasten + templates
 DO_KRITA=1        # Krita drawing app
 DO_ASIR=1         # OpenXM and Risa/Asir computer algebra systems
+DO_NODE_TOOLS=1   # nvm + Node.js + npm-based LSP servers + codex
 
 case "$BOOTSTRAP_PROFILE" in
     desktop)
@@ -1091,6 +1166,7 @@ case "$BOOTSTRAP_PROFILE" in
         DO_KRITA=0
         DO_ASIR=1
         CLANGD_INSTALL_METHOD_DEFAULT=tar
+        DO_NODE_TOOLS=1
         ;;
     nothing)
         DO_CORE=0
@@ -1127,6 +1203,7 @@ case "$BOOTSTRAP_PROFILE" in
         DO_KRITA=0
         DO_ASIR=0
         CLANGD_INSTALL_METHOD_DEFAULT=tar
+        DO_NODE_TOOLS=0
         ;;
     test)
         DO_CORE=0
@@ -1139,14 +1216,14 @@ case "$BOOTSTRAP_PROFILE" in
         DO_TREE_SITTER=0
         DO_LSP=0
         DO_NEOVIM=0
-        DO_SCI=1
+        DO_SCI=0
         DO_GMP=0
         DO_NTL=0
         DO_MPFR=0
         DO_FLINT=0
         DO_JULIA=0
         DO_FINITEFLOW=0
-        DO_BLADE=1
+        DO_BLADE=0
         DO_GFAN=0
         DO_FERMAT=0
         # DO_LITERED=0
@@ -1163,6 +1240,7 @@ case "$BOOTSTRAP_PROFILE" in
         DO_KRITA=0
         DO_ASIR=0
         CLANGD_INSTALL_METHOD_DEFAULT=tar
+        DO_NODE_TOOLS=1
         ;;
     *)
         log_error "Unknown profile '$BOOTSTRAP_PROFILE'!"
@@ -2458,6 +2536,24 @@ if \
     log_success "Dotfiles setup completed"
 fi
 
+
+# =============================================================================
+# SECTION 21: NVM SETUP 
+# =============================================================================
+
+if \
+    (( DO_NODE_TOOLS )) && \
+    prompt_continue "Install Node.js and npm tooling via nvm?" && \
+    : \
+; then
+    log_section "NODE/NPM TOOLING VIA NVM"
+   
+    if install_nvm_node_tools; then
+        log_success "Node/npm tooling setup completed"
+    else
+        log_warning "Node/npm tooling setup failed or was incomplete."
+    fi
+fi
 
 # =============================================================================
 # SECTION 22: SSH-FIND-AGENT INSTALLATION

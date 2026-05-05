@@ -325,4 +325,9 @@ ssh_agent_kill() {
 export NPM_CONFIG_USERCONFIG="$XDG_CONFIG_HOME/npmrc"
 
 # OpenXM / Risa-Asir
-[ -f "/home/seva/.config/openxm/env.sh" ] && source "/home/seva/.config/openxm/env.sh"
+[ -f "$HOME/.config/openxm/env.sh" ] && source "$HOME/.config/openxm/env.sh"
+
+# load nvm on machines where npm is not provided by the system
+if ! command -v npm >/dev/null 2>&1 && [ -f "$HOME/.config/nvm/env.sh" ]; then
+    source "$HOME/.config/nvm/env.sh"
+fi
