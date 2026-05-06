@@ -7,8 +7,8 @@ let g:asyncomplete_enable_for_all = 1
 let g:asyncomplete_auto_popup = 0
 let g:asyncomplete_auto_completeopt = 0
 
-" shared completion menu
-set completeopt=menuone,noselect
+" " shared completion menu
+" set completeopt=menuone,noselect
 
 " function! s:CheckBackSpace() abort
 "     let l:col = col('.') - 1
