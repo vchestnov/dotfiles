@@ -7,6 +7,11 @@ setlocal foldenable
 setlocal foldnestmax=7
 setlocal foldlevel=1
 
+setlocal suffixes+=.aux,.log,.dvi,.bak,.bbl,.blg,.out,.toc
+setlocal suffixes+=.fdb_latexmk,.fls,.synctex.gz,.pdf
+
+setlocal suffixesadd+=.tex,.bib,.sty,.cls
+
 let s:cmd_level = {
       \ 'part': 1,
       \ 'chapter': 2,

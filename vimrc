@@ -1,302 +1,271 @@
 set nocompatible
 filetype off
 
-let g:dotfiles_disable_wolfram_lsp = 0
-let g:wolfram_definition_query_runtime_path = 0
-" let g:dotfiles_asyncomplete_fuzzy_buffer_fallback = 1
-let g:dotfiles_wolfram_completion_enabled = 1
+" -----------------------------------------------------------------------------
+" Dotfiles switches
+" -----------------------------------------------------------------------------
+let mapleader = ' '
 
-" let g:dotfiles_completion_backend = get(g:, 'dotfiles_completion_backend', 'asyncomplete')
-let g:dotfiles_wolfram_completion_enabled = get(g:, 'dotfiles_wolfram_completion_enabled', 0)
 let g:dotfiles_disable_wolfram_lsp = get(g:, 'dotfiles_disable_wolfram_lsp', 0)
-" let g:dotfiles_asyncomplete_fuzzy_buffer_fallback = get(g:, 'dotfiles_asyncomplete_fuzzy_buffer_fallback', 0)
-let mapleader=" "
-" if g:dotfiles_completion_backend ==# 'asyncomplete'
-"     let g:SuperTabMappingForward = '<nul>'
-"     let g:SuperTabMappingBackward = '<s-nul>'
-" endif
+let g:dotfiles_wolfram_completion_enabled = get(g:, 'dotfiles_wolfram_completion_enabled', 1)
+let g:wolfram_definition_query_runtime_path = get(g:, 'wolfram_definition_query_runtime_path', 0)
 
-" Check if vim-plug is installed, and install it if missing
-" let data_dir = has('nvim') ? stdpath('data') . '/site' : '~/.vim'
+" Keep LSP off by default, start it manually with :LspOn
+" Vim session with LSP from startup run
+"   vim --cmd 'let g:dotfiles_lsp_auto_enable = 1' my_file_here 
+let g:dotfiles_lsp_auto_enable = get(g:, 'dotfiles_lsp_auto_enable', 0)
+let g:lsp_auto_enable = g:dotfiles_lsp_auto_enable
+
+" Lightweight clangd defaults, chatgpt suggested, boh
+"   let g:dotfiles_clangd_background_index = 1
+"   let g:dotfiles_clangd_tidy = 1
+let g:dotfiles_clangd_background_index = get(g:, 'dotfiles_clangd_background_index', 0)
+let g:dotfiles_clangd_tidy = get(g:, 'dotfiles_clangd_tidy', 0)
+
+" -----------------------------------------------------------------------------
+" Helper for split config files
+" -----------------------------------------------------------------------------
+let s:dotfiles_vim_config_dir = fnamemodify(resolve(expand('<sfile>:p')), ':h') . '/vim/config'
+
+function! s:SourceConfig(relpath) abort
+    let l:file = s:dotfiles_vim_config_dir . '/' . a:relpath
+    if filereadable(l:file)
+        execute 'source ' . fnameescape(l:file)
+    else
+        echom 'Missing vim config: ' . l:file
+    endif
+endfunction
+
+" Source LSP options before plug#end(), so vim-lsp/vim-lsp-settings see them
+" even in sessions started with g:dotfiles_lsp_auto_enable = 1
+call s:SourceConfig('lsp.vim')
+
+" -----------------------------------------------------------------------------
+" vim-plug bootstrap
+" -----------------------------------------------------------------------------
 if has('nvim')
-    let data_dir = call(function('stdpath'), ['data']) . '/site'
+    let s:plug_site = stdpath('data') . '/site'
 else
-    let data_dir = '~/.vim'
-endif
-if empty(glob(data_dir . '/autoload/plug.vim'))
-  silent execute '!curl -fLo '.data_dir.'/autoload/plug.vim --create-dirs  https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim'
-  autocmd VimEnter * PlugInstall --sync | source $MYVIMRC
+    let s:plug_site = expand('~/.vim')
 endif
 
-call plug#begin('~/.vim/plugged')
-Plug 'tomasr/molokai'
+if empty(glob(s:plug_site . '/autoload/plug.vim'))
+    silent execute '!curl -fLo ' . shellescape(s:plug_site . '/autoload/plug.vim') .
+        \ ' --create-dirs https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim'
+    autocmd VimEnter * PlugInstall --sync | source $MYVIMRC
+endif
 
-Plug 'scrooloose/nerdtree'
+call plug#begin(expand('~/.vim/plugged'))
+    Plug 'tomasr/molokai'
+    Plug 'altercation/vim-colors-solarized'
+    Plug 'NLKNguyen/papercolor-theme'
+    Plug 'morhetz/gruvbox'
 
-" Plug 'scrooloose/nerdcommenter'
-Plug 'tpope/vim-commentary'
+    Plug 'preservim/nerdtree'
+    Plug 'tpope/vim-commentary'
+    Plug 'tpope/vim-surround'
+    Plug 'tpope/vim-fugitive'
+    Plug 'airblade/vim-gitgutter'
+    Plug 'godlygeek/tabular'
+    Plug 'bling/vim-airline'
+    Plug 'vim-airline/vim-airline-themes'
+    Plug 'jpalardy/vim-slime'
+    Plug 'konfekt/fastfold'
+    Plug 'wellle/targets.vim'
+    Plug 'junegunn/fzf'
+    Plug 'junegunn/fzf.vim'
+    Plug 'machakann/vim-highlightedyank'
 
-Plug 'ervandew/supertab'
-Plug 'prabirshrestha/asyncomplete.vim'
-Plug 'prabirshrestha/asyncomplete-lsp.vim'
-Plug 'prabirshrestha/asyncomplete-buffer.vim'
-Plug 'prabirshrestha/vim-lsp'
-Plug 'mattn/vim-lsp-settings'
-Plug 'tpope/vim-surround'
+    " Completion: SuperTab for Vim-native completion, asyncomplete for LSP
+    Plug 'ervandew/supertab'
+    Plug 'prabirshrestha/asyncomplete.vim'
+    Plug 'prabirshrestha/asyncomplete-lsp.vim'
 
-Plug 'godlygeek/tabular'
-
-Plug 'tpope/vim-git'
-Plug 'tpope/vim-fugitive'
-Plug 'airblade/vim-gitgutter'
-
-Plug 'bling/vim-airline'
-Plug 'vim-airline/vim-airline-themes'
-
-Plug 'jpalardy/vim-slime'
-Plug 'konfekt/fastfold'
-
-Plug 'wellle/targets.vim'
-
-Plug 'junegunn/fzf'
-Plug 'junegunn/fzf.vim'
-
-Plug 'altercation/vim-colors-solarized'
-Plug 'NLKNguyen/papercolor-theme'
-Plug 'morhetz/gruvbox'
-
-Plug 'machakann/vim-highlightedyank'
+    " LSP client and server (auto-)configuration
+    Plug 'prabirshrestha/vim-lsp'
+    Plug 'mattn/vim-lsp-settings'
 call plug#end()
 
 syntax on
 filetype plugin indent on
 
-let s:dotfiles_vim_config_dir = fnamemodify(resolve(expand('<sfile>:p')), ':h') . '/vim/config'
-execute 'source ' . fnameescape(s:dotfiles_vim_config_dir . '/appearance.vim')
-execute 'source ' . fnameescape(s:dotfiles_vim_config_dir . '/buffers.vim')
-execute 'source ' . fnameescape(s:dotfiles_vim_config_dir . '/fzf.vim')
-execute 'source ' . fnameescape(s:dotfiles_vim_config_dir . '/wolfram.vim')
-execute 'source ' . fnameescape(s:dotfiles_vim_config_dir . '/lsp.vim')
-execute 'source ' . fnameescape(s:dotfiles_vim_config_dir . '/slime.vim')
+call s:SourceConfig('appearance.vim')
+call s:SourceConfig('buffers.vim')
+call s:SourceConfig('fzf.vim')
+call s:SourceConfig('wolfram.vim')
+call s:SourceConfig('slime.vim')
+call s:SourceConfig('completion/supertab.vim')
+call s:SourceConfig('completion/asyncomplete.vim')
 
-set completeopt=menuone
-" if g:dotfiles_completion_backend ==# 'asyncomplete'
-    execute 'source ' . fnameescape(s:dotfiles_vim_config_dir . '/completion/asyncomplete.vim')
-" elseif g:dotfiles_completion_backend ==# 'supertab'
-    execute 'source ' . fnameescape(s:dotfiles_vim_config_dir . '/completion/supertab.vim')
-" else
-"     echoerr 'Unknown dotfiles completion backend: ' . g:dotfiles_completion_backend
-" endif
-" completion menu navigation
-inoremap <expr> <C-j> pumvisible() ? "\<C-n>" : "\<C-j>"
-inoremap <expr> <C-k> pumvisible() ? "\<C-p>" : "\<C-k>"
-" accept/cancel
-inoremap <expr> <C-l> pumvisible() ? "\<C-y>" : "\<C-l>"
-inoremap <expr> <C-h> pumvisible() ? "\<C-e>" : "\<C-h>"
-
-function! NERDTreeQuit()
-    redir => buffersoutput
-    silent buffers
-    redir END
-    "                   1BufNo  2Mods.     3File           4LineNo
-    let pattern = '^\s*\(\d\+\)\(.....\) "\(.*\)"\s\+line \(\d\+\)$'
-    let windowfound = 0
-
-    for bline in split(buffersoutput,"\n")
-        let m = matchlist(bline, pattern)
-
-        if (len(m) > 0)
-                if (m[2] =~ '..a..')
-                        let windowfound = 1
-                    endif
-            endif
-    endfor
-
-    if (!windowfound)
-        quitall
-    endif
-endfunction
-autocmd WinEnter * call NERDTreeQuit()
-
-autocmd VimEnter * wincmd w
-
-
-set hidden       " hides buffers, instead of closing them
-set nowrap       " don't wrap lines
-set tabstop=4    " a tab is 4 spaces
-set shiftwidth=4 " when indenting with '>', use 4 spaces width
-set expandtab    " on pressing tab, insert 4 spaces
-set autoindent   " always set autoindent on
-set copyindent   " copy the previous indentation on autoindenting
-set number       " always show line numbers
-set showmatch    " set show matching parenthesis
-
+" -----------------------------------------------------------------------------
+" General options
+" -----------------------------------------------------------------------------
+set hidden
+set nowrap
+set tabstop=4
+set shiftwidth=4
+set expandtab
+set autoindent
+set copyindent
+set number relativenumber
+set showmatch
 set cpoptions+=M
-
 set magic
 set backspace=eol,start,indent
 set smartcase
 set hlsearch
 set incsearch
-
 set laststatus=2
 set ttimeoutlen=50
-
 set formatoptions+=ct
-set tw=79
-
-function! PrefsttW()
-    " Soft wrap settings
-    set wrap
-    set linebreak
-    nnoremap j gj
-    nnoremap k gk
-    set tw=0
-    " Indentation settings
-    " set tabstop=2
-    " set shiftwidth=2
-    " set softtabstop=2
-    set expandtab
-endfunction
-
-" vim-commentary Settings
-autocmd Filetype form setlocal commentstring=*\ %s
-autocmd Filetype mma setlocal commentstring=(*%s*)
-
-
-nmap <silent> <C-h> :wincmd h<CR>
-nmap <silent> <C-j> :wincmd j<CR>
-nmap <silent> <C-k> :wincmd k<CR>
-nmap <silent> <C-l> :wincmd l<CR>
-
-" Airline Settings
-" let g:airline#extensions#branch#enabled = 0
-let g:airline#extensions#tabline#enabled = 1
-let g:airline#extensions#tabline#fnamemod = ':t'
-let g:airline_theme = 'minimalist'
-
-let g:highlightedyank_highlight_duration = 200
+set textwidth=79
 set showcmd
-
-autocmd BufNewFile,BufRead *.prc set filetype=form
-autocmd BufNewFile,BufRead *.m,*.wl set filetype=mma
-autocmd BufNewFile,BufRead *.sing set filetype=cpp
-autocmd BufNewFile,BufRead *.rr set filetype=asir
-autocmd BufNewFile,BufRead *.tex set filetype=tex
-" autocmd BufNewFile,BufRead *.h set filetype=form
-
-" restore_view settings
-set viewoptions=cursor,folds,slash,unix
-" let g:skipview_file=['*\.vim']
-
-autocmd BufNewFile,BufRead *.frm,*.prc,*.h set foldmethod=marker
-autocmd BufNewFile,BufRead *.frm,*.prc,*.h set foldmarker=#[,#]
-"autocmd BufNewFile,BufRead *.m set foldmethod=indent
-autocmd BufNewFile,BufRead *.tex
-    \ set nocursorline |
-    \ set nornu |
-    \ set number relativenumber |
-
-command! -complete=file -nargs=1 Remove :echo 'Remove: '.'<f-args>'.' '.(delete(<f-args>) == 0 ? 'SUCCEEDED' : 'FAILED')
-
-"Remove all trailing whitespace by pressing F5
-fun! TrimWhitespace()
-    let l:save = winsaveview()
-    %s/\s\+$//e
-    call winrestview(l:save)
-endfun
-nnoremap <F5> :call TrimWhitespace()<CR>
-
-" Enable autocompletion
-set wildmode=longest,list,full
-
-" Splits open at the bottom and right
 set splitbelow splitright
 
-" Search for visual selected text
-vnoremap // y/\V<C-R>=escape(@",'/\')<CR><CR>
-
-" Relative line number
-set number relativenumber
-
-autocmd BufNewFile,BufRead *.md set filetype=markdown
-"" https://github.com/Konfekt/FastFold
-"nmap zuz <Plug>(FastFoldUpdate)
-"let g:fastfold_savehook = 1
-""let g:fastfold_fold_command_suffixes =  ['x','X','a','A','o','O','c','C']
-""let g:fastfold_fold_movement_commands = [']z', '[z', 'zj', 'zk']
-"let g:fastfold_fold_command_suffixes =  []
-"let g:fastfold_fold_movement_commands = []
-
-" Enable enhanced command-line completion
+" Shared completion menu:
+"   SuperTab drives normal completion via <Tab>;
+"   asyncomplete is triggered with <C-Space> for LSP suggestions
+set completeopt=menuone,noselect
 set wildmenu
-" Make tab completion complete the extension too
-" set wildmode=longest:full,full
 set wildmode=full
+" less priority in filename completion and file lookups
+set suffixes+=.bak,~,.swp,.o,.obj,.pyc
 
-" Deprioritize LaTeX auxiliary files during tab completion
-set suffixes=.aux,.log,.dvi,.bak,.bbl,.blg,.out,.toc,.fdb_latexmk,.fls,.synctex.gz,.pdf
-" Add extensions to be checked when searching for files
-set suffixesadd=.tex,.bib,.sty
+" Popup-menu navigation with ctrl-j/k
+inoremap <expr> <C-j> pumvisible() ? "\<C-n>" : "\<C-j>"
+inoremap <expr> <C-k> pumvisible() ? "\<C-p>" : "\<C-k>"
+inoremap <expr> <CR>  pumvisible() ? "\<C-y>" : "\<CR>"
 
-" Enable custom folding for shell scripts
-augroup ShellScriptFolds
+" Visual-search selected text
+vnoremap // y/\V<C-r>=escape(@", '/\')<CR><CR>
+
+" Window navigation with ctrl
+nnoremap <C-h> :wincmd h<CR>
+nnoremap <C-j> :wincmd j<CR>
+nnoremap <C-k> :wincmd k<CR>
+nnoremap <C-l> :wincmd l<CR>
+
+" Trim trailing whitespace
+function! s:TrimWhitespace() abort
+    let l:save = winsaveview()
+    silent! %s/\s\+$//e
+    call winrestview(l:save)
+endfunction
+nnoremap <F5> :call <SID>TrimWhitespace()<CR>
+
+" Safer :Remove wrapper
+command! -complete=file -nargs=1 Remove
+    \ echo 'Remove: ' . <q-args> . ' ' . (delete(<q-args>) == 0 ? 'SUCCEEDED' : 'FAILED')
+
+" -----------------------------------------------------------------------------
+" Filetypes and filetype-local settings
+" -----------------------------------------------------------------------------
+augroup dotfiles_filetypes
+    autocmd!
+    autocmd BufNewFile,BufRead *.frm,*.prc setfiletype form
+    autocmd BufNewFile,BufRead *.m,*.wl setfiletype mma
+    autocmd BufNewFile,BufRead *.sing setfiletype cpp
+    autocmd BufNewFile,BufRead *.rr setfiletype asir
+    autocmd BufNewFile,BufRead *.tex setfiletype tex
+    autocmd BufNewFile,BufRead *.md setfiletype markdown
+augroup END
+
+augroup dotfiles_comments
+    autocmd!
+    autocmd FileType form setlocal commentstring=*\ %s
+    autocmd FileType mma  setlocal commentstring=(*%s*)
+augroup END
+
+augroup dotfiles_tex
+    autocmd!
+    autocmd FileType tex setlocal nocursorline nornu number relativenumber
+augroup END
+
+" Soft-wrap helper for prose buffers
+function! Prose() abort
+    setlocal wrap linebreak textwidth=0 expandtab
+    nnoremap <buffer> j gj
+    nnoremap <buffer> k gk
+endfunction
+
+" Marker folds used in FORM files
+augroup dotfiles_marker_folds
+    autocmd!
+    autocmd BufNewFile,BufRead *.frm,*.prc,*.h setlocal foldmethod=marker foldmarker=#[,#]
+augroup END
+
+" Custom folds for sectioned shell scripts (e.g. bootstrap.sh)
+function! DotfilesFoldShellSectionHeaders(lnum) abort
+    let l:line = getline(a:lnum)
+    if l:line =~# '^#\s*\(SECTION \d\+:\|INTRO\|SETUP\|SUMMARY\|OUTRO\)'
+        return '>1'
+    endif
+    return '='
+endfunction
+
+augroup dotfiles_shell_folds
     autocmd!
     autocmd FileType sh setlocal foldmethod=expr
-    autocmd FileType sh setlocal foldexpr=FoldShellSectionHeaders(v:lnum)
+    autocmd FileType sh setlocal foldexpr=DotfilesFoldShellSectionHeaders(v:lnum)
     autocmd FileType sh setlocal foldtext=getline(v:foldstart)
     autocmd FileType sh setlocal foldlevel=0
 augroup END
 
-function! FoldShellSectionHeaders(lnum)
-    let line = getline(a:lnum)
+" -----------------------------------------------------------------------------
+" Plugin-specific small settings
+" -----------------------------------------------------------------------------
+let g:airline#extensions#tabline#enabled = 1
+let g:airline#extensions#tabline#fnamemod = ':t'
+let g:airline_theme = 'minimalist'
+let g:highlightedyank_highlight_duration = 200
 
-    " If the line matches the SECTION header, it's a new fold level
-    if line =~ '^#\s*\(SECTION \d\+:\|INTRO\|SETUP\|SUMMARY\|OUTRO\)'
-        return '>1'
+function! s:NERDTreeQuitIfLastWindow() abort
+    redir => l:buffers_output
+    silent buffers
+    redir END
+
+    let l:window_found = 0
+    let l:pattern = '^\s*\(\d\+\)\(.....\) "\(.*\)"\s\+line \(\d\+\)$'
+
+    for l:line in split(l:buffers_output, "\n")
+        let l:match = matchlist(l:line, l:pattern)
+        if !empty(l:match) && l:match[2] =~# '..a..'
+            let l:window_found = 1
+            break
+        endif
+    endfor
+
+    if !l:window_found
+        quitall
     endif
-
-    " Otherwise, use previous fold level
-    return '='
 endfunction
 
-" Refresh SSH_AUTH_SOCK in Vim using ssh-find-agent on fire-chief-ash
+augroup dotfiles_nerdtree
+    autocmd!
+    autocmd WinEnter * call s:NERDTreeQuitIfLastWindow()
+augroup END
+
+" -----------------------------------------------------------------------------
+" SSH agent refresh helper for remote Vim sessions
+" -----------------------------------------------------------------------------
 function! RefreshSSHAuthSock() abort
-    " if system('hostname') !~# 'fire-chief-ash'
-    "     return
-    " endif
     if !executable('bash')
         echom 'RefreshSSHAuthSock: bash not found'
         return
     endif
 
-    " Path to ssh-find-agent script
     let l:script = expand('~/.local/src/ssh-find-agent/ssh-find-agent.sh')
-
-    " Check if script exists before sourcing it
     if !filereadable(l:script)
         echom 'RefreshSSHAuthSock: script not found: ' . l:script
         return
     endif
 
-    " Run ssh-find-agent in a fresh bash and print the resulting SSH_AUTH_SOCK
-    let l:cmd =
-        \ 'bash -lc ''' .
-        \ '. ' . fnameescape(l:script) . ' >/dev/null 2>&1; ' .
+    let l:inner = '. ' . shellescape(l:script) . ' >/dev/null 2>&1; ' .
         \ 'ssh-find-agent -a >/dev/null 2>&1; ' .
-        \ 'printf %s "$SSH_AUTH_SOCK"' .
-        \ ''''
-
-    " Run the command
-    let l:raw = system(l:cmd)
-    " Strip trailing newlines
-    let l:raw = substitute(l:raw, '\n\+$', '', '')
-
-    " Extract something that looks like an ssh-agent socket path
-    " Example: /tmp/ssh-XXXX/agent.12345
+        \ 'printf %s "$SSH_AUTH_SOCK"'
+    let l:raw = substitute(system('bash -lc ' . shellescape(l:inner)), '\n\+$', '', '')
     let l:sock = matchstr(l:raw, '/tmp/ssh-[^[:space:]]\+')
 
-    " Optional: stricter validation of the agent path shape
     if !empty(l:sock) && l:sock !~# '^/tmp/ssh-.\+/agent\.\d\+$'
         echom 'RefreshSSHAuthSock: ignoring suspicious socket path: ' . l:sock
         let l:sock = ''
@@ -312,7 +281,21 @@ function! RefreshSSHAuthSock() abort
 endfunction
 command! RefreshSSHAuthSock call RefreshSSHAuthSock()
 
-set viminfo+=n$XDG_STATE_HOME/vim/viminfo
-set directory=$XDG_CACHE_HOME/vim/swap//
-set backupdir=$XDG_CACHE_HOME/vim/backup//
-set undodir=$XDG_CACHE_HOME/vim/undo//
+" -----------------------------------------------------------------------------
+" XDG state/cache locations
+" -----------------------------------------------------------------------------
+let s:xdg_state = empty($XDG_STATE_HOME) ? expand('~/.local/state') : $XDG_STATE_HOME
+let s:xdg_cache = empty($XDG_CACHE_HOME) ? expand('~/.cache') : $XDG_CACHE_HOME
+
+call mkdir(s:xdg_state . '/vim', 'p')
+call mkdir(s:xdg_cache . '/vim/swap', 'p')
+call mkdir(s:xdg_cache . '/vim/backup', 'p')
+call mkdir(s:xdg_cache . '/vim/undo', 'p')
+
+execute 'set viminfo+=n' . fnameescape(s:xdg_state . '/vim/viminfo')
+execute 'set directory=' . fnameescape(s:xdg_cache . '/vim/swap') . '//'
+execute 'set backupdir=' . fnameescape(s:xdg_cache . '/vim/backup') . '//'
+execute 'set undodir=' . fnameescape(s:xdg_cache . '/vim/undo') . '//'
+if has('persistent_undo')
+    set undofile
+endif

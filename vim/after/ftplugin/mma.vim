@@ -1,3 +1,6 @@
+setlocal suffixes+=.nb,.mx
+setlocal suffixesadd+=.wl,.m
+
 " TODO add possibility for indent-based folding after expr
 " see also
 " https://www.vimfromscratch.com/articles/vim-folding
