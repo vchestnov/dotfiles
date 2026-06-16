@@ -1,2 +1,2 @@
-prefix=/home/seva/.local
-cache=/home/seva/.cache/npm
+prefix=${HOME}/.local
+cache=${HOME}/.cache/npm
