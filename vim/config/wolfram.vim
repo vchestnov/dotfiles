@@ -460,6 +460,7 @@ function! DotfilesWolframRegisterAsyncompleteSource() abort
         \ 'allowlist': ['mma'],
         \ 'completor': function('s:WolframAsyncompleteCompletor'),
         \ 'min_chars': 2,
+        \ 'priority': 50,
         \ 'refresh_pattern': '[$[:alnum:]`]\+$',
         \ })
 endfunction

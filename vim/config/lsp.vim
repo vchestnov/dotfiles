@@ -18,6 +18,15 @@ let g:lsp_document_highlight_enabled = get(g:, 'lsp_document_highlight_enabled',
 let g:lsp_semantic_enabled = get(g:, 'lsp_semantic_enabled', 0)
 let g:lsp_inlay_hints_enabled = get(g:, 'lsp_inlay_hints_enabled', 0)
 
+let s:lsp_completion_config = get(g:, 'dotfiles_lsp_completion_config', {
+    \ 'filter': {'name': 'prefix'},
+    \ 'sort': {'max': 300},
+    \ })
+
+function! s:WithLspCompletionConfig(config) abort
+    return extend(deepcopy(s:lsp_completion_config), deepcopy(a:config), 'force')
+endfunction
+
 " Let vim-lsp-settings handle standard servers.  Keep clangd light unless the
 " heavier flags are requested before startup.
 let s:clangd_cmd = ['clangd', '--query-driver=/usr/bin/c++,/usr/bin/g++']
@@ -28,14 +37,16 @@ if get(g:, 'dotfiles_clangd_tidy', 0)
     call add(s:clangd_cmd, '--clang-tidy')
 endif
 
-let g:lsp_settings = extend(get(g:, 'lsp_settings', {}), {
-    \ 'clangd': {
-    \   'cmd': s:clangd_cmd,
-    \ },
-    \ 'julia-language-server': {
-    \   'disabled': v:true,
-    \ },
-    \}, 'force')
+let g:lsp_settings = get(g:, 'lsp_settings', {})
+
+let s:clangd_settings = get(g:lsp_settings, 'clangd', {})
+let s:clangd_settings['cmd'] = s:clangd_cmd
+let s:clangd_settings['config'] = s:WithLspCompletionConfig(get(s:clangd_settings, 'config', {}))
+let g:lsp_settings['clangd'] = s:clangd_settings
+
+let s:julia_settings = get(g:lsp_settings, 'julia-language-server', {})
+let s:julia_settings['disabled'] = v:true
+let g:lsp_settings['julia-language-server'] = s:julia_settings
 
 function! s:OnLspBufferEnabled() abort
     setlocal omnifunc=lsp#complete
@@ -71,6 +82,8 @@ function! s:RegisterManualLspServers() abort
             \ 'cmd': {server_info -> ['julia-lsp']},
             \ 'allowlist': ['julia'],
             \ 'root_uri_patterns': ['Project.toml', 'Manifest.toml', '.git/'],
+            \ 'config': s:WithLspCompletionConfig({}),
+            \ 'priority': 100,
             \ })
     endif
 
@@ -80,6 +93,8 @@ function! s:RegisterManualLspServers() abort
             \ 'cmd': {server_info -> ['wolfram-lsp']},
             \ 'allowlist': ['mma'],
             \ 'root_uri_patterns': ['PacletInfo.wl', '.git/'],
+            \ 'config': s:WithLspCompletionConfig({}),
+            \ 'priority': 100,
             \ })
     endif
 endfunction

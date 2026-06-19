@@ -125,7 +125,7 @@ set splitbelow splitright
 " Shared completion menu:
 "   SuperTab drives normal completion via <Tab>;
 "   asyncomplete is triggered with <C-Space> for LSP suggestions
-set completeopt=menuone,noselect
+set completeopt=menuone,noselect,nearest
 set wildmenu
 set wildmode=full
 " less priority in filename completion and file lookups
@@ -161,9 +161,13 @@ command! -complete=file -nargs=1 Remove
 " Filetypes and filetype-local settings
 " -----------------------------------------------------------------------------
 augroup dotfiles_filetypes
+    " clear autocmds in this group to avoid re-registering autocmds when
+    " re-sourcing vimrc
     autocmd!
     autocmd BufNewFile,BufRead *.frm,*.prc setfiletype form
-    autocmd BufNewFile,BufRead *.m,*.wl setfiletype mma
+    autocmd BufNewFile,BufRead *.wl setfiletype mma
+    " force override matlab -> mma
+    autocmd BufNewFile,BufRead *.m set filetype=mma
     autocmd BufNewFile,BufRead *.sing setfiletype cpp
     autocmd BufNewFile,BufRead *.rr setfiletype asir
     autocmd BufNewFile,BufRead *.tex setfiletype tex
