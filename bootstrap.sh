@@ -1070,6 +1070,191 @@ install_polymake_from_tarball() {
     build_and_install_polymake "$source_dir"
 }
 
+extract_archive_into() {
+    local archive=$1
+    local dest_dir=$2
+    local strip_components="${3:-1}"
+
+    mkdir -p "$dest_dir"
+    tar -xf "$archive" -C "$dest_dir" --strip-components="$strip_components"
+}
+
+prepare_source_from_tarball() {
+    local archive_url=$1
+    local archive_path=$2
+    local source_dir=$3
+    local sentinel_path=$4
+
+    mkdir -p "$(dirname "$archive_path")" "$source_dir"
+
+    if [ ! -f "$archive_path" ]; then
+        log_info "Downloading source tarball: $archive_url"
+        download_file "$archive_url" "$archive_path"
+    fi
+
+    if [ ! -e "$sentinel_path" ]; then
+        if [ -z "$(find "$source_dir" -mindepth 1 -maxdepth 1 -print -quit)" ]; then
+            extract_archive_into "$archive_path" "$source_dir"
+        else
+            log_error "$source_dir exists but does not contain expected source tree artifact: $sentinel_path"
+            return 1
+        fi
+    fi
+}
+
+configure_make_install() {
+    local project_name=$1
+    local source_dir=$2
+    local install_prefix=$3
+    local configure_args=${4:-}
+    local jobs="${BUILD_JOBS:-$(default_build_jobs)}"
+
+    cd "$source_dir"
+    if [ -x ./autogen.sh ] && [ ! -x ./configure ]; then
+        ./autogen.sh
+    fi
+    if [ -f configure.ac ] && [ ! -x ./configure ]; then
+        autoreconf -fi
+    fi
+    if [ ! -x ./configure ]; then
+        log_error "$project_name source tree does not provide a usable ./configure script."
+        return 1
+    fi
+
+    ./configure --prefix="$install_prefix" $configure_args
+    build_and_install "$project_name" "make -j$jobs" "make install" true
+}
+
+install_notmuch_from_source() {
+    local install_prefix="${1:-$HOME/.local}"
+    local source_dir="${NOTMUCH_SOURCE_DIR:-$SRC_DIR/notmuch}"
+    local source_kind="${NOTMUCH_INSTALL_METHOD:-tar}"
+    local archive_version="${NOTMUCH_VERSION:-0.40}"
+    local archive_path="$SRC_DIR/notmuch-${archive_version}.tar.xz"
+    local archive_url="${NOTMUCH_TARBALL_URL:-https://notmuchmail.org/releases/notmuch-${archive_version}.tar.xz}"
+
+    mkdir -p "$SRC_DIR" "$install_prefix"
+
+    case "$source_kind" in
+        git|github)
+            clone_or_update "https://git.notmuchmail.org/git/notmuch" "$source_dir"
+            ;;
+        tar|tarball)
+            prepare_source_from_tarball \
+                "$archive_url" \
+                "$archive_path" \
+                "$source_dir" \
+                "$source_dir/configure"
+            ;;
+        *)
+            log_error "Unknown NOTMUCH_INSTALL_METHOD='$source_kind'. Use git or tar."
+            return 1
+            ;;
+    esac
+
+    configure_make_install "notmuch" "$source_dir" "$install_prefix"
+}
+
+install_isync_from_source() {
+    local install_prefix="${1:-$HOME/.local}"
+    local source_dir="${ISYNC_SOURCE_DIR:-$SRC_DIR/isync}"
+    local source_kind="${ISYNC_INSTALL_METHOD:-tar}"
+    local archive_version="${ISYNC_VERSION:-1.5.1}"
+    local archive_path="$SRC_DIR/isync-${archive_version}.tar.gz"
+    local archive_url="${ISYNC_TARBALL_URL:-https://downloads.sourceforge.net/project/isync/isync/${archive_version}/isync-${archive_version}.tar.gz}"
+
+    mkdir -p "$SRC_DIR" "$install_prefix"
+
+    case "$source_kind" in
+        git|github)
+            clone_or_update "https://git.code.sf.net/p/isync/isync" "$source_dir"
+            ;;
+        tar|tarball)
+            prepare_source_from_tarball \
+                "$archive_url" \
+                "$archive_path" \
+                "$source_dir" \
+                "$source_dir/configure"
+            ;;
+        *)
+            log_error "Unknown ISYNC_INSTALL_METHOD='$source_kind'. Use git or tar."
+            return 1
+            ;;
+    esac
+
+    configure_make_install "isync/mbsync" "$source_dir" "$install_prefix"
+}
+
+install_msmtp_from_source() {
+    local install_prefix="${1:-$HOME/.local}"
+    local source_dir="${MSMTP_SOURCE_DIR:-$SRC_DIR/msmtp}"
+    local source_kind="${MSMTP_INSTALL_METHOD:-tar}"
+    local archive_version="${MSMTP_VERSION:-1.8.32}"
+    local archive_path="$SRC_DIR/msmtp-${archive_version}.tar.xz"
+    local archive_url="${MSMTP_TARBALL_URL:-https://marlam.de/msmtp/releases/msmtp-${archive_version}.tar.xz}"
+
+    mkdir -p "$SRC_DIR" "$install_prefix"
+
+    case "$source_kind" in
+        git|github)
+            clone_or_update "https://git.marlam.de/git/msmtp.git" "$source_dir"
+            ;;
+        tar|tarball)
+            prepare_source_from_tarball \
+                "$archive_url" \
+                "$archive_path" \
+                "$source_dir" \
+                "$source_dir/configure"
+            ;;
+        *)
+            log_error "Unknown MSMTP_INSTALL_METHOD='$source_kind'. Use git or tar."
+            return 1
+            ;;
+    esac
+
+    configure_make_install "msmtp" "$source_dir" "$install_prefix"
+}
+
+install_neomutt_from_source() {
+    local install_prefix="${1:-$HOME/.local}"
+    local source_dir="${NEOMUTT_SOURCE_DIR:-$SRC_DIR/neomutt}"
+    local source_kind="${NEOMUTT_INSTALL_METHOD:-tar}"
+    local archive_ref="${NEOMUTT_VERSION:-2026-05-04}"
+    local archive_path="$SRC_DIR/neomutt-${archive_ref}.tar.gz"
+    local archive_url="${NEOMUTT_TARBALL_URL:-https://github.com/neomutt/neomutt/archive/refs/tags/${archive_ref}.tar.gz}"
+    local pkg_config_path="${PKG_CONFIG_PATH:-}"
+    local configure_args="--disable-doc"
+
+    mkdir -p "$SRC_DIR" "$install_prefix"
+
+    case "$source_kind" in
+        git|github)
+            clone_or_update "https://github.com/neomutt/neomutt.git" "$source_dir"
+            ;;
+        tar|tarball)
+            prepare_source_from_tarball \
+                "$archive_url" \
+                "$archive_path" \
+                "$source_dir" \
+                "$source_dir/configure"
+            ;;
+        *)
+            log_error "Unknown NEOMUTT_INSTALL_METHOD='$source_kind'. Use git or tar."
+            return 1
+            ;;
+    esac
+
+    if [ -d "$install_prefix/lib/pkgconfig" ]; then
+        export PKG_CONFIG_PATH="$install_prefix/lib/pkgconfig${pkg_config_path:+:$pkg_config_path}"
+    fi
+
+    if command -v pkg-config >/dev/null 2>&1 && pkg-config --exists notmuch; then
+        configure_args="$configure_args --notmuch"
+    fi
+
+    configure_make_install "NeoMutt" "$source_dir" "$install_prefix" "$configure_args"
+}
+
 # =============================================================================
 # SETUP: profile selection 
 # =============================================================================
@@ -1097,6 +1282,7 @@ DO_GPG=1          # gpg-agent + pinentry tweaks
 DO_POETRY=1       # poetry / arxivterminal
 DO_RUST_TOOLS=1   # rustup + fzf, rg, fd, bat
 DO_TREE_SITTER=1  # tree-sitter CLI for custom Neovim parsers
+DO_VIM=1          # vim from source
 DO_LSP=1          # language servers + vim LSP tooling
 DO_NEOVIM=1       # Neovim from source + repo-managed config
 CLANGD_INSTALL_METHOD_DEFAULT=tar # default clangd install path for profiles
@@ -1107,6 +1293,7 @@ DO_MPFR=1         # MPFR from source inside scientific stack
 DO_FLINT=1        # FLINT from source inside scientific stack
 DO_JULIA=1        # Julia from official tarball inside scientific stack
 DO_FINITEFLOW=1   # FiniteFlow from GitHub inside scientific stack
+DO_FINITEFLOW32=1 # FiniteFlow32 from private GitHub inside scientific stack
 DO_BLADE=1        # Blade from Gitee with local patch inside scientific stack
 DO_GFAN=1         # Gfan from upstream tarball inside scientific stack
 DO_FERMAT=1       # Fermat binary helper inside scientific stack
@@ -1125,6 +1312,7 @@ DO_ZK=1           # Zettelkasten + templates
 DO_KRITA=1        # Krita drawing app
 DO_ASIR=1         # OpenXM and Risa/Asir computer algebra systems
 DO_NODE_TOOLS=1   # nvm + Node.js + npm-based LSP servers + codex
+DO_EMAIL=1        # terminal mail stack from source: neomutt + isync + msmtp + notmuch
 
 case "$BOOTSTRAP_PROFILE" in
     desktop)
@@ -1139,6 +1327,7 @@ case "$BOOTSTRAP_PROFILE" in
         DO_POETRY=0
         DO_RUST_TOOLS=1
         DO_TREE_SITTER=1
+        DO_VIM=1
         DO_LSP=1
         DO_NEOVIM=1
         DO_SCI=1
@@ -1148,6 +1337,7 @@ case "$BOOTSTRAP_PROFILE" in
         DO_FLINT=1
         DO_JULIA=1
         DO_FINITEFLOW=1
+        DO_FINITEFLOW32=1
         DO_BLADE=1
         DO_GFAN=1
         DO_FERMAT=1
@@ -1167,6 +1357,7 @@ case "$BOOTSTRAP_PROFILE" in
         DO_ASIR=1
         CLANGD_INSTALL_METHOD_DEFAULT=tar
         DO_NODE_TOOLS=1
+        DO_EMAIL=1
         ;;
     nothing)
         DO_CORE=0
@@ -1177,6 +1368,7 @@ case "$BOOTSTRAP_PROFILE" in
         DO_POETRY=0
         DO_RUST_TOOLS=0
         DO_TREE_SITTER=0
+        DO_VIM=0
         DO_LSP=0
         DO_NEOVIM=0
         DO_SCI=0
@@ -1186,6 +1378,7 @@ case "$BOOTSTRAP_PROFILE" in
         DO_FLINT=0
         DO_JULIA=0
         DO_FINITEFLOW=0
+        DO_FINITEFLOW32=0
         DO_BLADE=0
         DO_GFAN=0
         DO_FERMAT=0
@@ -1204,6 +1397,7 @@ case "$BOOTSTRAP_PROFILE" in
         DO_ASIR=0
         CLANGD_INSTALL_METHOD_DEFAULT=tar
         DO_NODE_TOOLS=0
+        DO_EMAIL=0
         ;;
     test)
         DO_CORE=0
@@ -1214,6 +1408,7 @@ case "$BOOTSTRAP_PROFILE" in
         DO_POETRY=0
         DO_RUST_TOOLS=0
         DO_TREE_SITTER=0
+        DO_VIM=1
         DO_LSP=0
         DO_NEOVIM=0
         DO_SCI=0
@@ -1223,6 +1418,7 @@ case "$BOOTSTRAP_PROFILE" in
         DO_FLINT=0
         DO_JULIA=0
         DO_FINITEFLOW=0
+        DO_FINITEFLOW32=0
         DO_BLADE=0
         DO_GFAN=0
         DO_FERMAT=0
@@ -1240,7 +1436,8 @@ case "$BOOTSTRAP_PROFILE" in
         DO_KRITA=0
         DO_ASIR=0
         CLANGD_INSTALL_METHOD_DEFAULT=tar
-        DO_NODE_TOOLS=1
+        DO_NODE_TOOLS=0
+        DO_EMAIL=0
         ;;
     *)
         log_error "Unknown profile '$BOOTSTRAP_PROFILE'!"
@@ -1737,7 +1934,7 @@ fi
 # =============================================================================
 
 if \
-	(( DO_CORE )) && \
+	(( DO_VIM )) && \
 	prompt_continue "Build Vim from source?" && \
 	: \
 ; then
@@ -2320,6 +2517,77 @@ if \
     else
         log_warning "nvim is not on PATH; ensure $HOME/.local/bin is exported before launching it."
     fi
+fi
+
+# =============================================================================
+# SECTION 18A: TERMINAL MAIL STACK
+# =============================================================================
+
+if \
+    (( DO_EMAIL )) && \
+    prompt_continue "Install terminal mail stack from source (NeoMutt + isync + msmtp + notmuch)?" && \
+    : \
+; then
+    log_section "TERMINAL MAIL STACK"
+
+    : "${XDG_CONFIG_HOME:=$HOME/.config}"
+    : "${XDG_DATA_HOME:=$HOME/.local/share}"
+    : "${XDG_CACHE_HOME:=$HOME/.cache}"
+    : "${XDG_STATE_HOME:=$HOME/.local/state}"
+
+    MAIL_INSTALL_PREFIX="${MAIL_INSTALL_PREFIX:-$HOME/.local}"
+    MAIL_SOURCE_ROOT="${MAIL_SOURCE_ROOT:-$SRC_DIR/mail}"
+    MAILDIR_ROOT="${MAILDIR:-$XDG_DATA_HOME/mail}"
+    NOTMUCH_PROFILE="${NOTMUCH_PROFILE:-default}"
+    NOTMUCH_CONFIG_DIR="${XDG_CONFIG_HOME}/notmuch/${NOTMUCH_PROFILE}"
+    MSMTP_CONFIG_DIR="${XDG_CONFIG_HOME}/msmtp"
+    ISYNC_CONFIG_DIR="${XDG_CONFIG_HOME}/isync"
+    NEOMUTT_CONFIG_DIR="${XDG_CONFIG_HOME}/neomutt"
+
+    mkdir -p \
+        "$MAIL_INSTALL_PREFIX/bin" \
+        "$MAIL_SOURCE_ROOT" \
+        "$XDG_CACHE_HOME/mail" \
+        "$XDG_STATE_HOME/mail" \
+        "$MAILDIR_ROOT" \
+        "$NOTMUCH_CONFIG_DIR" \
+        "$MSMTP_CONFIG_DIR" \
+        "$ISYNC_CONFIG_DIR" \
+        "$NEOMUTT_CONFIG_DIR"
+
+    export PKG_CONFIG_PATH="$MAIL_INSTALL_PREFIX/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+    export PATH="$MAIL_INSTALL_PREFIX/bin:$PATH"
+    export NOTMUCH_CONFIG="${NOTMUCH_CONFIG:-$NOTMUCH_CONFIG_DIR/config}"
+    export MSMTP_CONFIG="${MSMTP_CONFIG:-$MSMTP_CONFIG_DIR/config}"
+    export NOTMUCH_SOURCE_DIR="${NOTMUCH_SOURCE_DIR:-$MAIL_SOURCE_ROOT/notmuch}"
+    export ISYNC_SOURCE_DIR="${ISYNC_SOURCE_DIR:-$MAIL_SOURCE_ROOT/isync}"
+    export MSMTP_SOURCE_DIR="${MSMTP_SOURCE_DIR:-$MAIL_SOURCE_ROOT/msmtp}"
+    export NEOMUTT_SOURCE_DIR="${NEOMUTT_SOURCE_DIR:-$MAIL_SOURCE_ROOT/neomutt}"
+
+    missing_mail_build_tools=()
+    for required_cmd in cc make pkg-config; do
+        if ! command -v "$required_cmd" >/dev/null 2>&1; then
+            missing_mail_build_tools+=("$required_cmd")
+        fi
+    done
+
+    if [ "${#missing_mail_build_tools[@]}" -gt 0 ]; then
+        log_warning "Skipping terminal mail stack build; missing required tools: ${missing_mail_build_tools[*]}"
+        log_warning "Install them in user space or via your admin, then retry Section 18A."
+    else
+        install_notmuch_from_source "$MAIL_INSTALL_PREFIX"
+        install_isync_from_source "$MAIL_INSTALL_PREFIX"
+        install_msmtp_from_source "$MAIL_INSTALL_PREFIX"
+        install_neomutt_from_source "$MAIL_INSTALL_PREFIX"
+        hash -r 2>/dev/null || true
+    fi
+
+    log_info "XDG mail paths:"
+    log_info "  Maildir root: $MAILDIR_ROOT"
+    log_info "  NeoMutt config: $NEOMUTT_CONFIG_DIR/neomuttrc"
+    log_info "  isync config: $ISYNC_CONFIG_DIR/mbsyncrc"
+    log_info "  msmtp config: $MSMTP_CONFIG"
+    log_info "  notmuch config: $NOTMUCH_CONFIG"
 fi
 
 # =============================================================================
@@ -3383,7 +3651,7 @@ fi
 
 if \
 	(( DO_SCI )) && \
-    (( DO_GMP || DO_NTL || DO_MPFR || DO_FLINT || DO_JULIA || DO_QD || DO_FINITEFLOW || DO_BLADE || DO_GFAN || DO_FERMAT || DO_MSOLVE || DO_SCI_EXTRA )) && \
+    (( DO_GMP || DO_NTL || DO_MPFR || DO_FLINT || DO_JULIA || DO_QD || DO_FINITEFLOW || DO_FINITEFLOW32 || DO_BLADE || DO_GFAN || DO_FERMAT || DO_MSOLVE || DO_SCI_EXTRA )) && \
 	prompt_continue "Install enabled scientific software components?" && \
 	: \
 ; then
@@ -3648,6 +3916,61 @@ if \
         log_success "FiniteFlow installed to $SCI_PREFIX; sources are in $FINITEFLOW_DEV_DIR"
         if [ -f "$FINITEFLOW_DEV_DIR/compile_commands.json" ]; then
             log_info "clangd compilation database available at $FINITEFLOW_DEV_DIR/compile_commands.json"
+        fi
+    fi
+
+    # ========================================
+    # FiniteFlow32
+    # ========================================
+    if (( DO_FINITEFLOW32 )); then
+        log_info "Installing FiniteFlow32 from private GitHub repository..."
+
+        FINITEFLOW32_DEV_DIR="${FINITEFLOW32_DEV_DIR:-$HOME/dev/finiteflow32}"
+        FINITEFLOW32_BUILD_DIR="${FINITEFLOW32_BUILD_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/finiteflow32/build}"
+        FINITEFLOW32_PATHS_FILE="${FINITEFLOW32_PATHS_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/finiteflow32/paths_instructions.txt}"
+        FINITEFLOW32_MSOLVE_SRC="${FINITEFLOW32_MSOLVE_SRC:-$SCI_REPOS_DIR/msolve}"
+        FINITEFLOW32_REPO_URL="${FINITEFLOW32_REPO_URL:-git@github.com:Giu989/finiteflow32.git}"
+
+        if [ -z "${FINITEFLOW32_RUN_VALIDATION:-}" ]; then
+            if command -v WolframKernel >/dev/null 2>&1 || \
+               command -v wolfram >/dev/null 2>&1 || \
+               command -v wolframscript >/dev/null 2>&1 || \
+               command -v math >/dev/null 2>&1; then
+                FINITEFLOW32_RUN_VALIDATION=1
+            else
+                FINITEFLOW32_RUN_VALIDATION=0
+            fi
+        fi
+
+        mkdir -p "$HOME/dev"
+        mkdir -p "$(dirname "$FINITEFLOW32_BUILD_DIR")"
+        mkdir -p "$(dirname "$FINITEFLOW32_PATHS_FILE")"
+
+        if ! clone_or_update "$FINITEFLOW32_REPO_URL" "$FINITEFLOW32_DEV_DIR" "${FINITEFLOW32_GIT_REF:-}"; then
+            log_warning "Skipping FiniteFlow32 (repository unavailable or SSH access denied)."
+        else
+            cd "$FINITEFLOW32_DEV_DIR"
+
+            PREFIX="$SCI_PREFIX" \
+            DEPS_PREFIX="$SCI_PREFIX" \
+            MSOLVE_PREFIX="$SCI_PREFIX" \
+            MSOLVE_SRC="$FINITEFLOW32_MSOLVE_SRC" \
+            BUILD_DIR="$FINITEFLOW32_BUILD_DIR" \
+            PATHS_INSTRUCTIONS_FILE="$FINITEFLOW32_PATHS_FILE" \
+            CMAKE_PREFIX_PATH="$SCI_PREFIX" \
+            FFLOW_USE_FLINT="${FINITEFLOW32_USE_FLINT:-ON}" \
+            FFLOW_FLINT_PREFIX="${FINITEFLOW32_FLINT_PREFIX:-$SCI_PREFIX}" \
+            FFLOW_ALLOW_SYSTEM_FLINT="${FINITEFLOW32_ALLOW_SYSTEM_FLINT:-OFF}" \
+            CLEAN_BUILD="${FINITEFLOW32_CLEAN_BUILD:-1}" \
+            RUN_VALIDATION="$FINITEFLOW32_RUN_VALIDATION" \
+            JOBS="${FINITEFLOW32_JOBS:-$SCI_JOBS}" \
+            ./install_finiteflow32.sh
+
+            log_success "FiniteFlow32 installed to $SCI_PREFIX; sources are in $FINITEFLOW32_DEV_DIR"
+            log_info "FiniteFlow32 path instructions written to $FINITEFLOW32_PATHS_FILE"
+            if [ "$FINITEFLOW32_RUN_VALIDATION" = "0" ]; then
+                log_info "FiniteFlow32 validation was skipped; set FINITEFLOW32_RUN_VALIDATION=1 to force it later."
+            fi
         fi
     fi
 
@@ -4961,6 +5284,7 @@ echo "  • fzf, ripgrep (rg), fd (from git)"
 echo "  • dwm, dmenu, st (from suckless.org) with font-based emoji crash fix"
 echo "  • vifm, zathura"
 echo "  • Neovim (from source) with repo-managed config"
+echo "  • NeoMutt + isync/mbsync + msmtp + notmuch (from source)"
 echo "  • tmux, htop"
 echo "  • Clean home directory structure: ~/dev, ~/docs, ~/soft"
 echo
