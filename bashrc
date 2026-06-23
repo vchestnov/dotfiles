@@ -131,6 +131,20 @@ alias zathura='zathura --fork --log-level=error'
 
 export LD_LIBRARY_PATH="${LD_LIBRARY_PATH:+$LD_LIBRARY_PATH:}/usr/local/lib"
 
+# FiniteFlow32
+export FINITEFLOW32_PREFIX="$HOME/.local"
+export MSOLVE="$FINITEFLOW32_PREFIX/bin/msolve"
+export FINITEFLOW32_MSOLVE_WORKER="$FINITEFLOW32_PREFIX/bin/finiteflow32-msolve-worker"
+
+for dir in "$FINITEFLOW32_PREFIX/lib" "$FINITEFLOW32_PREFIX/lib/finiteflow32/mathematica"; do
+    [[ -d "$dir" ]] || continue
+    case ":${LD_LIBRARY_PATH:-}:" in
+        *:"$dir":*) ;;
+        *) LD_LIBRARY_PATH="$dir${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ;;
+    esac
+done
+export LD_LIBRARY_PATH
+
 export NNN_NOWAIT=1
 
 if [[ $(hostname) = new-centos.novalocal ]]; then
