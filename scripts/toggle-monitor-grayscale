@@ -2,6 +2,9 @@
 
 # should also work with compositor=compton, untested
 compositor=picom
+script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+managed_shader_path="${script_dir}/${compositor}-grayscale.glsl"
+managed_config_path="${script_dir}/${compositor}-grayscale-toggle.conf"
 
 function usage {
 
@@ -60,6 +63,10 @@ function toggle_nvidia {
 }
 
 function toggle_compositor {
+    if compositor_uses_managed_config; then
+	toggle_compositor_via_reload
+	return
+    fi
 
 
     if $compositor --help | grep legacy-backends > /dev/null; then
@@ -72,19 +79,54 @@ function toggle_compositor {
     
     if pgrep -a -x $compositor | grep $grep_string  > /dev/null; then
 	pkill -x $compositor
-	sleep 1
-	$compositor $* -b
+	wait_for_compositor_exit
+	$compositor "$@" -b
 	toggle_mode="color"
     else
 	pkill -x $compositor
-	sleep 1
+	wait_for_compositor_exit
 
 	if (( $use_experimental_backends == 1 )); then
 
-	    tmpfile=$(mktemp)
-	    trap 'rm -f "${tmpfile}"' EXIT
+	    write_managed_shader
 
-	    cat > ${tmpfile} <<EOF
+	    $compositor "$@" -b --backend glx --window-shader-fg "${managed_shader_path}" 2> /dev/null
+
+	else
+
+	    shader='uniform sampler2D tex; uniform float opacity; void main() { vec4 c = texture2D(tex, gl_TexCoord[0].xy); float y = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722)); gl_FragColor = opacity*vec4(y, y, y, c.a); }'
+	    $compositor "$@" -b --backend glx --glx-fshader-win "${shader}" 2> /dev/null
+
+	fi
+	    
+	    
+	toggle_mode="grayscale"
+    fi
+}
+
+function toggle_compositor_via_reload {
+    if managed_config_is_grayscale; then
+	write_managed_config color
+	toggle_mode="color"
+    else
+	write_managed_shader
+	write_managed_config grayscale
+	toggle_mode="grayscale"
+    fi
+
+    pkill -USR1 -x "$compositor"
+}
+
+function compositor_uses_managed_config {
+    pgrep -a -x "$compositor" | grep -F -- "--config ${managed_config_path}" > /dev/null
+}
+
+function managed_config_is_grayscale {
+    [ -f "${managed_config_path}" ] && grep -F 'window-shader-fg' "${managed_config_path}" > /dev/null
+}
+
+function write_managed_shader {
+    cat > "${managed_shader_path}" <<EOF
 #version 330
 in vec2 texcoord;
 
@@ -100,19 +142,30 @@ vec4 window_shader() {
     return c;
 }
 EOF
-	    
-	    $compositor $* -b --backend glx --window-shader-fg ${tmpfile} 2> /dev/null
+}
 
-	else
+function write_managed_config {
+    local mode=$1
 
-	    shader='uniform sampler2D tex; uniform float opacity; void main() { vec4 c = texture2D(tex, gl_TexCoord[0].xy); float y = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722)); gl_FragColor = opacity*vec4(y, y, y, c.a); }'
-	    $compositor $* -b --backend glx --glx-fshader-win "${shader}" 2> /dev/null
-
-	fi
-	    
-	    
-	toggle_mode="grayscale"
+    if [ "$mode" = "grayscale" ]; then
+	cat > "${managed_config_path}" <<EOF
+backend = "glx";
+window-shader-fg = "${managed_shader_path}";
+EOF
+    else
+	cat > "${managed_config_path}" <<EOF
+backend = "glx";
+EOF
     fi
+}
+
+function wait_for_compositor_exit {
+    local retries=50
+
+    while pgrep -x "$compositor" > /dev/null && (( retries > 0 )); do
+	sleep 0.02
+	(( retries-- ))
+    done
 }
 
 function toggle_ddc {
@@ -210,7 +263,7 @@ fi
 if [ "$mode" = "nvidia" ]; then
     toggle_nvidia $*
 elif [ "$mode" = "$compositor" ]; then
-    toggle_compositor $*
+    toggle_compositor "$@"
 else
     toggle_ddc $*
 fi
@@ -220,5 +273,3 @@ if (( $? == 0 )); then
 else
     echo "$mode: toggle failed"
 fi
-
-
