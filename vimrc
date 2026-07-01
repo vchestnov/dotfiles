@@ -170,7 +170,7 @@ augroup dotfiles_filetypes
     autocmd BufNewFile,BufRead *.m set filetype=mma
     autocmd BufNewFile,BufRead *.sing setfiletype cpp
     autocmd BufNewFile,BufRead *.rr setfiletype asir
-    autocmd BufNewFile,BufRead *.tex setfiletype tex
+    autocmd BufNewFile,BufRead *.tex set filetype=tex
     autocmd BufNewFile,BufRead *.md setfiletype markdown
 augroup END
 
