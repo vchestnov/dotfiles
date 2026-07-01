@@ -1218,10 +1218,12 @@ install_msmtp_from_source() {
 install_neomutt_from_source() {
     local install_prefix="${1:-$HOME/.local}"
     local source_dir="${NEOMUTT_SOURCE_DIR:-$SRC_DIR/neomutt}"
-    local source_kind="${NEOMUTT_INSTALL_METHOD:-tar}"
-    local archive_ref="${NEOMUTT_VERSION:-2026-05-04}"
-    local archive_path="$SRC_DIR/neomutt-${archive_ref}.tar.gz"
-    local archive_url="${NEOMUTT_TARBALL_URL:-https://github.com/neomutt/neomutt/archive/refs/tags/${archive_ref}.tar.gz}"
+    local source_kind="${NEOMUTT_INSTALL_METHOD:-git}"
+    local git_ref="${NEOMUTT_GIT_REF:-}"
+    local archive_ref="${NEOMUTT_VERSION:-20260504}"
+    local archive_tag="${archive_ref//-/}"
+    local archive_path="$SRC_DIR/neomutt-${archive_tag}.tar.gz"
+    local archive_url="${NEOMUTT_TARBALL_URL:-https://github.com/neomutt/neomutt/archive/refs/tags/${archive_tag}.tar.gz}"
     local pkg_config_path="${PKG_CONFIG_PATH:-}"
     local configure_args="--disable-doc"
 
@@ -1229,7 +1231,11 @@ install_neomutt_from_source() {
 
     case "$source_kind" in
         git|github)
-            clone_or_update "https://github.com/neomutt/neomutt.git" "$source_dir"
+            if [ -n "$git_ref" ]; then
+                clone_or_update "https://github.com/neomutt/neomutt.git" "$source_dir" "$git_ref"
+            else
+                clone_or_update "https://github.com/neomutt/neomutt.git" "$source_dir"
+            fi
             ;;
         tar|tarball)
             prepare_source_from_tarball \
@@ -1250,6 +1256,11 @@ install_neomutt_from_source() {
 
     if command -v pkg-config >/dev/null 2>&1 && pkg-config --exists notmuch; then
         configure_args="$configure_args --notmuch"
+    fi
+
+    if command -v pkg-config >/dev/null 2>&1 && ! pkg-config --exists libidn2; then
+        log_info "libidn2 not found; building NeoMutt without IDN support"
+        configure_args="$configure_args --disable-idn2"
     fi
 
     configure_make_install "NeoMutt" "$source_dir" "$install_prefix" "$configure_args"
@@ -1408,7 +1419,7 @@ case "$BOOTSTRAP_PROFILE" in
         DO_POETRY=0
         DO_RUST_TOOLS=0
         DO_TREE_SITTER=0
-        DO_VIM=1
+        DO_VIM=0
         DO_LSP=0
         DO_NEOVIM=0
         DO_SCI=0
@@ -1437,7 +1448,7 @@ case "$BOOTSTRAP_PROFILE" in
         DO_ASIR=0
         CLANGD_INSTALL_METHOD_DEFAULT=tar
         DO_NODE_TOOLS=0
-        DO_EMAIL=0
+        DO_EMAIL=1
         ;;
     *)
         log_error "Unknown profile '$BOOTSTRAP_PROFILE'!"
@@ -1668,7 +1679,11 @@ if \
         pavucontrol \
         libboost-all-dev \
         pass \
-        npm
+        npm \
+        libxapian-dev \
+        libgmime-3.0-dev \
+        libtalloc-dev \
+        zlib1g-dev
 
     log_success "System packages and build dependencies installed"
 fi
@@ -2541,7 +2556,7 @@ if \
     NOTMUCH_PROFILE="${NOTMUCH_PROFILE:-default}"
     NOTMUCH_CONFIG_DIR="${XDG_CONFIG_HOME}/notmuch/${NOTMUCH_PROFILE}"
     MSMTP_CONFIG_DIR="${XDG_CONFIG_HOME}/msmtp"
-    ISYNC_CONFIG_DIR="${XDG_CONFIG_HOME}/isync"
+    ISYNC_CONFIG_PATH="${XDG_CONFIG_HOME}/isyncrc"
     NEOMUTT_CONFIG_DIR="${XDG_CONFIG_HOME}/neomutt"
 
     mkdir -p \
@@ -2552,7 +2567,6 @@ if \
         "$MAILDIR_ROOT" \
         "$NOTMUCH_CONFIG_DIR" \
         "$MSMTP_CONFIG_DIR" \
-        "$ISYNC_CONFIG_DIR" \
         "$NEOMUTT_CONFIG_DIR"
 
     export PKG_CONFIG_PATH="$MAIL_INSTALL_PREFIX/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
@@ -2585,7 +2599,7 @@ if \
     log_info "XDG mail paths:"
     log_info "  Maildir root: $MAILDIR_ROOT"
     log_info "  NeoMutt config: $NEOMUTT_CONFIG_DIR/neomuttrc"
-    log_info "  isync config: $ISYNC_CONFIG_DIR/mbsyncrc"
+    log_info "  isync config: $ISYNC_CONFIG_PATH"
     log_info "  msmtp config: $MSMTP_CONFIG"
     log_info "  notmuch config: $NOTMUCH_CONFIG"
 fi

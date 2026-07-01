@@ -247,7 +247,7 @@ case "$BOOTSTRAP_PROFILE" in
         DO_SCI=0
         DO_SSH=0
         DO_TEX=0
-        DO_USER=0
+        DO_USER=1
         DO_VIFM=0
         DO_WOLFRAM=0
         DO_TEMPLATES=0
