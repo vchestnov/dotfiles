@@ -339,7 +339,14 @@ ssh_agent_kill() {
 export NPM_CONFIG_USERCONFIG="$XDG_CONFIG_HOME/npmrc"
 
 # OpenXM / Risa-Asir
-[ -f "$HOME/.config/openxm/env.sh" ] && source "$HOME/.config/openxm/env.sh"
+# this causes library warnings from Macaulay2
+# [ -f "$HOME/.config/openxm/env.sh" ] && source "$HOME/.config/openxm/env.sh"
+openxm() {
+    OpenXM_HOME="$HOME/soft/openxm/OpenXM" \
+    PATH="$HOME/soft/openxm/OpenXM/bin:$PATH" \
+    LD_LIBRARY_PATH="$HOME/soft/openxm/OpenXM/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
+    command openxm "$@"
+}
 
 # load nvm on machines where npm is not provided by the system
 if ! command -v npm >/dev/null 2>&1 && [ -f "$HOME/.config/nvm/env.sh" ]; then
