@@ -38,6 +38,8 @@
     "soft/Subtropica",
     "soft/blade",
     "soft/Canonica/src",
+    "dev/Euler_Methods",
+    "soft/HyperPrecision",
     Nothing
 } // Map[RightComposition[
     ToFileName[$HomeDirectory, #]&,
