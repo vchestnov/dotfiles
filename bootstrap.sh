@@ -1266,6 +1266,248 @@ install_neomutt_from_source() {
     configure_make_install "NeoMutt" "$source_dir" "$install_prefix" "$configure_args"
 }
 
+go_linux_arch() {
+    local machine
+
+    if [ "$(uname -s)" != "Linux" ]; then
+        log_warning "Go toolchain tarball installation currently supports Linux only."
+        return 1
+    fi
+
+    machine=$(uname -m)
+    case "$machine" in
+        x86_64|amd64)
+            printf 'amd64\n'
+            ;;
+        i386|i686)
+            printf '386\n'
+            ;;
+        aarch64|arm64)
+            printf 'arm64\n'
+            ;;
+        armv6l|armv7l)
+            printf 'armv6l\n'
+            ;;
+        ppc64le)
+            printf 'ppc64le\n'
+            ;;
+        riscv64)
+            printf 'riscv64\n'
+            ;;
+        s390x)
+            printf 's390x\n'
+            ;;
+        loongarch64)
+            printf 'loong64\n'
+            ;;
+        *)
+            log_warning "Unsupported Go release architecture '$machine'."
+            return 1
+            ;;
+    esac
+}
+
+install_go_toolchain() {
+    local version="${GO_TOOLCHAIN_VERSION:-${GO_TOOLCHAIN_VERSION_DEFAULT:-1.26.5}}"
+    local arch
+    local toolchain_root
+    local install_dir
+    local current_link
+    local cache_dir
+    local archive
+    local url
+    local env_file
+    local tmp_dir
+
+    : "${XDG_CONFIG_HOME:=$HOME/.config}"
+    : "${XDG_DATA_HOME:=$HOME/.local/share}"
+    : "${XDG_CACHE_HOME:=$HOME/.cache}"
+
+    arch=$(go_linux_arch) || return 1
+    toolchain_root="${GO_TOOLCHAIN_ROOT:-$XDG_DATA_HOME/go-toolchains}"
+    install_dir="${GO_TOOLCHAIN_INSTALL_DIR:-$toolchain_root/go${version}}"
+    current_link="${GO_TOOLCHAIN_CURRENT:-$toolchain_root/current}"
+    cache_dir="${GO_TOOLCHAIN_CACHE_DIR:-$XDG_CACHE_HOME/bootstrap/go}"
+    archive="$cache_dir/go${version}.linux-${arch}.tar.gz"
+    url="${GO_TOOLCHAIN_TARBALL_URL:-https://go.dev/dl/go${version}.linux-${arch}.tar.gz}"
+    env_file="${GO_TOOLCHAIN_ENV_FILE:-$SCRIPT_DIR/config/go/env.sh}"
+
+    mkdir -p "$toolchain_root" "$cache_dir" || return 1
+
+    if [ ! -f "$archive" ]; then
+        log_info "Downloading Go $version toolchain: $url"
+        download_file "$url" "$archive" || return 1
+    fi
+
+    if [ -n "${GO_TOOLCHAIN_TARBALL_SHA256:-}" ]; then
+        printf '%s  %s\n' "$GO_TOOLCHAIN_TARBALL_SHA256" "$archive" | sha256sum -c - || return 1
+    fi
+
+    if [ ! -x "$install_dir/bin/go" ]; then
+        log_info "Installing Go $version to $install_dir"
+        tmp_dir="$toolchain_root/.go-${version}.tmp.$$"
+        rm -rf "$tmp_dir"
+        mkdir -p "$tmp_dir" || return 1
+        tar -xzf "$archive" -C "$tmp_dir" || return 1
+        rm -rf "$install_dir"
+        mv "$tmp_dir/go" "$install_dir" || return 1
+        rmdir "$tmp_dir" 2>/dev/null || true
+    else
+        log_info "Go $version already installed at $install_dir"
+    fi
+
+    ln -sfn "$install_dir" "$current_link" || return 1
+
+    # shellcheck disable=SC1090
+    source "$env_file" || return 1
+    hash -r 2>/dev/null || true
+
+    if command -v go >/dev/null 2>&1; then
+        log_success "Go toolchain active: $(go version)"
+    else
+        log_warning "Go toolchain installed, but go is not on PATH."
+        return 1
+    fi
+
+    log_info "For new shells, source this file from your bashrc/profile:"
+    log_info "  source \"\$XDG_CONFIG_HOME/go/env.sh\""
+}
+
+git_lfs_linux_arch() {
+    local machine
+
+    if [ "$(uname -s)" != "Linux" ]; then
+        log_warning "Git LFS tarball installation currently supports Linux release tarballs only."
+        return 1
+    fi
+
+    machine=$(uname -m)
+    case "$machine" in
+        x86_64|amd64)
+            printf 'amd64\n'
+            ;;
+        i386|i686)
+            printf '386\n'
+            ;;
+        aarch64|arm64)
+            printf 'arm64\n'
+            ;;
+        armv6l|armv7l)
+            printf 'arm\n'
+            ;;
+        ppc64le)
+            printf 'ppc64le\n'
+            ;;
+        riscv64)
+            printf 'riscv64\n'
+            ;;
+        s390x)
+            printf 's390x\n'
+            ;;
+        loongarch64)
+            printf 'loong64\n'
+            ;;
+        *)
+            log_warning "Unsupported Git LFS release architecture '$machine'."
+            return 1
+            ;;
+    esac
+}
+
+install_git_lfs() {
+    local install_method="${1:-git}"
+    local install_prefix="${GIT_LFS_INSTALL_PREFIX:-$HOME/.local}"
+    local git_config_global
+
+    : "${XDG_CONFIG_HOME:=$HOME/.config}"
+    : "${XDG_CACHE_HOME:=$HOME/.cache}"
+
+    git_config_global="${GIT_LFS_GIT_CONFIG_GLOBAL:-$XDG_CONFIG_HOME/git/config}"
+
+    if ! command -v git >/dev/null 2>&1; then
+        log_warning "git is required to install Git LFS."
+        return 1
+    fi
+
+    mkdir -p "$install_prefix/bin" "$(dirname "$git_config_global")"
+
+    case "$install_method" in
+        git|github)
+            local git_ref="${GIT_LFS_GIT_REF:-main}"
+            local source_dir="${GIT_LFS_SOURCE_DIR:-$SRC_DIR/git-lfs}"
+
+            if ! command -v make >/dev/null 2>&1; then
+                log_warning "make is required for GIT_LFS_INSTALL_METHOD=git."
+                return 1
+            fi
+
+            if ! command -v go >/dev/null 2>&1; then
+                log_warning "Go is required for GIT_LFS_INSTALL_METHOD=git."
+                return 1
+            fi
+
+            log_info "Installing Git LFS from GitHub ref: $git_ref"
+            clone_or_update "https://github.com/git-lfs/git-lfs.git" "$source_dir" "$git_ref" || return 1
+
+            cd "$source_dir"
+            make bin/git-lfs || return 1
+            install -m 755 bin/git-lfs "$install_prefix/bin/git-lfs" || return 1
+            ;;
+        tar|tarball)
+            local version="${GIT_LFS_VERSION:-3.7.1}"
+            local arch
+            local cache_dir="${GIT_LFS_CACHE_DIR:-$XDG_CACHE_HOME/bootstrap/git-lfs}"
+            local archive
+            local source_dir
+            local url
+
+            arch=$(git_lfs_linux_arch) || return 1
+            archive="$cache_dir/git-lfs-linux-${arch}-v${version}.tar.gz"
+            source_dir="${GIT_LFS_TARBALL_DIR:-$SRC_DIR/git-lfs-${version}-linux-${arch}}"
+            url="${GIT_LFS_TARBALL_URL:-https://github.com/git-lfs/git-lfs/releases/download/v${version}/git-lfs-linux-${arch}-v${version}.tar.gz}"
+
+            mkdir -p "$cache_dir" "$source_dir"
+
+            if [ ! -f "$archive" ]; then
+                log_info "Downloading Git LFS release tarball: $url"
+                download_file "$url" "$archive" || return 1
+            fi
+
+            if [ ! -x "$source_dir/git-lfs" ]; then
+                if [ -z "$(find "$source_dir" -mindepth 1 -maxdepth 1 -print -quit)" ]; then
+                    tar -xzf "$archive" -C "$source_dir" --strip-components=1 || return 1
+                else
+                    log_error "$source_dir exists but does not contain a Git LFS binary."
+                    return 1
+                fi
+            fi
+
+            install -m 755 "$source_dir/git-lfs" "$install_prefix/bin/git-lfs" || return 1
+
+            if [ -d "$source_dir/man" ]; then
+                mkdir -p "$install_prefix/share/man"
+                cp -R "$source_dir/man/." "$install_prefix/share/man/" || return 1
+            fi
+            ;;
+        *)
+            log_error "Unknown GIT_LFS_INSTALL_METHOD='$install_method'. Use git or tar."
+            return 1
+            ;;
+    esac
+
+    export PATH="$install_prefix/bin:$PATH"
+    hash -r 2>/dev/null || true
+
+    if [ ! -x "$install_prefix/bin/git-lfs" ]; then
+        log_warning "Git LFS install completed, but $install_prefix/bin/git-lfs was not found."
+        return 1
+    fi
+
+    GIT_CONFIG_GLOBAL="$git_config_global" "$install_prefix/bin/git-lfs" install --skip-repo || return 1
+    log_success "Git LFS installed at $install_prefix/bin/git-lfs"
+    log_info "Git LFS global config written via GIT_CONFIG_GLOBAL=$git_config_global"
+}
+
 # =============================================================================
 # SETUP: profile selection 
 # =============================================================================
@@ -1297,6 +1539,10 @@ DO_VIM=1          # vim from source
 DO_LSP=1          # language servers + vim LSP tooling
 DO_NEOVIM=1       # Neovim from source + repo-managed config
 CLANGD_INSTALL_METHOD_DEFAULT=tar # default clangd install path for profiles
+DO_GO_TOOLCHAIN=1 # current Go toolchain under XDG data home
+GO_TOOLCHAIN_VERSION_DEFAULT=1.26.5 # default Go version for profiles
+DO_GIT_LFS=1      # Git LFS from GitHub source or release tarball
+GIT_LFS_INSTALL_METHOD_DEFAULT=git # default Git LFS install path for profiles
 DO_SCI=1          # scientific stack (GMP, NTL, MPFR, FLINT, FiniteFlow, etc.)
 DO_GMP=1          # GMP from source inside scientific stack
 DO_NTL=1          # NTL from source inside scientific stack
@@ -1341,6 +1587,8 @@ case "$BOOTSTRAP_PROFILE" in
         DO_VIM=1
         DO_LSP=1
         DO_NEOVIM=1
+        DO_GO_TOOLCHAIN=1
+        DO_GIT_LFS=1
         DO_SCI=1
         DO_GMP=1
         DO_NTL=1
@@ -1382,6 +1630,8 @@ case "$BOOTSTRAP_PROFILE" in
         DO_VIM=0
         DO_LSP=0
         DO_NEOVIM=0
+        DO_GO_TOOLCHAIN=0
+        DO_GIT_LFS=0
         DO_SCI=0
         DO_GMP=0
         DO_NTL=0
@@ -1422,6 +1672,8 @@ case "$BOOTSTRAP_PROFILE" in
         DO_VIM=0
         DO_LSP=0
         DO_NEOVIM=0
+        DO_GO_TOOLCHAIN=1
+        DO_GIT_LFS=1
         DO_SCI=0
         DO_GMP=0
         DO_NTL=0
@@ -1448,7 +1700,7 @@ case "$BOOTSTRAP_PROFILE" in
         DO_ASIR=0
         CLANGD_INSTALL_METHOD_DEFAULT=tar
         DO_NODE_TOOLS=0
-        DO_EMAIL=1
+        DO_EMAIL=0
         ;;
     *)
         log_error "Unknown profile '$BOOTSTRAP_PROFILE'!"
@@ -2148,7 +2400,7 @@ else
 fi
 
 # =============================================================================
-# SECTION 10A: TREE-SITTER CLI
+# SECTION 11: TREE-SITTER CLI
 # =============================================================================
 
 if \
@@ -2186,7 +2438,53 @@ else
 fi
 
 # =============================================================================
-# SECTION 11: pre NUCLEAR OPTION: WIPE ALL SUCKLESS TOOLS
+# SECTION 12: GO TOOLCHAIN
+# =============================================================================
+
+if \
+    (( DO_GO_TOOLCHAIN )) && \
+    prompt_continue "Install current Go toolchain locally?" && \
+    : \
+; then
+    log_section "GO TOOLCHAIN INSTALLATION"
+
+    GO_TOOLCHAIN_VERSION="${GO_TOOLCHAIN_VERSION:-${GO_TOOLCHAIN_VERSION_DEFAULT:-1.26.5}}"
+    log_info "Go toolchain version: $GO_TOOLCHAIN_VERSION"
+
+    if install_go_toolchain; then
+        log_success "Go toolchain setup completed"
+    else
+        log_warning "Go toolchain setup failed or was skipped"
+    fi
+else
+    log_info "Skipping Go toolchain installation."
+fi
+
+# =============================================================================
+# SECTION 12A: GIT LFS
+# =============================================================================
+
+if \
+    (( DO_GIT_LFS )) && \
+    prompt_continue "Install Git LFS from GitHub source or release tarball?" && \
+    : \
+; then
+    log_section "GIT LFS INSTALLATION"
+
+    GIT_LFS_INSTALL_METHOD="${GIT_LFS_INSTALL_METHOD:-${GIT_LFS_INSTALL_METHOD_DEFAULT:-git}}"
+    log_info "Git LFS installation method: $GIT_LFS_INSTALL_METHOD"
+
+    if install_git_lfs "$GIT_LFS_INSTALL_METHOD"; then
+        log_success "Git LFS setup completed"
+    else
+        log_warning "Git LFS setup failed or was skipped"
+    fi
+else
+    log_info "Skipping Git LFS installation."
+fi
+
+# =============================================================================
+# SECTION 13: pre NUCLEAR OPTION: WIPE ALL SUCKLESS TOOLS
 # =============================================================================
 
 # Nuclear option - wipe all suckless tools and start completely fresh
@@ -2200,7 +2498,7 @@ if \
 fi
 
 # =============================================================================
-# SECTION 12: SUCKLESS TOOLS (DWM)
+# SECTION 14: SUCKLESS TOOLS (DWM)
 # =============================================================================
 
 if \
@@ -2249,7 +2547,7 @@ EOF
 fi
 
 # =============================================================================
-# SECTION 13: SUCKLESS TOOLS (DMENU)
+# SECTION 15: SUCKLESS TOOLS (DMENU)
 # =============================================================================
 
 if \
@@ -2291,7 +2589,7 @@ EOF
 fi
 
 # =============================================================================
-# SECTION 14: SUCKLESS TOOLS (ST TERMINAL)
+# SECTION 16: SUCKLESS TOOLS (ST TERMINAL)
 # =============================================================================
 
 if \
@@ -2336,7 +2634,7 @@ EOF
 fi
 
 # =============================================================================
-# SECTION 15: SUCKLESS TOOLS (SLSTATUS)
+# SECTION 17: SUCKLESS TOOLS (SLSTATUS)
 # =============================================================================
 if \
 	(( DO_DWM )) && \
@@ -2383,7 +2681,7 @@ EOF
 fi
 
 # =============================================================================
-# SECTION 16: SUCKLESS TOOLS (SLOCK)
+# SECTION 18: SUCKLESS TOOLS (SLOCK)
 # =============================================================================
 if \
     (( DO_DWM )) && \
@@ -2418,7 +2716,7 @@ EOF
 fi
 
 # =============================================================================
-# SECTION 17: FILE MANAGER AND PDF VIEWER
+# SECTION 19: FILE MANAGER AND PDF VIEWER
 # =============================================================================
 
 if \
@@ -2447,7 +2745,7 @@ if \
 fi
 
 # =============================================================================
-# SECTION 18: NEOVIM SETUP
+# SECTION 20: NEOVIM SETUP
 # =============================================================================
 
 if \
@@ -2535,7 +2833,7 @@ if \
 fi
 
 # =============================================================================
-# SECTION 18A: TERMINAL MAIL STACK
+# SECTION 21A: TERMINAL MAIL STACK
 # =============================================================================
 
 if \
@@ -2605,7 +2903,7 @@ if \
 fi
 
 # =============================================================================
-# SECTION 19: DWM SESSION CONFIGURATION
+# SECTION 22: DWM SESSION CONFIGURATION
 # =============================================================================
 
 if \
@@ -2687,7 +2985,7 @@ EOF
 fi
 
 # =============================================================================
-# SECTION 20: FIX TOUCHPAD CLICK GESTURES
+# SECTION 23: FIX TOUCHPAD CLICK GESTURES
 # =============================================================================
 
 if \
@@ -2719,7 +3017,7 @@ EOF
 fi
 
 # =============================================================================
-# SECTION 21: DOTFILES SETUP
+# SECTION 24: DOTFILES SETUP
 # =============================================================================
 
 if \
@@ -2820,7 +3118,7 @@ fi
 
 
 # =============================================================================
-# SECTION 21: NVM SETUP 
+# SECTION 25: NVM SETUP
 # =============================================================================
 
 if \
@@ -2838,7 +3136,7 @@ if \
 fi
 
 # =============================================================================
-# SECTION 22: SSH-FIND-AGENT INSTALLATION
+# SECTION 26: SSH-FIND-AGENT INSTALLATION
 # =============================================================================
 
 if \
@@ -2909,7 +3207,7 @@ EOF
 fi
 
 # =============================================================================
-# SECTION 23: SUCKLESS TOOLS CONFIGURATION
+# SECTION 27: SUCKLESS TOOLS CONFIGURATION
 # =============================================================================
 if \
 	(( DO_DWM )) && \
@@ -3327,7 +3625,7 @@ fi
 
 
 # =============================================================================
-# SECTION 24: MAC KEYBOARD CONFIGURATION
+# SECTION 28: MAC KEYBOARD CONFIGURATION
 # =============================================================================
 if \
 	(( DO_MAC )) && \
@@ -3355,7 +3653,7 @@ if \
 fi
 
 # =============================================================================
-# SECTION 25: MESSENGERS 
+# SECTION 29: MESSENGERS
 # =============================================================================
 if \
 	(( DO_GUI )) && \
@@ -3594,7 +3892,7 @@ if \
 fi
 
 # =============================================================================
-# SECTION 26: MEDIA 
+# SECTION 30: MEDIA
 # =============================================================================
 if \
 	(( DO_GUI )) && \
@@ -3618,7 +3916,7 @@ if \
 fi
 
 # =============================================================================
-# SECTION 27: MACBOOK FUNCTION KEYS
+# SECTION 31: MACBOOK FUNCTION KEYS
 # =============================================================================
 
 if \
@@ -3660,7 +3958,7 @@ if \
 fi
 
 # =============================================================================
-# SECTION 28: SCIENTIFIC SOFTWARE (MODULAR SUBSECTIONS)
+# SECTION 32: SCIENTIFIC SOFTWARE (MODULAR SUBSECTIONS)
 # =============================================================================
 
 if \
@@ -4278,7 +4576,7 @@ if \
 fi
 
 # =============================================================================
-# SECTION 28A: SAGEMATH (MINIFORGE + GITHUB CHECKOUT)
+# SECTION 33A: SAGEMATH (MINIFORGE + GITHUB CHECKOUT)
 # =============================================================================
 
 if \
@@ -4306,7 +4604,7 @@ if \
 fi
 
 # =============================================================================
-# SECTION 28B: POLYMAKE (GITHUB/SOURCE BUILD, XDG-COMPLIANT)
+# SECTION 34B: POLYMAKE (GITHUB/SOURCE BUILD, XDG-COMPLIANT)
 # =============================================================================
 
 if \
@@ -4334,7 +4632,7 @@ if \
 fi
 
 # =============================================================================
-# SECTION 29: OPENXM + Risa/Asir (from source, XDG-compliant)
+# SECTION 35: OPENXM + Risa/Asir (from source, XDG-compliant)
 # =============================================================================
 
 if \
@@ -4538,7 +4836,7 @@ OPENXM_IGNORE
 fi
 
 # =============================================================================
-# SECTION 30: TEXLIVE INSTALLATION
+# SECTION 36: TEXLIVE INSTALLATION
 # =============================================================================
 if \
 	(( DO_TEX )) && \
@@ -4641,7 +4939,7 @@ EOF
 fi
 
 # =============================================================================
-# SECTION 31: krita and write
+# SECTION 37: krita and write
 # =============================================================================
 if \
 	(( DO_KRITA )) && \
@@ -4731,7 +5029,7 @@ EOF
 fi
 
 # =============================================================================
-# SECTION 32: SINGULAR COMPUTER ALGEBRA SYSTEM
+# SECTION 38: SINGULAR COMPUTER ALGEBRA SYSTEM
 # =============================================================================
 if \
 	(( DO_SCI )) && \
@@ -4774,7 +5072,7 @@ if \
 fi
 
 # =============================================================================
-# SECTION 33: SINGULAR COMPUTER ALGEBRA SYSTEM (LOCAL INSTALL, NO SUDO)
+# SECTION 39: SINGULAR COMPUTER ALGEBRA SYSTEM (LOCAL INSTALL, NO SUDO)
 # =============================================================================
 if \
     # (( DO_SCI )) && \
@@ -4909,7 +5207,7 @@ if \
 fi
 
 # =============================================================================
-# SECTION 34: MACAULAY2 COMPUTER ALGEBRA SYSTEM
+# SECTION 40: MACAULAY2 COMPUTER ALGEBRA SYSTEM
 # =============================================================================
 if \
     (( DO_SCI )) && \
@@ -4968,7 +5266,7 @@ if \
 fi
 
 # =============================================================================
-# SECTION 35: ZATHURA PDF VIEWER (SOURCE BUILD)
+# SECTION 41: ZATHURA PDF VIEWER (SOURCE BUILD)
 # =============================================================================
 if \
 	(( DO_GUI )) && \
@@ -5128,7 +5426,7 @@ if \
 fi
 
 # =============================================================================
-# SECTION 36: PYTHON TOOLS
+# SECTION 42: PYTHON TOOLS
 # =============================================================================
 
 if \
@@ -5178,7 +5476,7 @@ if \
 fi
 
 # =============================================================================
-# SECTION 37: PASS PASSWORD STORE & GIT CREDENTIAL HELPER
+# SECTION 43: PASS PASSWORD STORE & GIT CREDENTIAL HELPER
 # =============================================================================
 
 if \
@@ -5233,7 +5531,7 @@ if \
 fi
 
 # =============================================================================
-# SECTION 38: GPG TERMINAL PINENTRY (for pass, git-credential-pass)
+# SECTION 44: GPG TERMINAL PINENTRY (for pass, git-credential-pass)
 # =============================================================================
 if \
 	(( DO_GPG )) && \
@@ -5268,7 +5566,7 @@ fi
 
 
 # =============================================================================
-# SECTION 39: FINAL OWNERSHIP AND CLEANUP
+# SECTION 45: FINAL OWNERSHIP AND CLEANUP
 # =============================================================================
 
 if \
@@ -5295,6 +5593,8 @@ echo
 log_info "Summary of installed tools:"
 echo "  • Vim (from git) with terminal and xclip support"
 echo "  • fzf, ripgrep (rg), fd (from git)"
+echo "  • Go toolchain (local XDG install)"
+echo "  • Git LFS (from GitHub source or release tarball)"
 echo "  • dwm, dmenu, st (from suckless.org) with font-based emoji crash fix"
 echo "  • vifm, zathura"
 echo "  • Neovim (from source) with repo-managed config"

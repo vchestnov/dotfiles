@@ -209,6 +209,8 @@ if [[ $(hostname) = thinkpad ]]; then
 
     # TeX Live environment
     source $XDG_CONFIG_HOME/texlive-env.sh
+
+    source $XDG_CONFIG_HOME/go/env.sh
 fi
 
 if [[ $(hostname) = fire-chief-ash.maths.ox.ac.uk ]]; then

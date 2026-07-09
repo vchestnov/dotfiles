@@ -181,6 +181,7 @@ DO_CORE=1         # core directories, shell basics
 DO_EXPERIMENTAL=0 # dev stub
 DO_FZF=1
 DO_GIT=1
+DO_GO=1
 DO_GPG=1
 DO_GUI=1          # GUI stuff for desktop
 DO_SCI=1          # scientific env
@@ -204,6 +205,7 @@ case "$BOOTSTRAP_PROFILE" in
         DO_EXPERIMENTAL=0
         DO_FZF=1
         DO_GIT=1
+        DO_GO=1
         DO_GPG=0
         DO_GUI=0
         DO_SCI=1
@@ -223,6 +225,7 @@ case "$BOOTSTRAP_PROFILE" in
         DO_EXPERIMENTAL=0
         DO_FZF=0
         DO_GIT=0
+        DO_GO=0
         DO_GPG=0
         DO_GUI=0
         DO_SCI=0
@@ -242,19 +245,20 @@ case "$BOOTSTRAP_PROFILE" in
         DO_EXPERIMENTAL=0
         DO_FZF=0
         DO_GIT=0
+        DO_GO=1
         DO_GPG=0
         DO_GUI=0
         DO_SCI=0
         DO_SSH=0
         DO_TEX=0
-        DO_USER=1
+        DO_USER=0
         DO_VIFM=0
         DO_WOLFRAM=0
         DO_TEMPLATES=0
         DO_KRITA=0
         DO_NPM=0
-        DO_NEOVIM=1
-        DO_TREE_SITTER=1
+        DO_NEOVIM=0
+        DO_TREE_SITTER=0
         ;;
     *)
         log_error "Unknown profile '$BOOTSTRAP_PROFILE'!"
@@ -323,6 +327,22 @@ if \
     link_file "$DOTFILES_DIR/config/git/config"    "$XDG_CONFIG_HOME/git/config"    "git config (XDG)"
     link_file "$DOTFILES_DIR/config/git/ignore"    "$XDG_CONFIG_HOME/git/ignore"    "git ignore (XDG)"
     link_file "$DOTFILES_DIR/config/git/config_ox" "$XDG_CONFIG_HOME/git/config_ox" "git config for Oxford (XDG)"
+fi
+
+# =============================================================================
+# SECTION 03A: Go config in XDG-compliant location
+#   ~/.config/go/env.sh
+# =============================================================================
+
+if \
+    (( DO_GO )) && \
+    : \
+; then
+    ensure_dir "$XDG_CONFIG_HOME"
+    ensure_dir "$XDG_CONFIG_HOME/go"
+    link_file "$DOTFILES_DIR/config/go/env.sh" \
+              "$XDG_CONFIG_HOME/go/env.sh" \
+              "Go toolchain env (XDG)"
 fi
 
 # =============================================================================

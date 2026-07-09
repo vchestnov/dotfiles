@@ -33,6 +33,9 @@ export NOTMUCH_PROFILE="${NOTMUCH_PROFILE:-default}"
 export NOTMUCH_CONFIG="${NOTMUCH_CONFIG:-$XDG_CONFIG_HOME/notmuch/$NOTMUCH_PROFILE/config}"
 export MSMTP_CONFIG="${MSMTP_CONFIG:-$XDG_CONFIG_HOME/msmtp/config}"
 
+# Go toolchain (repo-managed XDG config)
+[ -f "$XDG_CONFIG_HOME/go/env.sh" ] && . "$XDG_CONFIG_HOME/go/env.sh"
+
 # Disable IBus to prevent conflicts with setxkbmap
 # export GTK_IM_MODULE=none
 # export QT_IM_MODULE=none
