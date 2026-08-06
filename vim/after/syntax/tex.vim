@@ -10,14 +10,14 @@ syn region texMathZoneC
   \ end='\\end{\(align\|align\*\)}'
   \ keepend
   \ contains=@texMathZoneGroup
-  \ containedin=ALL
+  \ containedin=ALLBUT,texComment
 
 syn region texMathZoneEquationC
   \ start='\\begin{\(equation\|equation\*\)}'
   \ end='\\end{\(equation\|equation\*\)}'
   \ keepend
   \ contains=@texMathZoneGroup
-  \ containedin=ALL
+  \ containedin=ALLBUT,texComment
 
 silent! syn clear texRefZone
 syn region texRefZone
@@ -26,4 +26,4 @@ syn region texRefZone
   \ end=/}\|%stopzone\>/
   \ keepend
   \ contains=@texRefGroup
-  \ containedin=ALL
+  \ containedin=ALLBUT,texComment
