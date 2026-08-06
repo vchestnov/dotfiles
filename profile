@@ -35,6 +35,7 @@ export MSMTP_CONFIG="${MSMTP_CONFIG:-$XDG_CONFIG_HOME/msmtp/config}"
 
 # Go toolchain (repo-managed XDG config)
 [ -f "$XDG_CONFIG_HOME/go/env.sh" ] && . "$XDG_CONFIG_HOME/go/env.sh"
+[ -f "$XDG_CONFIG_HOME/openxm/env.sh" ] && . "$XDG_CONFIG_HOME/openxm/env.sh"
 
 # Disable IBus to prevent conflicts with setxkbmap
 # export GTK_IM_MODULE=none
