@@ -80,6 +80,9 @@ handle_error() {
     local line_number=$1
     log_error "Script failed at line $line_number with exit code $exit_code"
     log_error "Last command: $BASH_COMMAND"
+    if declare -F write_run_status >/dev/null 2>&1; then
+        write_run_status failed "$exit_code" || true
+    fi
     echo -e "\nYou can:"
     echo "1. Fix the issue and re-run the script"
     echo "2. Skip the failed section and continue manually"
@@ -126,18 +129,25 @@ clone_or_update() {
             fi
         fi
 
-        # Fetch and checkout the chosen branch
+        if ! git diff --quiet || ! git diff --cached --quiet; then
+            log_warning "Repository has local changes; using it without updating: $dest_dir"
+            return 0
+        fi
+
+        # Fetch and fast-forward the chosen branch without rewriting local work.
         git fetch --all --prune
 
         if [[ -n "$branch" ]]; then
-            # Try to checkout existing local branch, otherwise create tracking branch
+            # Try to checkout an existing local branch, otherwise create a tracking branch.
             if ! git checkout "$branch" 2>/dev/null; then
-                git checkout -b "$branch" "origin/$branch" 2>/dev/null || true
+                git checkout -b "$branch" "origin/$branch" 2>/dev/null || return 1
             fi
-            git pull origin "$branch" || true
+            git merge --ff-only "origin/$branch" || {
+                log_warning "Repository cannot be fast-forwarded safely: $dest_dir"
+                return 1
+            }
         else
-            # Should not really happen, but keep a conservative fallback
-            git pull || true
+            git pull --ff-only || return 1
         fi
     else
         log_info "Cloning new repository from $repo_url into $dest_dir"
@@ -187,18 +197,25 @@ build_and_install() {
     
     log_info "Building $project_name..."
     
-    # Build as user
-    eval "$build_cmd"
+    # Commands are retained as strings for compatibility with existing component
+    # definitions. Reject shell substitutions; new installers should use arrays.
+    if [[ "$build_cmd" == *'$('* || "$install_cmd" == *'$('* || "$build_cmd" == *'`'* || "$install_cmd" == *'`'* ]]; then
+        log_error "Unsafe command substitution in build/install command for $project_name"
+        return 1
+    fi
+
+    # Build as user.
+    bash -c "$build_cmd"
     
     # Install with appropriate permissions
     if [ "$install_to_local" = true ]; then
         # Install to user's local directory
-        eval "$install_cmd"
+        bash -c "$install_cmd"
         log_info "Installed $project_name to user's local directory"
     else
         # Install system-wide with sudo
         refresh_sudo
-        sudo $install_cmd
+        sudo bash -c "$install_cmd"
         log_info "Installed $project_name system-wide"
     fi
 }
@@ -545,15 +562,9 @@ sage_env_file_for_host() {
         Linux-*)
             printf 'environment-%s-linux.yml\n' "$python_version"
             ;;
-        Darwin-arm64)
-            printf 'environment-%s-macos.yml\n' "$python_version"
-            ;;
-        Darwin-x86_64)
-            printf 'environment-%s-macos-x86_64.yml\n' "$python_version"
-            ;;
         *)
-            log_warning "Unknown platform for Sage environment file; defaulting to Linux."
-            printf 'environment-%s-linux.yml\n' "$python_version"
+            log_error "Unsupported SageMath host: $(uname -s) $(uname -m)"
+            return 1
             ;;
     esac
 }
@@ -635,11 +646,18 @@ install_sagemath_from_github() {
     if [ -d "$sage_src_dir/.git" ]; then
         log_info "Updating existing SageMath repository in $sage_src_dir"
         cd "$sage_src_dir"
-        git remote get-url upstream >/dev/null 2>&1 || git remote add upstream "$sage_repo_url"
-        git remote set-url upstream "$sage_repo_url"
-        git fetch upstream --tags
-        git checkout "$sage_ref" 2>/dev/null || git checkout -B "$sage_ref" "upstream/$sage_ref"
-        git pull --ff-only upstream "$sage_ref" || log_warning "Could not fast-forward SageMath repo; leaving current checkout in place."
+        if ! git diff --quiet || ! git diff --cached --quiet; then
+            log_warning "SageMath checkout has local changes; using it without updating."
+        else
+            git remote get-url upstream >/dev/null 2>&1 || git remote add upstream "$sage_repo_url"
+            git remote set-url upstream "$sage_repo_url"
+            git fetch upstream --tags
+            git checkout "$sage_ref" 2>/dev/null || git checkout -b "$sage_ref" "upstream/$sage_ref"
+            git merge --ff-only "upstream/$sage_ref" || {
+                log_warning "SageMath checkout cannot be fast-forwarded safely."
+                return 1
+            }
+        fi
     else
         log_info "Cloning SageMath from GitHub ref: $sage_ref"
         git clone -c core.symlinks=true --filter blob:none \
@@ -801,27 +819,6 @@ detect_polymake_dependency_prefix() {
     done
 
     return 1
-}
-
-write_scientific_env_file() {
-    local env_file=$1
-    local sci_prefix=$2
-    local finiteflow_prefix="${3:-}"
-
-    cat > "$env_file" <<EOF
-# Generated by bootstrap.sh
-export PATH="$sci_prefix/bin:\${PATH}"
-export CPPFLAGS="-I$sci_prefix/include\${CPPFLAGS:+ \$CPPFLAGS}"
-export LDFLAGS="-L$sci_prefix/lib\${LDFLAGS:+ \$LDFLAGS}"
-export PKG_CONFIG_PATH="$sci_prefix/lib/pkgconfig\${PKG_CONFIG_PATH:+:\$PKG_CONFIG_PATH}"
-export LD_LIBRARY_PATH="$sci_prefix/lib\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}"
-EOF
-
-    if [ -n "$finiteflow_prefix" ]; then
-        cat >> "$env_file" <<EOF
-export LD_LIBRARY_PATH="$finiteflow_prefix/lib:\${LD_LIBRARY_PATH}"
-EOF
-    fi
 }
 
 ensure_git_patch_applied() {
@@ -1417,19 +1414,15 @@ git_lfs_linux_arch() {
 install_git_lfs() {
     local install_method="${1:-git}"
     local install_prefix="${GIT_LFS_INSTALL_PREFIX:-$HOME/.local}"
-    local git_config_global
 
-    : "${XDG_CONFIG_HOME:=$HOME/.config}"
     : "${XDG_CACHE_HOME:=$HOME/.cache}"
-
-    git_config_global="${GIT_LFS_GIT_CONFIG_GLOBAL:-$XDG_CONFIG_HOME/git/config}"
 
     if ! command -v git >/dev/null 2>&1; then
         log_warning "git is required to install Git LFS."
         return 1
     fi
 
-    mkdir -p "$install_prefix/bin" "$(dirname "$git_config_global")"
+    mkdir -p "$install_prefix/bin"
 
     case "$install_method" in
         git|github)
@@ -1503,210 +1496,320 @@ install_git_lfs() {
         return 1
     fi
 
-    GIT_CONFIG_GLOBAL="$git_config_global" "$install_prefix/bin/git-lfs" install --skip-repo || return 1
     log_success "Git LFS installed at $install_prefix/bin/git-lfs"
-    log_info "Git LFS global config written via GIT_CONFIG_GLOBAL=$git_config_global"
+    log_info "Git LFS filters are managed by config/git/config"
 }
 
 # =============================================================================
-# SETUP: profile selection 
+# SETUP: command line, profiles, and resolved execution plan
 # =============================================================================
 
-# You can call this script as:
-#   ./bootstrap.sh            # default profile: desktop
-#   ./bootstrap.sh server     # use server profile
-# or set BOOTSTRAP_PROFILE in the environment.
+readonly COMPONENTS=(
+    core system-base fonts desktop-tools dwm tex gpg python-tools rust-tools
+    tree-sitter vim lsp neovim go git-lfs science gmp ntl mpfr flint julia
+    qd finiteflow finiteflow32 blade gfan fermat msolve science-extra sage
+    polymake singular macaulay2 openxm node email zettelkasten krita messengers media
+    system-upgrade remove-nautilus reset-user-dirs wipe-suckless
+)
+readonly RISKY_COMPONENTS=(system-upgrade remove-nautilus reset-user-dirs wipe-suckless)
+
+usage() {
+    cat <<'EOF'
+Usage: bootstrap.sh [PROFILE] [OPTIONS]
+
+Profiles: desktop (default), server, nothing, test
+
+Options:
+  --dry-run              print the resolved plan without changing the system
+  --yes                  apply the normal plan without the confirmation prompt
+  --list                 list profiles and components
+  --only LIST            replace profile defaults with comma-separated components
+  --enable LIST          add comma-separated components
+  --skip LIST            remove comma-separated components
+  --allow-risky          authorize noninteractive execution of selected risky components
+  -h, --help             show this help
+EOF
+}
+
+reset_components() {
+    DO_CORE=0 DO_SYSTEM=0 DO_FONTS=0 DO_DESKTOP_TOOLS=0 DO_DWM=0
+    DO_TEX=0 DO_GPG=0 DO_POETRY=0 DO_RUST_TOOLS=0 DO_TREE_SITTER=0
+    DO_VIM=0 DO_LSP=0 DO_NEOVIM=0 DO_GO_TOOLCHAIN=0 DO_GIT_LFS=0
+    DO_SCI=0 DO_GMP=0 DO_NTL=0 DO_MPFR=0 DO_FLINT=0 DO_JULIA=0
+    DO_QD=0 DO_FINITEFLOW=0 DO_FINITEFLOW32=0 DO_BLADE=0 DO_GFAN=0
+    DO_FERMAT=0 DO_MSOLVE=0 DO_SCI_EXTRA=0 DO_SAGE=0 DO_POLYMAKE=0
+    DO_SINGULAR=0 DO_MACAULAY2=0 DO_ASIR=0 DO_NODE_TOOLS=0 DO_EMAIL=0 DO_ZK=0
+    DO_KRITA=0 DO_MESSENGERS=0 DO_MEDIA=0 DO_SYSTEM_UPGRADE=0
+    DO_NAUTILUS=0 DO_USER_DIR_RESET=0 DO_SUCKLESS_WIPE=0
+}
+
+set_science_components() {
+    local value=$1
+    DO_SCI=$value DO_GMP=$value DO_NTL=$value DO_MPFR=$value DO_FLINT=$value
+    DO_JULIA=$value DO_QD=$value DO_FINITEFLOW=$value DO_FINITEFLOW32=$value
+    DO_BLADE=$value DO_GFAN=$value DO_FERMAT=$value DO_MSOLVE=$value
+    DO_SCI_EXTRA=$value
+}
+
+set_component() {
+    local component=$1 value=$2
+    case "$component" in
+        core) DO_CORE=$value ;;
+        system-base) DO_SYSTEM=$value ;;
+        fonts) DO_FONTS=$value ;;
+        desktop-tools) DO_DESKTOP_TOOLS=$value ;;
+        dwm) DO_DWM=$value ;;
+        tex) DO_TEX=$value ;;
+        gpg) DO_GPG=$value ;;
+        python-tools) DO_POETRY=$value ;;
+        rust-tools) DO_RUST_TOOLS=$value ;;
+        tree-sitter) DO_TREE_SITTER=$value ;;
+        vim) DO_VIM=$value ;;
+        lsp) DO_LSP=$value ;;
+        neovim) DO_NEOVIM=$value ;;
+        go) DO_GO_TOOLCHAIN=$value ;;
+        git-lfs) DO_GIT_LFS=$value ;;
+        science) set_science_components "$value" ;;
+        gmp) DO_GMP=$value; if (( value )); then DO_SCI=1; fi ;;
+        ntl) DO_NTL=$value; if (( value )); then DO_SCI=1; fi ;;
+        mpfr) DO_MPFR=$value; if (( value )); then DO_SCI=1; fi ;;
+        flint) DO_FLINT=$value; if (( value )); then DO_SCI=1; fi ;;
+        julia) DO_JULIA=$value; if (( value )); then DO_SCI=1; fi ;;
+        qd) DO_QD=$value; if (( value )); then DO_SCI=1; fi ;;
+        finiteflow) DO_FINITEFLOW=$value; if (( value )); then DO_SCI=1; fi ;;
+        finiteflow32) DO_FINITEFLOW32=$value; if (( value )); then DO_SCI=1; fi ;;
+        blade) DO_BLADE=$value; if (( value )); then DO_SCI=1; fi ;;
+        gfan) DO_GFAN=$value; if (( value )); then DO_SCI=1; fi ;;
+        fermat) DO_FERMAT=$value; if (( value )); then DO_SCI=1; fi ;;
+        msolve) DO_MSOLVE=$value; if (( value )); then DO_SCI=1; fi ;;
+        science-extra) DO_SCI_EXTRA=$value; if (( value )); then DO_SCI=1; fi ;;
+        sage) DO_SAGE=$value ;;
+        polymake) DO_POLYMAKE=$value ;;
+        singular) DO_SINGULAR=$value ;;
+        macaulay2) DO_MACAULAY2=$value ;;
+        openxm) DO_ASIR=$value ;;
+        node) DO_NODE_TOOLS=$value ;;
+        email) DO_EMAIL=$value ;;
+        zettelkasten)
+            DO_ZK=$value
+            if (( value )); then DO_CORE=1; fi
+            ;;
+        krita) DO_KRITA=$value ;;
+        messengers) DO_MESSENGERS=$value ;;
+        media) DO_MEDIA=$value ;;
+        desktop-apps)
+            DO_KRITA=$value DO_MESSENGERS=$value DO_MEDIA=$value
+            ;;
+        system-upgrade)
+            DO_SYSTEM_UPGRADE=$value
+            if (( value )); then DO_SYSTEM=1; fi
+            ;;
+        remove-nautilus) DO_NAUTILUS=$value ;;
+        reset-user-dirs)
+            DO_USER_DIR_RESET=$value
+            if (( value )); then DO_CORE=1; fi
+            ;;
+        wipe-suckless) DO_SUCKLESS_WIPE=$value ;;
+        *) log_error "Unknown component: $component"; return 1 ;;
+    esac
+}
+
+component_enabled() {
+    case "$1" in
+        core) (( DO_CORE ));; system-base) (( DO_SYSTEM ));; fonts) (( DO_FONTS ));;
+        desktop-tools) (( DO_DESKTOP_TOOLS ));; dwm) (( DO_DWM ));; tex) (( DO_TEX ));;
+        gpg) (( DO_GPG ));; python-tools) (( DO_POETRY ));; rust-tools) (( DO_RUST_TOOLS ));;
+        tree-sitter) (( DO_TREE_SITTER ));; vim) (( DO_VIM ));; lsp) (( DO_LSP ));;
+        neovim) (( DO_NEOVIM ));; go) (( DO_GO_TOOLCHAIN ));; git-lfs) (( DO_GIT_LFS ));;
+        gmp) (( DO_GMP ));; ntl) (( DO_NTL ));; mpfr) (( DO_MPFR ));;
+        flint) (( DO_FLINT ));; julia) (( DO_JULIA ));; qd) (( DO_QD ));;
+        finiteflow) (( DO_FINITEFLOW ));; finiteflow32) (( DO_FINITEFLOW32 ));;
+        blade) (( DO_BLADE ));; gfan) (( DO_GFAN ));; fermat) (( DO_FERMAT ));;
+        msolve) (( DO_MSOLVE ));; science-extra) (( DO_SCI_EXTRA ));;
+        sage) (( DO_SAGE ));; polymake) (( DO_POLYMAKE ));; singular) (( DO_SINGULAR ));;
+        macaulay2) (( DO_MACAULAY2 ));;
+        openxm) (( DO_ASIR ));; node) (( DO_NODE_TOOLS ));; email) (( DO_EMAIL ));;
+        zettelkasten) (( DO_ZK ));; krita) (( DO_KRITA ));;
+        messengers) (( DO_MESSENGERS ));; media) (( DO_MEDIA ));;
+        system-upgrade) (( DO_SYSTEM_UPGRADE ));; remove-nautilus) (( DO_NAUTILUS ));;
+        reset-user-dirs) (( DO_USER_DIR_RESET ));; wipe-suckless) (( DO_SUCKLESS_WIPE ));;
+        *) return 1 ;;
+    esac
+}
+
+component_method() {
+    case "$1" in
+        system-base|fonts|desktop-tools|macaulay2|messengers|media|system-upgrade|remove-nautilus)
+            printf 'apt/system'
+            ;;
+        core|zettelkasten|reset-user-dirs) printf 'configuration' ;;
+        dwm) printf 'source + system integration' ;;
+        tex) printf 'upstream installer' ;;
+        gpg) printf 'apt + repository config' ;;
+        python-tools) printf 'pipx' ;;
+        rust-tools) printf 'rustup/cargo + git' ;;
+        tree-sitter) printf 'cargo' ;;
+        vim|neovim) printf 'git source' ;;
+        lsp) printf 'local/upstream toolchains' ;;
+        go|julia) printf 'pinned upstream tarball' ;;
+        git-lfs) printf 'git source' ;;
+        gmp|ntl|mpfr|flint|gfan|fermat|singular) printf 'pinned source release' ;;
+        qd|finiteflow|finiteflow32|blade|msolve|science-extra|sage|polymake|openxm)
+            printf 'tracked upstream source'
+            ;;
+        node) printf 'nvm/npm' ;;
+        email) printf 'pinned source release' ;;
+        krita) printf 'pinned AppImage' ;;
+        wipe-suckless) printf 'local cleanup' ;;
+        *) printf 'configured installer' ;;
+    esac
+}
+
+apply_component_list() {
+    local list=$1 value=$2 item
+    [ -z "$list" ] && return 0
+    IFS=',' read -r -a items <<< "$list"
+    for item in "${items[@]}"; do
+        [ -n "$item" ] || continue
+        set_component "$item" "$value"
+    done
+}
+
+apply_profile() {
+    reset_components
+    case "$BOOTSTRAP_PROFILE" in
+        desktop)
+            for component in core system-base fonts desktop-tools dwm tex gpg python-tools \
+                rust-tools tree-sitter vim lsp neovim go git-lfs science sage polymake \
+                singular macaulay2 openxm node email zettelkasten; do
+                set_component "$component" 1
+            done
+            ;;
+        server)
+            for component in core rust-tools tree-sitter vim lsp neovim go git-lfs \
+                science sage polymake openxm node email; do
+                set_component "$component" 1
+            done
+            set_component qd 0
+            ;;
+        nothing) ;;
+        test)
+            set_component go 1
+            set_component git-lfs 1
+            ;;
+        *) log_error "Unknown profile '$BOOTSTRAP_PROFILE'."; usage; exit 2 ;;
+    esac
+}
 
 BOOTSTRAP_PROFILE="${BOOTSTRAP_PROFILE:-desktop}"
+ONLY_COMPONENTS=""
+ENABLE_COMPONENTS=""
+SKIP_COMPONENTS=""
+DRY_RUN=false
+ASSUME_YES=false
+ALLOW_RISKY=false
+LIST_ONLY=false
+profile_seen=false
 
-if [[ $# -gt 0 ]]; then
-    BOOTSTRAP_PROFILE="$1"
-    shift
+while (( $# )); do
+    case "$1" in
+        desktop|server|nothing|test)
+            if $profile_seen; then log_error "Only one profile may be selected."; exit 2; fi
+            BOOTSTRAP_PROFILE=$1
+            profile_seen=true
+            shift
+            ;;
+        --dry-run) DRY_RUN=true; shift ;;
+        --yes) ASSUME_YES=true; shift ;;
+        --allow-risky) ALLOW_RISKY=true; shift ;;
+        --list) LIST_ONLY=true; shift ;;
+        --only|--enable|--skip)
+            option=$1
+            (( $# >= 2 )) || { log_error "$option requires a value."; exit 2; }
+            case "$option" in
+                --only) ONLY_COMPONENTS=$2 ;;
+                --enable) ENABLE_COMPONENTS=$2 ;;
+                --skip) SKIP_COMPONENTS=$2 ;;
+            esac
+            shift 2
+            ;;
+        --only=*) ONLY_COMPONENTS=${1#*=}; shift ;;
+        --enable=*) ENABLE_COMPONENTS=${1#*=}; shift ;;
+        --skip=*) SKIP_COMPONENTS=${1#*=}; shift ;;
+        -h|--help) usage; exit 0 ;;
+        *) log_error "Unknown argument: $1"; usage; exit 2 ;;
+    esac
+done
+
+if $LIST_ONLY; then
+    printf 'Profiles: desktop server nothing test\n'
+    printf 'Components:\n  %s\n' "${COMPONENTS[*]}"
+    printf 'Alias:\n  desktop-apps = krita,messengers,media\n'
+    exit 0
 fi
 
+apply_profile
+if [ -n "$ONLY_COMPONENTS" ]; then
+    reset_components
+    apply_component_list "$ONLY_COMPONENTS" 1
+fi
+apply_component_list "$ENABLE_COMPONENTS" 1
+apply_component_list "$SKIP_COMPONENTS" 0
+
+if (( DO_ZK && ! DO_CORE )); then
+    log_error "zettelkasten requires core; remove '--skip core' or skip zettelkasten too."
+    exit 2
+fi
+if (( DO_USER_DIR_RESET && ! DO_CORE )); then
+    log_error "reset-user-dirs requires core; remove '--skip core' or skip reset-user-dirs too."
+    exit 2
+fi
+if (( DO_SYSTEM_UPGRADE && ! DO_SYSTEM )); then
+    log_error "system-upgrade requires system-base; remove '--skip system-base'."
+    exit 2
+fi
+
+SELECTED_COMPONENTS=()
+SELECTED_RISKY=()
+for component in "${COMPONENTS[@]}"; do
+    if component_enabled "$component"; then SELECTED_COMPONENTS+=("$component"); fi
+done
+for component in "${RISKY_COMPONENTS[@]}"; do
+    if component_enabled "$component"; then SELECTED_RISKY+=("$component"); fi
+done
+
+log_section "RESOLVED BOOTSTRAP PLAN"
+log_info "Profile: $BOOTSTRAP_PROFILE"
+if (( ${#SELECTED_COMPONENTS[@]} )); then
+    for component in "${SELECTED_COMPONENTS[@]}"; do
+        printf '  %-20s %s\n' "$component" "$(component_method "$component")"
+    done
+else
+    printf '  (no components selected)\n'
+fi
+if (( ${#SELECTED_RISKY[@]} )); then
+    log_warning "Risky opt-ins: ${SELECTED_RISKY[*]}"
+fi
+
+if $DRY_RUN; then
+    log_success "Dry run completed; no changes were made."
+    exit 0
+fi
+
+if $ASSUME_YES && (( ${#SELECTED_RISKY[@]} )) && ! $ALLOW_RISKY; then
+    log_error "Risky components require --allow-risky when --yes is used."
+    exit 2
+fi
+
+if ! $ASSUME_YES; then
+    read -r -p "Apply this plan? [y/N] " confirm
+    [[ "$confirm" =~ ^[Yy]([Ee][Ss])?$ ]] || { log_info "Cancelled."; exit 0; }
+fi
+
+# The execution plan has been approved; legacy component checkpoints now run
+# noninteractively. Component selection remains controlled by the profile flags.
+export AUTO_CONTINUE=true
 log_info "Using bootstrap profile: $BOOTSTRAP_PROFILE"
-
-# Default feature flags for desktop profile
-DO_CORE=1         # core directories, shell basics
-DO_DWM=1          # suckless stuff
-DO_GUI=1          # GUI desktop-only stuff
-DO_TEX=1          # TeX Live & tex-related env
-DO_GPG=1          # gpg-agent + pinentry tweaks
-DO_POETRY=1       # poetry / arxivterminal
-DO_RUST_TOOLS=1   # rustup + fzf, rg, fd, bat
-DO_TREE_SITTER=1  # tree-sitter CLI for custom Neovim parsers
-DO_VIM=1          # vim from source
-DO_LSP=1          # language servers + vim LSP tooling
-DO_NEOVIM=1       # Neovim from source + repo-managed config
-CLANGD_INSTALL_METHOD_DEFAULT=tar # default clangd install path for profiles
-DO_GO_TOOLCHAIN=1 # current Go toolchain under XDG data home
-GO_TOOLCHAIN_VERSION_DEFAULT=1.26.5 # default Go version for profiles
-DO_GIT_LFS=1      # Git LFS from GitHub source or release tarball
-GIT_LFS_INSTALL_METHOD_DEFAULT=git # default Git LFS install path for profiles
-DO_SCI=1          # scientific stack (GMP, NTL, MPFR, FLINT, FiniteFlow, etc.)
-DO_GMP=1          # GMP from source inside scientific stack
-DO_NTL=1          # NTL from source inside scientific stack
-DO_MPFR=1         # MPFR from source inside scientific stack
-DO_FLINT=1        # FLINT from source inside scientific stack
-DO_JULIA=1        # Julia from official tarball inside scientific stack
-DO_FINITEFLOW=1   # FiniteFlow from GitHub inside scientific stack
-DO_FINITEFLOW32=1 # FiniteFlow32 from private GitHub inside scientific stack
-DO_BLADE=1        # Blade from Gitee with local patch inside scientific stack
-DO_GFAN=1         # Gfan from upstream tarball inside scientific stack
-DO_FERMAT=1       # Fermat binary helper inside scientific stack
-# DO_LITERED=1      # LiteRed and Mathematica helpers inside scientific stack
-# DO_SINGULAR_MMA=1 # Singular Mathematica interface inside scientific stack
-DO_MSOLVE=1       # msolve from GitHub inside scientific stack
-DO_SCI_EXTRA=1    # extra scientific repositories and helper tools
-DO_SAGE=1         # SageMath via Miniforge/conda, defaulting to GitHub checkout
-DO_POLYMAKE=1     # polymake from GitHub/source, installed under ~/.local
-DO_MAC=0          # Macbook-related tweaks
-DO_SINGULAR=1     # temp stub for Singular
-DO_EXPERIMENTAL=0 # dev stub
-DO_SYSTEM=1       # system packages from apt
-DO_QD=1           # install QD library
-DO_ZK=1           # Zettelkasten + templates
-DO_KRITA=1        # Krita drawing app
-DO_ASIR=1         # OpenXM and Risa/Asir computer algebra systems
-DO_NODE_TOOLS=1   # nvm + Node.js + npm-based LSP servers + codex
-DO_EMAIL=1        # terminal mail stack from source: neomutt + isync + msmtp + notmuch
-
-case "$BOOTSTRAP_PROFILE" in
-    desktop)
-        # defaults already represent desktop
-        ;;
-    server)
-        DO_CORE=1
-        DO_DWM=0
-        DO_GUI=0
-        DO_TEX=0
-        DO_GPG=0
-        DO_POETRY=0
-        DO_RUST_TOOLS=1
-        DO_TREE_SITTER=1
-        DO_VIM=1
-        DO_LSP=1
-        DO_NEOVIM=1
-        DO_GO_TOOLCHAIN=1
-        DO_GIT_LFS=1
-        DO_SCI=1
-        DO_GMP=1
-        DO_NTL=1
-        DO_MPFR=1
-        DO_FLINT=1
-        DO_JULIA=1
-        DO_FINITEFLOW=1
-        DO_FINITEFLOW32=1
-        DO_BLADE=1
-        DO_GFAN=1
-        DO_FERMAT=1
-        # DO_LITERED=1
-        # DO_SINGULAR_MMA=1
-        DO_MSOLVE=1
-        DO_SCI_EXTRA=1
-        DO_SAGE=1
-        DO_POLYMAKE=1
-        DO_MAC=0
-        DO_SINGULAR=0
-        DO_EXPERIMENTAL=0
-        DO_SYSTEM=0
-        DO_QD=0
-        DO_ZK=0
-        DO_KRITA=0
-        DO_ASIR=1
-        CLANGD_INSTALL_METHOD_DEFAULT=tar
-        DO_NODE_TOOLS=1
-        DO_EMAIL=1
-        ;;
-    nothing)
-        DO_CORE=0
-        DO_DWM=0
-        DO_GUI=0
-        DO_TEX=0
-        DO_GPG=0
-        DO_POETRY=0
-        DO_RUST_TOOLS=0
-        DO_TREE_SITTER=0
-        DO_VIM=0
-        DO_LSP=0
-        DO_NEOVIM=0
-        DO_GO_TOOLCHAIN=0
-        DO_GIT_LFS=0
-        DO_SCI=0
-        DO_GMP=0
-        DO_NTL=0
-        DO_MPFR=0
-        DO_FLINT=0
-        DO_JULIA=0
-        DO_FINITEFLOW=0
-        DO_FINITEFLOW32=0
-        DO_BLADE=0
-        DO_GFAN=0
-        DO_FERMAT=0
-        # DO_LITERED=0
-        # DO_SINGULAR_MMA=0
-        DO_MSOLVE=0
-        DO_SCI_EXTRA=0
-        DO_SAGE=0
-        DO_POLYMAKE=0
-        DO_MAC=0
-        DO_SINGULAR=0
-        DO_SYSTEM=0
-        DO_QD=0
-        DO_ZK=0
-        DO_KRITA=0
-        DO_ASIR=0
-        CLANGD_INSTALL_METHOD_DEFAULT=tar
-        DO_NODE_TOOLS=0
-        DO_EMAIL=0
-        ;;
-    test)
-        DO_CORE=0
-        DO_DWM=0
-        DO_GUI=0
-        DO_TEX=0
-        DO_GPG=0
-        DO_POETRY=0
-        DO_RUST_TOOLS=0
-        DO_TREE_SITTER=0
-        DO_VIM=0
-        DO_LSP=0
-        DO_NEOVIM=0
-        DO_GO_TOOLCHAIN=1
-        DO_GIT_LFS=1
-        DO_SCI=0
-        DO_GMP=0
-        DO_NTL=0
-        DO_MPFR=0
-        DO_FLINT=0
-        DO_JULIA=0
-        DO_FINITEFLOW=0
-        DO_FINITEFLOW32=0
-        DO_BLADE=0
-        DO_GFAN=0
-        DO_FERMAT=0
-        # DO_LITERED=0
-        # DO_SINGULAR_MMA=0
-        DO_MSOLVE=0
-        DO_SCI_EXTRA=0
-        DO_SAGE=0
-        DO_POLYMAKE=0
-        DO_MAC=0
-        DO_SINGULAR=0
-        DO_SYSTEM=0
-        DO_QD=0
-        DO_ZK=0
-        DO_KRITA=0
-        DO_ASIR=0
-        CLANGD_INSTALL_METHOD_DEFAULT=tar
-        DO_NODE_TOOLS=0
-        DO_EMAIL=0
-        ;;
-    *)
-        log_error "Unknown profile '$BOOTSTRAP_PROFILE'!"
-        exit 1
-        ;;
-esac
 
 # =============================================================================
 # SETUP: pre-flight checks
@@ -1752,13 +1855,13 @@ if [[ "$BOOTSTRAP_PROFILE" == "desktop" ]]; then
 #     sudo -v
 # fi
 
-    if command -v sudo >/dev/null 2>&1; then
+    if (( DO_SYSTEM || DO_FONTS || DO_DESKTOP_TOOLS || DO_DWM || DO_TEX || DO_GPG || DO_MACAULAY2 || DO_KRITA || DO_MESSENGERS || DO_MEDIA )) && command -v sudo >/dev/null 2>&1; then
         log_info "Checking sudo access..."
         if ! sudo -n true 2>/dev/null; then
             log_info "Please enter your password to cache sudo credentials:"
             sudo -v
         fi
-    else
+    elif (( DO_SYSTEM || DO_FONTS || DO_DESKTOP_TOOLS || DO_DWM || DO_TEX || DO_GPG || DO_MACAULAY2 || DO_KRITA || DO_MESSENGERS || DO_MEDIA )); then
         log_warning "sudo not found — skipping sudo warm-up."
     fi
 else
@@ -1775,9 +1878,56 @@ XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
 XDG_CACHE_HOME="${XDG_CACHE_HOME:-$HOME/.cache}"
 XDG_STATE_HOME="${XDG_STATE_HOME:-$HOME/.local/state}"
-BUILD_DIR="${BUILD_DIR:-$HOME/.local/build}"
+BUILD_DIR="${BUILD_DIR:-$XDG_CACHE_HOME/bootstrap/build}"
 BIN_DIR="${BIN_DIR:-$HOME/.local/bin}"
-SRC_DIR="${SRC_DIR:-$HOME/.local/src}"
+SRC_DIR="${SRC_DIR:-$HOME/soft}"
+
+# Central release defaults. Git-based scientific projects intentionally track
+# their configured upstream branch; release-only dependencies remain explicit.
+: "${JULIA_VERSION:=1.12.6}"
+: "${GMP_VERSION:=6.3.0}"
+: "${NTL_VERSION:=11.6.0}"
+: "${MPFR_VERSION:=4.2.2}"
+: "${FLINT_VERSION:=3.4.0}"
+: "${GFAN_VERSION:=0.7}"
+: "${CDDLIB_VERSION:=094i}"
+: "${SINGULAR_TAG:=Release-4-4-1}"
+: "${GO_TOOLCHAIN_VERSION:=1.26.5}"
+: "${GIT_LFS_VERSION:=3.7.1}"
+: "${CLANGD_TARBALL_VERSION:=21.1.6}"
+: "${NVM_VERSION:=v0.40.4}"
+: "${KRITA_VERSION:=5.2.11}"
+: "${CLANGD_INSTALL_METHOD_DEFAULT:=tar}"
+: "${GIT_LFS_INSTALL_METHOD_DEFAULT:=git}"
+
+APT_UPDATED=false
+apt_refresh() {
+    local mode=${1:-cached}
+    if ! $APT_UPDATED || [ "$mode" = force ]; then
+        refresh_sudo
+        sudo apt update
+        APT_UPDATED=true
+    fi
+}
+
+apt_install() {
+    apt_refresh
+    refresh_sudo
+    sudo apt install -y "$@"
+}
+
+write_run_status() {
+    local status=$1 exit_code=${2:-0}
+    local state_dir="$XDG_STATE_HOME/bootstrap"
+    mkdir -p "$state_dir"
+    {
+        printf 'status=%s\n' "$status"
+        printf 'exit_code=%s\n' "$exit_code"
+        printf 'profile=%s\n' "$BOOTSTRAP_PROFILE"
+        printf 'finished_at=%s\n' "$(date --iso-8601=seconds)"
+        printf 'selected_components=%s\n' "${SELECTED_COMPONENTS[*]}"
+    } > "$state_dir/last-run"
+}
 
 ensure_cargo_toolchain() {
     export CARGO_HOME="${CARGO_HOME:-$XDG_DATA_HOME/cargo}"
@@ -1798,8 +1948,6 @@ ensure_cargo_toolchain() {
     export PATH="$BIN_DIR:$CARGO_HOME/bin:$PATH"
 }
 
-# : <<'DEBUG'
-
 # =============================================================================
 # SECTION 01: DIRECTORY SETUP
 # =============================================================================
@@ -1814,11 +1962,10 @@ if \
     log_info "Creating directory structure..."
     mkdir -p "$BUILD_DIR" "$BIN_DIR" "$SRC_DIR"
 
-    # Add local bin to PATH if not already there
+    # The repository-managed profile owns persistent PATH configuration.
     if [[ ":$PATH:" != *":$BIN_DIR:"* ]]; then
-        echo "export PATH=\"$BIN_DIR:\$PATH\"" >> ~/.bashrc
         export PATH="$BIN_DIR:$PATH"
-        log_info "Added $BIN_DIR to PATH"
+        log_info "Added $BIN_DIR to PATH for this run"
     fi
 
     log_success "Directory structure created"
@@ -1835,13 +1982,15 @@ if \
 ; then
     log_section "SYSTEM PACKAGES UPDATE"
     
-    # Update system packages
-    log_info "Updating system packages..."
-    refresh_sudo
-    sudo apt update && sudo apt upgrade -y
+    log_info "Refreshing Ubuntu package metadata..."
+    apt_refresh
+    if (( DO_SYSTEM_UPGRADE )); then
+        log_warning "Applying explicitly requested full system upgrade"
+        sudo apt upgrade -y
+    fi
 
     log_info "Installing system packages and build dependencies..."
-    sudo apt install -y \
+    apt_install \
         build-essential \
         git \
         curl \
@@ -1898,22 +2047,15 @@ if \
         tmux \
         htop \
         efivar \
-        golang-go \
         bluetooth \
         bluez \
         bluez-tools \
         rfkill \
         blueman \
-        vlc \
-        geeqie \
-        android-file-transfer \
-        gnome-screenshot \
-        ffmpeg \
         libxcb-cursor0 \
         lm-sensors \
         rename \
         python3-full \
-        libreoffice \
         acpi \
         picom \
         meson \
@@ -1930,12 +2072,9 @@ if \
         libxcb-xtest0 \
         pavucontrol \
         libboost-all-dev \
-        pass \
-        npm \
         libxapian-dev \
         libgmime-3.0-dev \
-        libtalloc-dev \
-        zlib1g-dev
+        libtalloc-dev
 
     log_success "System packages and build dependencies installed"
 fi
@@ -1968,18 +2107,18 @@ if \
             "$HOME/dev/templates/latex"
     fi
 
-    # Remove Ubuntu default directories if they exist and are empty
-    for dir in Desktop Documents Downloads Music Pictures Public Templates Videos; do
-        if [ -d "$HOME/$dir" ] && [ -z "$(ls -A "$HOME/$dir" 2>/dev/null)" ]; then
-            rmdir "$HOME/$dir" 2>/dev/null && log_info "Removed empty $dir directory"
-        elif [ -d "$HOME/$dir" ]; then
-            log_warning "$dir directory is not empty, skipping removal"
-        fi
-    done
+    if (( DO_USER_DIR_RESET )); then
+        log_warning "Resetting Ubuntu user directories by explicit request"
+        for dir in Desktop Documents Downloads Music Pictures Public Templates Videos; do
+            if [ -d "$HOME/$dir" ] && [ -z "$(ls -A "$HOME/$dir" 2>/dev/null)" ]; then
+                rmdir "$HOME/$dir" 2>/dev/null && log_info "Removed empty $dir directory"
+            elif [ -d "$HOME/$dir" ]; then
+                log_warning "$dir directory is not empty, skipping removal"
+            fi
+        done
 
-    # Update user-dirs configuration to point to our structure
-    mkdir -p "$HOME/.config"
-    tee "$HOME/.config/user-dirs.dirs" > /dev/null << 'EOF'
+        mkdir -p "$XDG_CONFIG_HOME"
+        tee "$XDG_CONFIG_HOME/user-dirs.dirs" > /dev/null << 'EOF'
 XDG_DESKTOP_DIR="$HOME/docs"
 XDG_DOWNLOAD_DIR="$HOME/docs/downloads"
 XDG_TEMPLATES_DIR="$HOME/docs"
@@ -1990,10 +2129,10 @@ XDG_PICTURES_DIR="$HOME/docs"
 XDG_VIDEOS_DIR="$HOME/docs"
 EOF
 
-    # Disable Ubuntu's automatic directory creation
-    tee "$HOME/.config/user-dirs.conf" > /dev/null << 'EOF'
+        tee "$XDG_CONFIG_HOME/user-dirs.conf" > /dev/null << 'EOF'
 enabled=False
 EOF
+    fi
 
     log_success "Clean home directory structure created"
 fi
@@ -2003,7 +2142,7 @@ fi
 # =============================================================================
 
 if \
-    (( DO_SYSTEM )) && \
+    (( DO_NAUTILUS )) && \
     prompt_continue "Remove Ubuntu file manager (Nautilus)?" && \
     : \
 ; then
@@ -2013,41 +2152,7 @@ if \
     log_info "Removing Ubuntu file manager (Nautilus)..."
     refresh_sudo
     sudo apt remove -y nautilus nautilus-extension-gnome-terminal 2>/dev/null || true
-    sudo apt autoremove -y
-
     log_success "Ubuntu file manager removed"
-fi
-
-# =============================================================================
-# SECTION 05: MACBOOK AUDIO FIX
-# =============================================================================
-
-if \
-    (( DO_MAC )) && \
-    prompt_continue "Disable MacBook Air startup sound?" \
-    : \
-; then
-    log_section "MACBOOK AUDIO FIX"
-
-    # MacBook Air startup sound disable
-    if [ -f "/sys/firmware/efi/efivars/SystemAudioVolume-7c436110-ab2a-4bbb-a880-fe41995c9f82" ]; then
-        log_info "Disabling MacBook Air startup sound..."
-        refresh_sudo
-        # Remove immutable flag
-        sudo chattr -i "/sys/firmware/efi/efivars/SystemAudioVolume-7c436110-ab2a-4bbb-a880-fe41995c9f82" 2>/dev/null || true
-	# Mute startup sound (try 0x80 first, fallback to 0x00)
-        if printf "\x07\x00\x00\x00\x80" | sudo tee /sys/firmware/efi/efivars/SystemAudioVolume-7c436110-ab2a-4bbb-a880-fe41995c9f82 > /dev/null; then
-	    log_success "MacBook Air startup sound disabled (0x80)"
-        else
-            printf "\x07\x00\x00\x00\x00" | sudo tee /sys/firmware/efi/efivars/SystemAudioVolume-7c436110-ab2a-4bbb-a880-fe41995c9f82 > /dev/null || true
-            log_success "MacBook Air startup sound disabled (fallback 0x00)"
-        fi
-        # Make immutable again
-        sudo chattr +i "/sys/firmware/efi/efivars/SystemAudioVolume-7c436110-ab2a-4bbb-a880-fe41995c9f82" 2>/dev/null || true
-        log_success "MacBook Air startup sound disabled"
-    else
-        log_warning "EFI SystemAudioVolume variable not found - startup sound may still play"
-    fi
 fi
 
 # =============================================================================
@@ -2055,7 +2160,7 @@ fi
 # =============================================================================
 
 if \
-	(( DO_SYSTEM )) && \
+	(( DO_FONTS )) && \
 	prompt_continue "Install fonts and configure fontconfig?" && \
 	: \
 ; then
@@ -2066,7 +2171,7 @@ if \
 
     # Install essential fonts including non-color emoji fonts
     refresh_sudo
-    sudo apt install -y \
+    apt_install \
         fonts-liberation \
         fonts-liberation2 \
         fonts-dejavu \
@@ -2165,36 +2270,8 @@ EOF
     # Refresh font cache
     fc-cache -fv
 
-    # Ensure proper ownership
-    chown -R "$USER:$(id -gn)" "$HOME/.config/fontconfig"
-
     log_success "Fonts installed and fontconfig configured to prevent emoji crashes"
 fi
-
-# =============================================================================
-# SECTION 07: XCLIP
-# =============================================================================
-if \
-    (( DO_CORE )) && \
-    prompt_continue "Install xclip?" && \
-    : \
-; then
-    log_section "XCLIP INSTALLATION"
-
-    if command -v xclip &> /dev/null; then
-        log_info "xclip already installed at $(command -v xclip)"
-        return 0
-    fi
-
-    clone_or_update "https://github.com/astrand/xclip.git" "$SRC_DIR/xclip"
-    cd "$SRC_DIR/xclip"
-    autoreconf
-    ./configure --prefix="$HOME/.local"
-    build_and_install "xclip" "make -j${BUILD_JOBS:-$(default_build_jobs)}" "make install" true
-
-    log_success "xclip installed"
-fi
-
 
 # =============================================================================
 # SECTION 08: VIM FROM SOURCE
@@ -2270,7 +2347,7 @@ if \
             if (( DO_SYSTEM )) && command -v sudo >/dev/null 2>&1; then
                 log_info "Installing clangd from apt..."
                 refresh_sudo
-                sudo apt install -y clangd
+                apt_install clangd
                 log_success "clangd installed"
             else
                 log_warning "apt-based clangd install requested, but this profile does not permit it."
@@ -2381,18 +2458,10 @@ if \
 	# Install bat from git 
 	log_info "Installing bat..."
 
-	if [ ! -d "$SRC_DIR/bat" ]; then
-		git clone https://github.com/sharkdp/bat.git "$SRC_DIR/bat"
-		cd "$SRC_DIR/bat"
-		cargo build --release
-		cp target/release/bat "$BIN_DIR"
-	else
-		echo "bat already installed, pulling latest changes..."
-		cd "$SRC_DIR/bat"
-		git pull
-		cargo build --release
-		cp target/release/bat "$BIN_DIR"
-	fi
+	clone_or_update "https://github.com/sharkdp/bat.git" "$SRC_DIR/bat"
+	cd "$SRC_DIR/bat"
+	cargo build --release
+	cp target/release/bat "$BIN_DIR"
 
 	log_success "bat installed"
 else
@@ -2489,7 +2558,7 @@ fi
 
 # Nuclear option - wipe all suckless tools and start completely fresh
 if \
-	(( DO_DWM )) && \
+		(( DO_SUCKLESS_WIPE )) && \
 	prompt_continue "Start completely fresh? (removes all existing suckless directories)" && \
 	: \
 ; then
@@ -2692,7 +2761,7 @@ if \
 
     # Optional but recommended: integrates lockers with X11 idle + systemd sleep
     refresh_sudo
-    sudo apt install -y xss-lock
+    apt_install xss-lock
 
     log_info "Building slock..."
     clone_or_update "https://git.suckless.org/slock" "$SRC_DIR/slock"
@@ -2720,7 +2789,7 @@ fi
 # =============================================================================
 
 if \
-	(( DO_SYSTEM )) && \
+	(( DO_DESKTOP_TOOLS )) && \
 	prompt_continue "Install vifm (file manager) and zathura (PDF viewer)?" && \
 	: \
 ; then
@@ -2729,7 +2798,7 @@ if \
     # Install vifm
     log_info "Installing vifm..."
     refresh_sudo
-    sudo apt install -y vifm
+    apt_install vifm
 
     log_success "vifm installed"
 
@@ -2739,7 +2808,7 @@ if \
 
     # Install zathura and plugins
     log_info "Installing zathura..."
-    sudo apt install -y zathura zathura-pdf-poppler zathura-ps zathura-djvu
+    apt_install zathura zathura-pdf-poppler zathura-ps zathura-djvu
 
     log_success "zathura installed"
 fi
@@ -2985,135 +3054,26 @@ EOF
 fi
 
 # =============================================================================
-# SECTION 23: FIX TOUCHPAD CLICK GESTURES
-# =============================================================================
-
-if \
-	(( DO_MAC )) && \
-	prompt_continue "Fix touchpad left and right click gestures?" && \
-	: \
-; then
-    log_section "TOUCHPAD CONFIGURATION"
-
-    log_info "COnfiguring touchpad click gestures..."
-    refresh_sudo
-    sudo mkdir -p /etc/X11/xorg.conf.d
-    sudo tee /etc/X11/xorg.conf.d/40-libinput-bcm5974.conf > /dev/null << 'EOF'
-Section "InputClass"
-    Identifier "bcm5974 touchpad"
-    MatchProduct "bcm5974"
-    MatchIsTouchpad "on"
-    Driver "libinput"
-
-    Option "Tapping" "on"
-    Option "ClickMethod" "clickfinger"
-    Option "TappingButtonMap" "lrm"
-    Option "NaturalScrolling" "true"
-    Option "DisableWhileTyping" "true"
-EndSection
-EOF
-
-    log_success "Touchpad configuration applied"
-fi
-
-# =============================================================================
 # SECTION 24: DOTFILES SETUP
 # =============================================================================
 
 if \
 	(( DO_CORE )) && \
-	prompt_continue "Install and setup dotfiles from GitHub?" && \
+	prompt_continue "Link repository-managed dotfiles?" && \
 	: \
 ; then
     log_section "DOTFILES SETUP"
-    
-    # Clone dotfiles repository
-    DOTFILES_DIR="$HOME/dotfiles"
-    
-    if [ -d "$DOTFILES_DIR" ]; then
-        log_info "Dotfiles directory exists, updating..."
-        cd "$DOTFILES_DIR"
-        git fetch origin
-        git reset --hard origin/main
-    else
-        log_info "Cloning dotfiles repository..."
-        git clone "https://github.com/vchestnov/dotfiles.git" "$DOTFILES_DIR"
-    fi
-    
-    # Ensure proper ownership
-    chown -R "$USER:$(id -gn)" "$DOTFILES_DIR"
-    
-    # Check if makesymlinks.sh exists and is executable
+
+    DOTFILES_DIR="$SCRIPT_DIR"
     MAKESYMLINKS_SCRIPT="$DOTFILES_DIR/makesymlinks.sh"
-    if [ -f "$MAKESYMLINKS_SCRIPT" ]; then
-        log_info "Found makesymlinks.sh, making it executable..."
-        chmod +x "$MAKESYMLINKS_SCRIPT"
-        
-        # Backup existing config files that might be overwritten
-        log_info "Creating backup of existing config files..."
-        BACKUP_DIR="$HOME/.config_backup_$(date +%Y%m%d_%H%M%S)"
-        mkdir -p "$BACKUP_DIR"
-        
-        # List of common config files/directories that might be overwritten
-        CONFIG_FILES=(
-            ".bashrc"
-            ".vimrc"
-            ".tmux.conf"
-            ".gitconfig"
-            ".xinitrc"
-            ".Xresources"
-            ".config/nvim"
-            ".config/git"
-            ".config/tmux"
-        )
-        
-        for config in "${CONFIG_FILES[@]}"; do
-            if [ -e "$HOME/$config" ] && [ ! -L "$HOME/$config" ]; then
-                log_info "Backing up $config..."
-                cp -r "$HOME/$config" "$BACKUP_DIR/" 2>/dev/null || true
-            fi
-        done
-        
-        if [ "$(ls -A "$BACKUP_DIR" 2>/dev/null)" ]; then
-            log_info "Backup created at: $BACKUP_DIR"
-        else
-            rmdir "$BACKUP_DIR" 2>/dev/null || true
-        fi
-        
-        # Run the makesymlinks script
-        log_info "Running makesymlinks.sh to create symbolic links..."
-        cd "$DOTFILES_DIR"
-        
-        # Run the script and capture output
-        if ./makesymlinks.sh; then
-            log_success "Dotfiles symbolic links created successfully"
-            
-            # List what was linked
-            log_info "Symbolic links created:"
-            find "$HOME" -maxdepth 2 -type l -lname "$DOTFILES_DIR/*" 2>/dev/null | while read -r link; do
-                target=$(readlink "$link")
-                echo "  ${link#$HOME/} -> ${target#$DOTFILES_DIR/}"
-            done
-        else
-            log_error "makesymlinks.sh failed to execute properly"
-            log_error "You may need to run it manually: cd $DOTFILES_DIR && ./makesymlinks.sh"
-        fi
-    else
-        log_error "makesymlinks.sh not found in dotfiles repository"
-        log_info "Available files in dotfiles directory:"
-        ls -la "$DOTFILES_DIR"
-        log_info "You may need to create symbolic links manually"
+    if [ ! -x "$MAKESYMLINKS_SCRIPT" ]; then
+        log_error "Executable makesymlinks.sh not found in current checkout: $DOTFILES_DIR"
+        exit 1
     fi
 
-    if [[ ! -d $DOTFILES_DIR/private ]]; then
-        log_info "Creating directory for private dotfiles (bash history)"
-        mkdir -p $DOTFILES_DIR/private
-    fi
-
-    # Ensure all config files have proper ownership
-    chown "$USER:$(id -gn)" "$HOME/.bash_profile"
-    
-    log_success "Dotfiles setup completed"
+    log_info "Delegating repository-backed configuration to makesymlinks.sh"
+    "$MAKESYMLINKS_SCRIPT" "$BOOTSTRAP_PROFILE"
+    log_success "Dotfiles linked from $DOTFILES_DIR"
 fi
 
 
@@ -3159,40 +3119,6 @@ if \
     # Ensure proper ownership
     chown "$USER:$(id -gn)" "$BIN_DIR/ssh-find-agent"
     
-    # Add ssh-find-agent configuration to bashrc if not already present
-    if ! grep -q "ssh-find-agent" "$HOME/.bashrc"; then
-        log_info "Adding ssh-find-agent configuration to .bashrc..."
-        tee -a "$HOME/.bashrc" > /dev/null << 'EOF'
-
-# SSH agent management with ssh-find-agent
-if command -v ssh-find-agent >/dev/null 2>&1; then
-    source ssh-find-agent
-    set_ssh_agent_socket
-fi
-EOF
-    fi
-    
-    # Create a helper function for easy SSH agent management
-    if ! grep -q "ssh_agent_start" "$HOME/.bashrc"; then
-        log_info "Adding SSH agent helper functions to .bashrc..."
-        tee -a "$HOME/.bashrc" > /dev/null << 'EOF'
-
-# SSH agent helper functions
-ssh_agent_start() {
-    eval $(ssh-agent -s)
-    ssh-add ~/.ssh/id_rsa 2>/dev/null || ssh-add ~/.ssh/id_ed25519 2>/dev/null || echo "No SSH keys found to add"
-}
-
-ssh_agent_list() {
-    ssh-find-agent -c
-}
-
-ssh_agent_kill() {
-    ssh-agent -k
-}
-EOF
-    fi
-    
     log_success "ssh-find-agent installed successfully"
     
     # Provide usage information
@@ -3216,58 +3142,14 @@ if \
 ; then
     log_section "SUCKLESS CONFIGURATION"
 
-    PATCHES_DIR="$HOME/dotfiles/patches"
-
-	# apply_patch() {
-	# 	local source=$1
-	# 	local patch_name=$2
-	# 	local patch_args="${3:-}"
-	# 	local use_git_apply="${4:-}"  # Pass "git" to use git apply
-	# 	local patch_file=""
-
-	# 	# Determine patch source type
-	# 	if [[ "$source" =~ ^https?:// ]]; then
-	# 		patch_file="${patch_name}.patch"
-	# 		if wget -q "$source" -O "$patch_file"; then
-	# 			log_info "Downloaded $patch_name patch from URL"
-	# 		else
-	# 			log_warning "Failed to download $patch_name patch"
-	# 			return
-	# 		fi
-	# 	elif [ -f "$source" ]; then
-	# 		patch_file="$source"
-	# 		patch_name="$(basename "$source" .patch)"
-	# 		log_info "Applying local patch from file: $patch_file"
-	# 	else
-	# 		log_warning "Local patch not found: $source"
-	# 		return
-	# 	fi
-
-	# 	# Apply the patch using either `patch` or `git apply`
-	# 	if [[ "$use_git_apply" == "git" ]]; then
-	# 		if git apply $patch_args "$patch_file"; then
-	# 			log_success "$patch_name patch applied successfully with git apply"
-	# 		else
-	# 			log_error "$patch_name patch failed with git apply"
-	# 			cp "$patch_file" "${patch_name}.failed.patch"
-	# 			log_info "Failed patch saved as ${patch_name}.failed.patch for manual review"
-	# 		fi
-	# 	else
-	# 		if patch -p1 $patch_args < "$patch_file"; then
-	# 			log_success "$patch_name patch applied successfully"
-	# 		else
-	# 			log_error "$patch_name patch failed"
-	# 			cp "$patch_file" "${patch_name}.failed.patch"
-	# 			log_info "Failed patch saved as ${patch_name}.failed.patch for manual review"
-	# 		fi
-	# 	fi
-	# }
+    PATCHES_DIR="$SCRIPT_DIR/patches"
 
 	apply_patch() {
 		local source=$1
 		local patch_name=$2
-		local patch_args="${3:-}"
 		local patch_file=""
+		local -a patch_args=()
+		if [ -n "${3:-}" ]; then read -r -a patch_args <<< "$3"; fi
 
 		# Determine patch source type
 		if [[ "$source" =~ ^https?:// ]]; then
@@ -3276,7 +3158,7 @@ if \
 				log_info "Downloaded $patch_name patch from URL"
 			else
 				log_warning "Failed to download $patch_name patch"
-				return
+				return 1
 			fi
 		elif [ -f "$source" ]; then
 			patch_file="$source"
@@ -3284,71 +3166,25 @@ if \
 			log_info "Applying local patch from file: $patch_file"
 		else
 			log_warning "Local patch not found: $source"
-			return
+			return 1
 		fi
 
-		# Apply the patch
-		if patch -p1 ${patch_args} < "$patch_file" 2>/dev/null; then
+		if patch --dry-run -p1 "${patch_args[@]}" < "$patch_file" >/dev/null 2>&1; then
+			patch -p1 "${patch_args[@]}" < "$patch_file"
 			log_success "$patch_name patch applied successfully"
+		elif patch --dry-run -R -p1 "${patch_args[@]}" < "$patch_file" >/dev/null 2>&1; then
+			log_info "$patch_name patch already applied"
 		else
-			log_error "$patch_name patch failed"
-			cp "$patch_file" "${patch_name}.failed.patch"
-			log_info "Failed patch saved as ${patch_name}.failed.patch for manual review"
+			log_error "$patch_name patch does not apply cleanly"
+			return 1
 		fi
 	}
 
 	git_apply_patch() {
 		local source=$1
-		local patch_file=""
-
-		if [ -f "$source" ]; then
-			patch_file="$source"
-			patch_name="$(basename "$source" .patch)"
-			log_info "Applying local patch from file: $patch_file"
-		else
-			log_warning "Local patch not found: $source"
-			return
-		fi
-
-		# Apply the patch
-		if git apply "$patch_file" 2>/dev/null; then
-			log_success "$patch_name patch applied successfully"
-		else
-			log_error "$patch_name patch failed"
-			cp "$patch_file" "${patch_name}.failed.patch"
-			log_info "Failed patch saved as ${patch_name}.failed.patch for manual review"
-		fi
+		ensure_git_patch_applied "$source"
 	}
 
-
-	# # Function to apply a patch
-    # apply_patch() {
-        # local patch_url=$1
-        # local patch_name=$2
-        # local patch_args="${3:-}"
-        
-        # if wget -q "$patch_url" -O "${patch_name}.patch" 2>/dev/null; then
-            # log_info "Applying $patch_name patch..."
-            # if patch -p1 ${patch_args} < "${patch_name}.patch" 2>/dev/null; then
-                # log_success "$patch_name patch applied successfully"
-            # else
-                # # log_warning "$patch_name patch failed - checking for partial application..."
-                # # # Try to apply with fuzzy matching
-                # # if patch -p1 --fuzz=3 < "${patch_name}.patch" 2>/dev/null; then
-                # #     log_success "$patch_name patch applied with fuzzy matching"
-                # # else
-                    # log_error "$patch_name patch failed"
-                    # # Save the failed patch for manual inspection
-                    # cp "${patch_name}.patch" "${patch_name}.failed.patch"
-                    # log_info "Failed patch saved as ${patch_name}.failed.patch for manual review"
-                # # fi
-            # fi
-            # # rm -f "${patch_name}.patch"
-        # else
-            # log_warning "Failed to download $patch_name patch"
-        # fi
-    # }
-    
     # Function to configure a suckless tool
     configure_suckless_tool() {
         local tool_name=$1
@@ -3625,38 +3461,10 @@ fi
 
 
 # =============================================================================
-# SECTION 28: MAC KEYBOARD CONFIGURATION
-# =============================================================================
-if \
-	(( DO_MAC )) && \
-	prompt_continue "Configure Mac keyboard layout (swap Alt and Cmd keys)?" && \
-	: \
-; then
-    log_section "MAC KEYBOARD CONFIGURATION"
-    
-    log_info "Configuring Mac keyboard layout..."
-    
-    # Create config directory and flag file
-    mkdir -p "$HOME/.config/dwm"
-    touch "$HOME/.config/dwm/mac-keyboard"
-    
-    # Apply immediately for current session
-    setxkbmap "us,ru" -option "grp:caps_toggle"
-    setxkbmap -option altwin:swap_lalt_lwin
-    xset r rate 300 50
-    
-    log_success "Mac keyboard configuration applied"
-    log_info "Keyboard changes:"
-    echo "  • Left Alt and Cmd keys swapped"
-    # echo "  • Cmd+C, Cmd+V, etc. will work as expected"
-    echo "  • dwm modkey remains Alt (now physical Cmd key)"
-fi
-
-# =============================================================================
 # SECTION 29: MESSENGERS
 # =============================================================================
 if \
-	(( DO_GUI )) && \
+	(( DO_MESSENGERS )) && \
 	prompt_continue "Install messengers (telegram, slack, signal, zulip)?" && \
 	: \
 ; then
@@ -3809,11 +3617,11 @@ if \
     # APT UPDATE AND INSTALL
     # =============================================================================
     log_info "Updating APT package lists..."
-    sudo apt update
+    apt_refresh force
     check_command "Failed to update APT package lists"
     
     log_info "Installing Zulip and Signal from repositories..."
-    sudo apt install -y zulip signal-desktop
+    apt_install zulip signal-desktop
     check_command "Failed to install Zulip and Signal"
     
     log_success "Repository-based messengers installed"
@@ -3887,7 +3695,8 @@ if \
         log_info "You may need to add $HOME/.local/bin to your PATH or check the installation"
     fi
     
-    # Cleanup will be handled by the trap
+    cleanup_temp
+    trap - EXIT
     log_success "Messengers installation completed"
 fi
 
@@ -3895,7 +3704,7 @@ fi
 # SECTION 30: MEDIA
 # =============================================================================
 if \
-	(( DO_GUI )) && \
+	(( DO_MEDIA )) && \
 	prompt_continue "Install media software?" && \
 	: \
 ; then
@@ -3907,54 +3716,12 @@ if \
     # Update system packages
     log_info "Updating system packages..."
     refresh_sudo
-    sudo apt update && sudo apt upgrade -y
+    apt_refresh force
 
-	sudo apt install -y \
+	apt_install \
 		spotify-client
 
     log_info "Installing media software from repositories..."
-fi
-
-# =============================================================================
-# SECTION 31: MACBOOK FUNCTION KEYS
-# =============================================================================
-
-if \
-	(( DO_MAC )) && \
-	prompt_continue "Configure MacBook function keys (F1-F12) to work without Fn key?" && \
-	: \
-; then
-    log_section "MACBOOK FUNCTION KEYS CONFIGURATION"
-    
-    log_info "Configuring function keys to work without Fn key..."
-    refresh_sudo
-    
-    # Check if hid_apple module is available
-    if [ -f /sys/module/hid_apple/parameters/fnmode ]; then
-        current_fnmode=$(cat /sys/module/hid_apple/parameters/fnmode)
-        log_info "Current fnmode setting: $current_fnmode"
-        
-        # Set fnmode to 2 immediately
-        echo 2 | sudo tee /sys/module/hid_apple/parameters/fnmode > /dev/null
-        sudo update-initramfs -u -k all
-        log_info "Set fnmode to 2 for current session"
-        
-        # Make the change permanent via GRUB
-        if grep -q "hid_apple.fnmode" /etc/default/grub; then
-            log_info "Updating existing hid_apple.fnmode parameter in GRUB..."
-            sudo sed -i 's/hid_apple\.fnmode=[0-9]/hid_apple.fnmode=2/g' /etc/default/grub
-        else
-            log_info "Adding hid_apple.fnmode parameter to GRUB..."
-            sudo sed -i 's/GRUB_CMDLINE_LINUX_DEFAULT="\([^"]*\)"/GRUB_CMDLINE_LINUX_DEFAULT="\1 hid_apple.fnmode=2"/' /etc/default/grub
-        fi
-        
-        # Update GRUB
-        sudo update-grub
-        log_success "Function keys configured - F1-F12 will work without Fn key after reboot"
-        log_info "Note: Use Fn+F1-F12 for media functions (brightness, volume, etc.)"
-    else
-        log_info "hid_apple module not found - this fix may not be needed on this system"
-    fi
 fi
 
 # =============================================================================
@@ -3970,7 +3737,7 @@ if \
     log_section "SCIENTIFIC SOFTWARE INSTALLATION"
 
     SCI_PREFIX="$HOME/.local"
-    SCI_ENV_REPO_PATH="${DOTFILES_DIR:-$HOME/dotfiles}/config/scientific-env.sh"
+    SCI_ENV_REPO_PATH="$SCRIPT_DIR/config/scientific-env.sh"
     SCI_ENV_PATH="${XDG_CONFIG_HOME:-$HOME/.config}/scientific-env.sh"
     SCI_REPOS_DIR="$HOME/soft"
     SCI_JOBS="${SCI_JOBS:-${BUILD_JOBS:-$(default_build_jobs)}}"
@@ -3999,8 +3766,6 @@ if \
         log_info "Setting up repo: $name"
 		clone_or_update "$url" "$dest"
     }
-
-# : <<'DEBUG'
 
     # ========================================
     # GMP
@@ -4160,9 +3925,6 @@ if \
             fi
         fi
 
-        # Reset tracked files to a clean state
-        git checkout . 2>/dev/null || true
-
         # Configure with an absolute prefix 
         log_info "Configuring QD with prefix: $SCI_PREFIX"
         ./configure --prefix="$SCI_PREFIX" || {
@@ -4295,7 +4057,7 @@ if \
         FINITEFLOW_DEV_DIR="${FINITEFLOW_DEV_DIR:-$HOME/dev/finiteflow}"
         BLADE_DEV_DIR="${BLADE_DEV_DIR:-$SCI_REPOS_DIR/blade}"
         BLADE_BUILD_DIR="${BLADE_BUILD_DIR:-$BLADE_DEV_DIR/build}"
-        BLADE_PATCH_FILE="${BLADE_PATCH_FILE:-${DOTFILES_DIR:-$HOME/dotfiles}/patches/blade/blade_cache_directory.patch}"
+        BLADE_PATCH_FILE="${BLADE_PATCH_FILE:-$SCRIPT_DIR/patches/blade/blade_cache_directory.patch}"
 
         if [ ! -d "$FINITEFLOW_DEV_DIR" ]; then
             log_info "FiniteFlow sources not found at $FINITEFLOW_DEV_DIR; cloning them for Blade integration."
@@ -4448,47 +4210,6 @@ if \
             fi
         fi
     fi
-
-	# ###############################################################################
-	# # LiteRed (legacy version 1.84)
-	# ###############################################################################
-
-    # if (( DO_LITERED )); then
-	#     LITERED_URL="https://www.inp.nsk.su/~lee/programs/LiteRed/LiteRedV1/LiteRedV1.84.zip"
-	#     LITERED_DIR="$SCI_REPOS_DIR/LiteRed"
-
-	#     if [ ! -d "$LITERED_DIR" ]; then
-	# 	    log_info "Installing LiteRed (v1.84) into $LITERED_DIR"
-
-	# 	    mkdir -p "$SCI_REPOS_DIR"
-	# 	    tmpzip="$(mktemp)"
-
-	# 	    curl -L "$LITERED_URL" -o "$tmpzip"
-	# 	    unzip -q "$tmpzip" -d "$LITERED_DIR"
-
-	# 	    rm -f "$tmpzip"
-	#     else
-	# 	    log_info "LiteRed already installed at $LITERED_DIR"
-	#     fi
-    # fi
-
-	# ###############################################################################
-	# # Singular interface for Mathematica
-	# ###############################################################################
-
-    # if (( DO_SINGULAR_MMA )); then
-	#     SINGULAR_INTERFACE_URL="https://www3.risc.jku.at/research/combinat/software/Singular/Singular.m"
-	#     SINGULAR_INTERFACE_DIR="$SCI_REPOS_DIR/Singular"
-
-	#     if [ ! -d "$SINGULAR_INTERFACE_DIR" ]; then
-	# 	    log_info "Installing Singular Mathematica interface into $SINGULAR_INTERFACE_DIR"
-
-	# 	    mkdir -p "$SINGULAR_INTERFACE_DIR"
-	# 	    curl -L "$SINGULAR_INTERFACE_URL" -o "$SINGULAR_INTERFACE_DIR/Singular.m"
-	#     else
-	# 	    log_info "Singular Mathematica interface already present at $SINGULAR_INTERFACE_DIR"
-	#     fi
-    # fi
 
     # ========================================
     # Extra tools 
@@ -4776,47 +4497,15 @@ export PATH="\$OpenXM_HOME/bin:\$PATH"
 export LD_LIBRARY_PATH="\$OpenXM_HOME/lib\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}"
 EOF
 
-    # Auto-source env in bashrc (idempotent)
-    if ! grep -qF "$OPENXM_ENV_SH" "$HOME/.bashrc" 2>/dev/null; then
-        echo "" >> "$HOME/.bashrc"
-        echo "# OpenXM / Risa-Asir" >> "$HOME/.bashrc"
-        echo "[ -f \"$OPENXM_ENV_SH\" ] && source \"$OPENXM_ENV_SH\"" >> "$HOME/.bashrc"
-    fi
+    log_info "OpenXM environment will be loaded by the repository-managed profile"
 
     # --- launcher in ~/.local/bin ---
     # Provide a stable 'openxm' command regardless of upstream rc script pathing.
     log_info "Installing launcher: $BIN_DIR/openxm"
-    tee "$BIN_DIR/openxm" > /dev/null << 'EOF'
-#!/usr/bin/env bash
-set -Eeuo pipefail
-
-: "${XDG_DATA_HOME:=$HOME/.local/share}"
-export OpenXM_HOME="${OpenXM_HOME:-$XDG_DATA_HOME/openxm}"
-export PATH="$OpenXM_HOME/bin:$PATH"
-export LD_LIBRARY_PATH="$OpenXM_HOME/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-
-# If upstream provides an openxm driver script, prefer it.
-if command -v openxm.orig >/dev/null 2>&1; then
-  exec openxm.orig "$@"
-fi
-
-if [ -x "$OpenXM_HOME/bin/openxm" ]; then
-  exec "$OpenXM_HOME/bin/openxm" "$@"
-fi
-
-# Convenience: allow `openxm asir` style even if only asir exists.
-if [ $# -gt 0 ] && [ "$1" = "asir" ] && [ -x "$OpenXM_HOME/bin/asir" ]; then
-  shift
-  exec "$OpenXM_HOME/bin/asir" "$@"
-fi
-
-echo "[openxm] Could not find OpenXM driver or asir under: $OpenXM_HOME/bin" >&2
-exit 1
-EOF
-    chmod +x "$BIN_DIR/openxm"
+    install -m 0755 "$SCRIPT_DIR/scripts/openxm" "$BIN_DIR/openxm"
 
     # Optional: keep a copy of upstream-generated rc/openxm as openxm.orig if present
-    # (Upstream suggests generating it in OpenXM/rc via `make`.) :contentReference[oaicite:2]{index=2}
+    # Upstream suggests generating it in OpenXM/rc via `make`.
     if [ -d "$OPENXM_REPO/rc" ]; then
         cd "$OPENXM_REPO/rc"
         if make; then
@@ -4847,8 +4536,7 @@ if \
     
     # Install system dependencies
     log_info "Installing system dependencies..."
-    sudo apt-get update
-    sudo apt-get install -y wget perl-tk fontconfig
+    apt_install wget perl-tk fontconfig
     
     # Download TeX Live installer
     log_info "Downloading TeX Live installer..."
@@ -4860,7 +4548,7 @@ if \
     INSTALL_DIR=$(find . -maxdepth 1 -type d -name "install-tl-*" | head -1)
     if [ -z "$INSTALL_DIR" ]; then
         log_error "Could not find TeX Live installer directory"
-        return 1
+        exit 1
     fi
     cd "$INSTALL_DIR"
     
@@ -4934,7 +4622,7 @@ EOF
         
     else
         log_error "TeX Live installation failed"
-        return 1
+        exit 1
     fi
 fi
 
@@ -4948,52 +4636,10 @@ if \
 ; then
     log_section "KRITA INSTALLATION"
 
-    # Install method: "appimage" (default) or "flatpak"
-    KRITA_INSTALL_METHOD="${KRITA_INSTALL_METHOD:-appimage}"
+    log_info "Installing Krita via AppImage..."
 
-    if [[ "$KRITA_INSTALL_METHOD" == "flatpak" ]]; then
-        log_info "Installing Krita via Flatpak (Flathub)..."
-
-        refresh_sudo
-        sudo apt update
-        sudo apt install -y flatpak  # Flathub recommends this on Ubuntu :contentReference[oaicite:1]{index=1}
-
-        # Add Flathub remote if missing
-        if ! flatpak remotes | awk '{print $1}' | grep -qx "flathub"; then
-            log_info "Adding Flathub remote..."
-            flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-        fi
-
-        # Install Krita (user install keeps it out of /var; remove --user if you prefer system-wide)
-        flatpak --user install -y flathub org.kde.krita  # :contentReference[oaicite:2]{index=2}
-
-        # Convenience wrapper in ~/.local/bin
-        mkdir -p "$BIN_DIR"
-        cat > "$BIN_DIR/krita" <<'EOF'
-#!/usr/bin/env bash
-exec flatpak run org.kde.krita "$@"
-EOF
-        chmod +x "$BIN_DIR/krita"
-
-        log_success "Krita installed via Flatpak. Run: krita"
-    else
-        log_info "Installing Krita via AppImage..."
-
-        # Krita AppImages are published on download.kde.org stable tree :contentReference[oaicite:3]{index=3}
-        # We'll infer the latest version from the directory listing to avoid scraping krita.org.
         KRITA_BASE_URL="https://download.kde.org/stable/krita"
-        KRITA_VERSION="$(
-            curl -fsSL "$KRITA_BASE_URL/" \
-              | grep -Eo 'href="[0-9]+\.[0-9]+\.[0-9]+/?' \
-              | sed -E 's/href="|\/?$//g' \
-              | sort -V \
-              | tail -n 1
-        )"
-
-        if [[ -z "$KRITA_VERSION" ]]; then
-            log_error "Could not determine latest Krita version from $KRITA_BASE_URL/"
-            exit 1
-        fi
+        KRITA_VERSION="${KRITA_VERSION:-5.2.11}"
 
         KRITA_DIR="$HOME/soft/krita"
         mkdir -p "$KRITA_DIR" "$BIN_DIR"
@@ -5006,8 +4652,7 @@ EOF
         if ! ldconfig -p 2>/dev/null | grep -q 'libfuse\.so\.2'; then
             log_info "Installing FUSE2 runtime needed by many AppImages..."
             refresh_sudo
-            sudo apt update
-            sudo apt install -y libfuse2 || sudo apt install -y libfuse2t64 || true
+            apt_install libfuse2 || apt_install libfuse2t64 || true
         fi
 
         if [[ -f "$KRITA_APPIMAGE_PATH" ]]; then
@@ -5024,51 +4669,7 @@ EOF
 
         log_success "Krita installed (AppImage). Run: krita"
         log_info "Installed at: ${KRITA_APPIMAGE_PATH}"
-        log_info "To update later: re-run this section or delete old AppImage(s) in ${KRITA_DIR}/"
-    fi
-fi
-
-# =============================================================================
-# SECTION 38: SINGULAR COMPUTER ALGEBRA SYSTEM
-# =============================================================================
-if \
-	(( DO_SCI )) && \
-    prompt_continue "Install Singular (sudo)?" && \
-	: \
-; then
-    log_section "SINGULAR COMPUTER ALGEBRA SYSTEM INSTALLATION"
-
-    log_info "Reinstalling Singular from the official repository."
-    log_info "Installing Singular from official repository..."
-    
-    refresh_sudo
-    
-    # Add GPG key
-    log_info "Adding Singular repository GPG key..."
-    wget -q ftp://jim.mathematik.uni-kl.de/repo/extra/gpg -O - | sudo apt-key add -
-    
-    # Add repository for Ubuntu 24.04
-    log_info "Adding Singular repository for Ubuntu 24.04..."
-    echo "deb https://www.singular.uni-kl.de/ftp/repo/ubuntu24 noble main" | sudo tee /etc/apt/sources.list.d/singular.list
-    
-    # Update and install
-    log_info "Updating package list and installing Singular..."
-    sudo apt-get update
-    sudo apt-get install -y singular41
-    
-    # Verify installation
-    log_info "Verifying Singular installation..."
-    if command -v Singular &> /dev/null; then
-			# Simple test that Singular can run and quit
-			if Singular -c "quit;" > /dev/null 2>&1; then
-            log_success "Singular installation verified and working"
-        else
-            log_warning "Singular is installed but may have issues running"
-        fi
-    else
-        log_error "Singular installation verification failed"
-        log_info "Try running 'sudo apt-get install -f' to fix any dependency issues"
-    fi
+        log_info "To update, set KRITA_VERSION explicitly and re-run this component."
 fi
 
 # =============================================================================
@@ -5089,9 +4690,8 @@ if \
     # Where to install Singular (default: ~/.local, kept consistent with SCI_PREFIX)
     SINGULAR_PREFIX="${SCI_PREFIX:-$HOME/.local}"
 
-    # Use the latest official release tag from GitHub
-    # See: https://github.com/Singular/Singular/tags (Release-4-4-1) :contentReference[oaicite:1]{index=1}
-    SINGULAR_TAG="Release-4-4-1"
+    # Keep foundational releases explicit and overridable.
+    SINGULAR_TAG="${SINGULAR_TAG:-Release-4-4-1}"
     SINGULAR_TARBALL="Singular-${SINGULAR_TAG}.tar.gz"
     SINGULAR_URL="https://github.com/Singular/Singular/archive/refs/tags/${SINGULAR_TAG}.tar.gz"
 
@@ -5133,7 +4733,7 @@ if \
     # -------------------------------------------------------------------------
     # 3. Point build system at locally installed scientific libraries (if any)
     # -------------------------------------------------------------------------
-    # DO_SCI section installs GMP/FLINT/etc. into $SCI_PREFIX = ~/.local. :contentReference[oaicite:2]{index=2}
+    # The scientific component installs GMP/FLINT/etc. into ~/.local.
     if [ -n "${SCI_PREFIX:-}" ]; then
         export CPPFLAGS="-I$SCI_PREFIX/include${CPPFLAGS:+ $CPPFLAGS}"
         export LDFLAGS="-L$SCI_PREFIX/lib${LDFLAGS:+ $LDFLAGS}"
@@ -5210,7 +4810,7 @@ fi
 # SECTION 40: MACAULAY2 COMPUTER ALGEBRA SYSTEM
 # =============================================================================
 if \
-    (( DO_SCI )) && \
+    (( DO_MACAULAY2 )) && \
     prompt_continue "Install Macaulay2 Computer Algebra System from PPA?" && \
     : \
 ; then
@@ -5244,10 +4844,10 @@ if \
         sudo add-apt-repository -y ppa:macaulay2/macaulay2
 
         log_info "Updating package lists…"
-        sudo apt-get update
+        apt_refresh force
 
         log_info "Installing Macaulay2…"
-        sudo apt-get install -y macaulay2
+        apt_install macaulay2
 
         # Verify installation
         log_info "Verifying Macaulay2 installation…"
@@ -5261,166 +4861,6 @@ if \
         else
             log_error "'M2' binary not found after installation"
             log_info "Try: sudo apt-get install -f"
-        fi
-    fi
-fi
-
-# =============================================================================
-# SECTION 41: ZATHURA PDF VIEWER (SOURCE BUILD)
-# =============================================================================
-if \
-	(( DO_GUI )) && \
-	prompt_continue "Build zathura PDF viewer from source (fixes link opening issues)?" && \
-	: \
-; then
-    log_section "ZATHURA PDF VIEWER (SOURCE BUILD)"
-    
-    # Check if zathura is already installed
-    if command -v zathura >/dev/null 2>&1; then
-        log_info "Zathura already installed: $(zathura --version 2>/dev/null | head -1)"
-        if ! prompt_continue "Rebuild zathura from source (recommended for Ubuntu 24.04)?"; then
-            log_info "Skipping zathura build"
-        else
-            BUILD_ZATHURA=true
-        fi
-    else
-        BUILD_ZATHURA=true
-    fi
-    
-    if [ "$BUILD_ZATHURA" = true ]; then
-        refresh_sudo
-        
-        log_info "Installing build dependencies..."
-        sudo apt update
-        sudo apt install -y \
-            build-essential \
-            meson \
-            ninja-build \
-            pkg-config \
-            libgtk-3-dev \
-            libgirara-dev \
-            libpoppler-glib-dev \
-            libcairo2-dev \
-            libglib2.0-dev \
-            libmagic-dev \
-            libsynctex-dev \
-            libsqlite3-dev \
-            libjson-glib-dev \
-            libdjvulibre-dev
-        
-        # Remove conflicting system packages
-        log_info "Removing system zathura packages..."
-        sudo apt remove -y zathura zathura-* 2>/dev/null || true
-        sudo apt autoremove -y
-        
-        # Create temporary build directory
-        BUILD_DIR="$(mktemp -d)"
-        cd "$BUILD_DIR"
-        
-        # Build girara (required dependency)
-        log_info "Building girara from source..."
-        if clone_or_update "https://github.com/pwmt/girara.git" "$BUILD_DIR/girara" "develop"; then
-            cd "$BUILD_DIR/girara"
-            if meson setup build && cd build && ninja; then
-                sudo ninja install
-                log_success "Girara built and installed"
-            else
-                log_error "Failed to build girara"
-                cd "$HOME"
-                rm -rf "$BUILD_DIR"
-                return 1
-            fi
-        else
-            log_error "Failed to clone girara repository"
-            return 1
-        fi
-        
-        # Build zathura
-        log_info "Building zathura from source..."
-        if clone_or_update "https://github.com/pwmt/zathura.git" "$BUILD_DIR/zathura" "develop"; then
-            cd "$BUILD_DIR/zathura"
-            git submodule update --init --recursive
-            if meson setup build -Dseccomp=disabled && cd build && ninja; then
-                sudo ninja install
-                log_success "Zathura built and installed"
-            else
-                log_error "Failed to build zathura"
-                cd "$HOME"
-                rm -rf "$BUILD_DIR"
-                return 1
-            fi
-        else
-            log_error "Failed to clone zathura repository"
-            return 1
-        fi
-        
-        # Build PDF plugin
-        log_info "Building PDF plugin..."
-        if clone_or_update "https://github.com/pwmt/zathura-pdf-poppler.git" "$BUILD_DIR/zathura-pdf-poppler" "develop"; then
-            cd "$BUILD_DIR/zathura-pdf-poppler"
-            if meson setup build && cd build && ninja; then
-                sudo ninja install
-                log_success "PDF plugin built and installed"
-            else
-                log_error "Failed to build PDF plugin"
-                cd "$HOME"
-                rm -rf "$BUILD_DIR"
-                return 1
-            fi
-        else
-            log_error "Failed to clone PDF plugin repository"
-            return 1
-        fi
-        
-        # Build DjVu plugin
-        log_info "Building DjVu plugin..."
-        if clone_or_update "https://github.com/pwmt/zathura-djvu.git" "$BUILD_DIR/zathura-djvu" "develop"; then
-            cd "$BUILD_DIR/zathura-djvu"
-            if meson setup build && cd build && ninja; then
-                sudo ninja install
-                log_success "DjVu plugin built and installed"
-            else
-                log_warning "Failed to build DjVu plugin (PDF support will still work)"
-            fi
-        else
-            log_warning "Failed to clone DjVu plugin repository (PDF support will still work)"
-        fi
-        
-        # Update library cache
-        log_info "Updating library cache..."
-        sudo ldconfig
-        
-        # Add GTK warning suppression to bashrc if not already present
-        if ! grep -q "NO_AT_BRIDGE" "$HOME/.bashrc" 2>/dev/null; then
-            log_info "Adding GTK warning suppression to .bashrc..."
-            echo "" >> "$HOME/.bashrc"
-            echo "# Suppress GTK accessibility bridge warning" >> "$HOME/.bashrc"
-            echo "export NO_AT_BRIDGE=1" >> "$HOME/.bashrc"
-        fi
-        
-        # Cleanup
-        cd "$HOME"
-        rm -rf "$BUILD_DIR"
-        
-        # Verification
-        log_info "Verifying zathura installation..."
-        if command -v zathura >/dev/null 2>&1; then
-            ZATHURA_VERSION=$(zathura --version 2>/dev/null | head -1)
-            log_success "Zathura installed successfully: $ZATHURA_VERSION"
-            
-            # Test if plugins are loaded
-            if zathura --version 2>/dev/null | grep -q "pdf"; then
-                log_success "PDF plugin loaded successfully"
-            else
-                log_warning "PDF plugin may not be loaded properly"
-            fi
-            
-            log_info "Zathura configuration created at ~/.config/zathura/zathurarc"
-            log_info "GTK warning suppression added to ~/.bashrc"
-            log_info "Note: Source ~/.bashrc or restart shell to apply environment changes"
-        else
-            log_error "Zathura installation verification failed"
-            return 1
         fi
     fi
 fi
@@ -5489,7 +4929,7 @@ if \
     # Install pass and GnuPG
     log_info "Installing pass (password-store) and GnuPG..."
     refresh_sudo
-    sudo apt install -y pass gnupg
+    apt_install pass gnupg
 
     # Configure XDG-style password store directory
     PASSWORD_STORE_DIR_DEFAULT="$HOME/.local/share/password-store"
@@ -5513,9 +4953,7 @@ if \
         log_info "After running makesymlinks.sh, ensure ~/.local/bin/git-credential-pass exists and is executable."
     fi
 
-    # Configure Git to use git-credential-pass
-    log_info "Configuring Git to use git-credential-pass as credential helper..."
-    git config --global credential.helper pass
+    log_info "Git credential.helper is managed by config/git/config"
 
     # Check whether pass is initialized; if not, warn the user
     if ! pass ls >/dev/null 2>&1; then
@@ -5551,9 +4989,13 @@ if \
     if ! command -v pinentry-curses >/dev/null 2>&1; then
         log_info "Installing pinentry-curses..."
         refresh_sudo
-        sudo apt install -y pinentry-curses
+        apt_install pinentry-curses
     else
         log_info "pinentry-curses is already installed."
+    fi
+
+    if [ ! -e "$AGENT_CONF" ]; then
+        log_warning "$AGENT_CONF is missing; run makesymlinks.sh for repository-managed GnuPG configuration."
     fi
 
     # Restart gpg-agent
@@ -5565,94 +5007,8 @@ if \
 fi
 
 
-# =============================================================================
-# SECTION 45: FINAL OWNERSHIP AND CLEANUP
-# =============================================================================
-
-if \
-	(( DO_CORE )) && \
-	prompt_continue "Perform final ownership checks and cleanup?" && \
-	: \
-; then
-    log_section "FINAL OWNERSHIP AND CLEANUP"
-    
-    # Final ownership check for all created directories
-    log_info "Ensuring proper ownership of all created directories..."
-    chown -R "$USER:$(id -gn)" "$HOME/.local" "$HOME/.config" "$HOME/dev" "$HOME/docs" "$HOME/soft" 2>/dev/null || true
-    
-    log_success "Final cleanup completed"
-fi
-
-# =============================================================================
-# OUTRO 
-# =============================================================================
-
 log_section "BOOTSTRAP COMPLETED SUCCESSFULLY!"
-
-echo
-log_info "Summary of installed tools:"
-echo "  • Vim (from git) with terminal and xclip support"
-echo "  • fzf, ripgrep (rg), fd (from git)"
-echo "  • Go toolchain (local XDG install)"
-echo "  • Git LFS (from GitHub source or release tarball)"
-echo "  • dwm, dmenu, st (from suckless.org) with font-based emoji crash fix"
-echo "  • vifm, zathura"
-echo "  • Neovim (from source) with repo-managed config"
-echo "  • NeoMutt + isync/mbsync + msmtp + notmuch (from source)"
-echo "  • tmux, htop"
-echo "  • Clean home directory structure: ~/dev, ~/docs, ~/soft"
-echo
-log_info "Display manager integration:"
-echo "  • dwm will appear as an option in your login screen"
-echo "  • Select 'dwm' from the session menu when logging in"
-echo "  • You can still use 'startx' manually if needed"
-echo "  • Other desktop environments remain available"
-echo
-log_info "Next steps:"
-echo "  1. Restart your shell or run: source ~/.bashrc"
-echo "  2. Logout and login again - select 'dwm' from session menu"
-echo "  3. Check patches_info.txt files in each suckless tool directory for popular patches"
-echo "  4. Customize your tools by editing their config.h files and rebuilding"
-echo "  5. Open nvim to let lazy.nvim install plugins automatically"
-echo "  6. MacBook Air startup sound should be disabled"
-echo
-log_info "Directory structure:"
-echo "  • Development: ~/dev"
-echo "  • Documents and downloads: ~/docs and ~/docs/downloads"
-echo "  • Software: ~/soft"
-echo "  • Source code: $SRC_DIR"
-echo "  • Binaries: $BIN_DIR"
-echo "  • Build artifacts: $BUILD_DIR"
-echo
-log_info "Theme management:"
-echo "  • theme-dark, theme-light - Switch between themes"
-echo "  • theme-toggle - Toggle between light and dark"
-echo "  • theme-status - Check current theme"
-echo "  • Themes automatically sync across st, dmenu, and dwm"
-echo
-log_info "Suckless patches applied:"
-echo "  • st: scrollback support with Mac-friendly keybindings (Alt+Up/Down)"
-echo "  • dmenu: center positioning and highlight matching"
-echo "  • dwm: center floating windows"
-echo "  • All tools use coordinated color schemes"
-echo
-log_info "Scrollback controls in st:"
-echo "  • Alt+Up/Down: scroll line by line"
-echo "  • Alt+Shift+Up/Down: scroll 5 lines at once"
-echo "  • Alt+Page Up/Down: scroll full pages (if available)"
-log_info "If you encountered any issues:"
-echo "  • Check the error messages above"
-echo "  • You can re-run individual sections by answering 'n' to skip completed parts"
-echo "  • Most tools can be rebuilt by going to their source directories and running 'make clean && make install'"
-echo
-log_success "Your Ubuntu 24.04 development environment is ready!"
-
-# Create a script status file
-tee "$HOME/.bootstrap_status" > /dev/null << EOF
-Bootstrap completed on: $(date)
-Sections completed: All sections completed successfully
-Last run: $(date +%Y-%m-%d_%H:%M:%S)
-Script version: Enhanced with breaks and safepoints
-EOF
-
-log_info "Status saved to ~/.bootstrap_status"
+write_run_status success 0
+log_info "Profile: $BOOTSTRAP_PROFILE"
+log_info "Selected components: ${SELECTED_COMPONENTS[*]:-(none)}"
+log_info "Run status: $XDG_STATE_HOME/bootstrap/last-run"
