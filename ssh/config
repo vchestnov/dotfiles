@@ -19,8 +19,10 @@ Host oxford-gate gate.maths.ox.ac.uk gate
     ForwardAgent   yes
 
 Host fire-chief-ash vanisher nightcrawler cyclops shadowcat gambit quicksilver forge dazzler mystique polaris wolverine nocturne 
-    User      chestnov
-    ProxyJump oxford-gate
+    User           chestnov
+    ProxyJump      oxford-gate
+    IdentityFile   /home/seva/.ssh/oxford_math
+    IdentitiesOnly yes
 
 Host oxford-git git.maths.ox.ac.uk
     HostName       git.maths.ox.ac.uk
