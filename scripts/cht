@@ -1,0 +1,122 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+    cat <<'EOF'
+Usage:
+  cht                 Pick an offline cheatsheet with fzf
+  cht QUERY           Open the best matching cheatsheet
+  cht -l | --list     List available cheatsheets
+  cht -e NAME         Edit a cheatsheet
+
+Environment:
+  CHT_DIR             Cheatsheet directory. Defaults to repo cheatsheets/cli.
+  PAGER               Pager for viewing sheets. Defaults to less -R.
+EOF
+}
+
+script_path="${BASH_SOURCE[0]}"
+if command -v readlink >/dev/null 2>&1; then
+    resolved="$(readlink -f "$script_path" 2>/dev/null || printf '%s\n' "$script_path")"
+else
+    resolved="$script_path"
+fi
+
+script_dir="$(cd -- "$(dirname -- "$resolved")" && pwd)"
+repo_dir="$(cd -- "$script_dir/.." && pwd)"
+default_dir="$repo_dir/cheatsheets/cli"
+sheet_dir="${CHT_DIR:-$default_dir}"
+
+die() {
+    printf 'cht: %s\n' "$*" >&2
+    exit 1
+}
+
+find_sheets() {
+    if command -v fd >/dev/null 2>&1; then
+        fd --type f --extension md . "$sheet_dir"
+    else
+        find "$sheet_dir" -type f -name '*.md'
+    fi
+}
+
+sheet_name() {
+    basename "$1" .md
+}
+
+open_sheet() {
+    local file=$1
+
+    if [ -t 1 ]; then
+        # ${PAGER:-less -R} "$file"
+        ${PAGER:-leaf} "$file"
+    else
+        cat "$file"
+    fi
+}
+
+pick_sheet() {
+    local selection
+
+    command -v fzf >/dev/null 2>&1 || die "fzf is required for interactive mode"
+    selection="$(
+        find_sheets |
+            while IFS= read -r file; do
+                printf '%s\t%s\n' "$(sheet_name "$file")" "$file"
+            done |
+            sort |
+            fzf --with-nth=1 --delimiter='\t' --preview 'sed -n "1,160p" {2}'
+    )"
+
+    [ -n "$selection" ] || exit 0
+    printf '%s\n' "$selection" | awk -F '\t' '{print $2}'
+}
+
+match_sheet() {
+    local query=$1
+    local file base
+
+    while IFS= read -r file; do
+        base="$(sheet_name "$file")"
+        if [ "$base" = "$query" ]; then
+            printf '%s\n' "$file"
+            return 0
+        fi
+    done < <(find_sheets)
+
+    find_sheets |
+        while IFS= read -r file; do
+            base="$(sheet_name "$file")"
+            case "$base" in
+                *"$query"*) printf '%s\n' "$file" ;;
+            esac
+        done |
+        sort |
+        head -n 1
+}
+
+[ -d "$sheet_dir" ] || die "cheatsheet directory not found: $sheet_dir"
+
+case "${1:-}" in
+    -h|--help)
+        usage
+        ;;
+    -l|--list)
+        find_sheets | while IFS= read -r file; do sheet_name "$file"; done | sort
+        ;;
+    -e|--edit)
+        [ $# -eq 2 ] || die "usage: cht -e NAME"
+        target="$(match_sheet "$2")"
+        [ -n "$target" ] || target="$sheet_dir/$2.md"
+        "${EDITOR:-vim}" "$target"
+        ;;
+    "")
+        target="$(pick_sheet)"
+        [ -n "$target" ] && open_sheet "$target"
+        ;;
+    *)
+        target="$(match_sheet "$1")"
+        [ -n "$target" ] || die "no cheatsheet matching: $1"
+        open_sheet "$target"
+        ;;
+esac
