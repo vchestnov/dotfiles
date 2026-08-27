@@ -59,18 +59,100 @@ function! s:TexFoldExpr(lnum) abort
   return '='
 endfunction
 
+" Return [contents, closing-brace-position] for a balanced {...} group.
+function! s:ExtractBraced(text, open) abort
+  if a:open < 0 || strpart(a:text, a:open, 1) !=# '{'
+    return ['', -1]
+  endif
+
+  let depth = 0
+  let i = a:open
+
+  while i < strlen(a:text)
+    let char = strpart(a:text, i, 1)
+
+    " Ignore escaped braces such as \{ and \}.
+    let backslashes = 0
+    let j = i - 1
+    while j >= 0 && strpart(a:text, j, 1) ==# '\'
+      let backslashes += 1
+      let j -= 1
+    endwhile
+    let escaped = backslashes % 2
+
+    if !escaped
+      if char ==# '{'
+        let depth += 1
+      elseif char ==# '}'
+        let depth -= 1
+        if depth == 0
+          return [strpart(a:text, a:open + 1, i - a:open - 1), i]
+        endif
+      endif
+    endif
+
+    let i += 1
+  endwhile
+
+  return ['', -1]
+endfunction
+
+function! s:SectionTitle(start, end) abort
+  let text = ''
+
+  " Read successive lines until the complete section argument is available.
+  for lnum in range(a:start, min([a:end, a:start + 30]))
+    let text .= ' ' . s:StripComment(getline(lnum))
+
+    let outer_open = match(
+          \ text,
+          \ '^\s*\\\%(' . s:cmd_alt . '\)\*\?\s*'
+          \ . '\%(\[[^]]*\]\s*\)\?\zs{'
+          \ )
+
+    let outer = s:ExtractBraced(text, outer_open)
+    if outer[1] < 0
+      continue
+    endif
+
+    let title = outer[0]
+
+    " Prefer the PDF/bookmark argument of \texorpdfstring{TeX}{PDF}.
+    let pdfcmd = match(title, '\\texorpdfstring\>')
+    if pdfcmd >= 0
+      let first_open = match(title, '{', pdfcmd)
+      let first = s:ExtractBraced(title, first_open)
+
+      if first[1] >= 0
+        let second_open = match(title, '{', first[1] + 1)
+        let second = s:ExtractBraced(title, second_open)
+
+        if second[1] >= 0
+          let title = second[0]
+        endif
+      endif
+    endif
+
+    return trim(substitute(title, '\s\+', ' ', 'g'))
+  endfor
+
+  return ''
+endfunction
+
 setlocal foldtext=<SID>TexFoldText()
+
 function! s:TexFoldText() abort
   let line = trim(s:StripComment(getline(v:foldstart)))
 
-  " Extract sectioning command (part/chapter/section/...)
-  let cmd = matchstr(line, '^\s*\\\zs\%(' . s:cmd_alt . '\)\ze\*\?')
+  let cmd = matchstr(
+        \ line,
+        \ '^\s*\\\zs\%(' . s:cmd_alt . '\)\ze\*\?'
+        \ )
   if cmd ==# ''
     let cmd = 'fold'
   endif
 
-  " Extract title from {...} (best-effort)
-  let title = matchstr(line, '{\zs.\{-}\ze}')
+  let title = s:SectionTitle(v:foldstart, v:foldend)
   if title ==# ''
     let title = line
   endif
