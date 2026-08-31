@@ -195,6 +195,7 @@ DO_KRITA=1
 DO_NPM=1
 DO_NEOVIM=1
 DO_TREE_SITTER=1  # bootstrap-only tool install flag; kept here for profile parity
+DO_LEAF=1
 
 case "$BOOTSTRAP_PROFILE" in
     desktop)
@@ -219,6 +220,7 @@ case "$BOOTSTRAP_PROFILE" in
         DO_NPM=0
         DO_NEOVIM=1
         DO_TREE_SITTER=1
+        DO_LEAF=0
         ;;
     nothing)
         DO_CORE=0
@@ -239,13 +241,14 @@ case "$BOOTSTRAP_PROFILE" in
         DO_NPM=0
         DO_NEOVIM=0
         DO_TREE_SITTER=0
+        DO_LEAF=0
         ;;
     test)
         DO_CORE=0
         DO_EXPERIMENTAL=0
         DO_FZF=0
         DO_GIT=0
-        DO_GO=1
+        DO_GO=0
         DO_GPG=0
         DO_GUI=0
         DO_SCI=0
@@ -259,6 +262,7 @@ case "$BOOTSTRAP_PROFILE" in
         DO_NPM=0
         DO_NEOVIM=0
         DO_TREE_SITTER=0
+        DO_LEAF=1
         ;;
     *)
         log_error "Unknown profile '$BOOTSTRAP_PROFILE'!"
@@ -443,6 +447,17 @@ if \
                   "$XDG_CONFIG_HOME/npmrc" \
                   "npmrc"
     fi
+fi
+
+if \
+    (( DO_LEAF)) && \
+    : \
+; then
+    # leaf
+    ensure_dir "$XDG_CONFIG_HOME/leaf"
+    link_file "$DOTFILES_DIR/config/leaf/config.toml" \
+              "$XDG_CONFIG_HOME/leaf/config.toml" \
+              "leaf"
 fi
 
 # =============================================================================

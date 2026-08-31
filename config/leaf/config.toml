@@ -1,0 +1,2 @@
+editor = 'vim +{$line} +"normal! zz"'
+watch = true
