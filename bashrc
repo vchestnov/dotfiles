@@ -147,7 +147,9 @@ export LD_LIBRARY_PATH
 
 export NNN_NOWAIT=1
 
-if [[ $(hostname) = new-centos.novalocal ]]; then
+host=$(hostname)
+
+if [[ "$host" = new-centos.novalocal ]]; then
     export TERM=xterm
     alias vim="$HOME/software/vim/build/bin/vim"
     alias kira="$HOME/software/kira/build/bin/kira"
@@ -157,7 +159,7 @@ if [[ $(hostname) = new-centos.novalocal ]]; then
     #export PATH="$HOME/software/git/build/bin:$PATH"
 fi
 
-if [[ $(hostname) = amps ]]; then
+if [[ "$host" = amps ]]; then
     export FERMATPATH="$HOME/scratch/software/fermat/ferl6/fer64"
     source "/media/scratch/software/OpenXM/rc/dot.bashrc"
 
@@ -170,7 +172,7 @@ if [[ $(hostname) = amps ]]; then
     [ -f ~/.fzf.bash ] && source ~/.fzf.bash
 fi
 
-if [[ $(hostname) = mac ]]; then
+if [[ "$host" = mac ]]; then
     # export FERMATPATH="$HOME/soft/ferl6/fer64"
     # source "$HOME/soft/OpenXM/rc/dot.bashrc"
 
@@ -189,7 +191,7 @@ if [[ $(hostname) = mac ]]; then
     fi
 fi
 
-if [[ $(hostname) = thinkpad ]]; then
+if [[ "$host" = thinkpad ]]; then
     # http://blog.joncairns.com/2013/12/understanding-ssh-agent-and-ssh-add/
     source "$HOME/.local/src/ssh-find-agent/ssh-find-agent.sh"
     ssh-find-agent -a \
@@ -213,7 +215,9 @@ if [[ $(hostname) = thinkpad ]]; then
     source $XDG_CONFIG_HOME/go/env.sh
 fi
 
-if [[ $(hostname) = fire-chief-ash.maths.ox.ac.uk ]]; then
+case "$host" in
+    fire-chief-ash.maths.ox.ac.uk|\
+    pc-copper.maths.ox.ac.uk)
     # http://blog.joncairns.com/2013/12/understanding-ssh-agent-and-ssh-add/
     source "$HOME/.local/src/ssh-find-agent/ssh-find-agent.sh"
     ssh-find-agent -a \
