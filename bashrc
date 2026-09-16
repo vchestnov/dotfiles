@@ -234,7 +234,7 @@ case "$host" in
 
     # Scientific software environment
     source $XDG_CONFIG_HOME/scientific-env.sh
-fi
+esac
 
 # export NVM_DIR="$HOME/.config/nvm"
 # [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
