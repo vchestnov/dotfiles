@@ -220,7 +220,7 @@ case "$BOOTSTRAP_PROFILE" in
         DO_NPM=0
         DO_NEOVIM=1
         DO_TREE_SITTER=1
-        DO_LEAF=0
+        DO_LEAF=1
         ;;
     nothing)
         DO_CORE=0

@@ -1500,13 +1500,110 @@ install_git_lfs() {
     log_info "Git LFS filters are managed by config/git/config"
 }
 
+leaf_linux_asset() {
+    local machine
+
+    if [ "$(uname -s)" != "Linux" ]; then
+        log_warning "Leaf release binary installation currently supports Linux only."
+        return 1
+    fi
+
+    machine=$(uname -m)
+    case "$machine" in
+        x86_64|amd64)
+            printf 'leaf-linux-x86_64\n'
+            ;;
+        aarch64|arm64)
+            printf 'leaf-linux-arm64\n'
+            ;;
+        *)
+            log_warning "Unsupported Leaf release architecture '$machine'."
+            return 1
+            ;;
+    esac
+}
+
+install_leaf() {
+    local version="${LEAF_VERSION:-1.28.2}"
+    local install_dir="${LEAF_INSTALL_DIR:-$BIN_DIR}"
+    local cache_dir="${LEAF_CACHE_DIR:-$XDG_CACHE_HOME/bootstrap/leaf/$version}"
+    local asset
+    local asset_path
+    local checksums_path
+    local release_url
+    local expected_checksum
+    local installed_output
+    local installed_version
+
+    asset=$(leaf_linux_asset) || return 1
+    asset_path="$cache_dir/$asset"
+    checksums_path="$cache_dir/checksums.txt"
+    release_url="${LEAF_RELEASE_URL:-https://github.com/RivoLink/leaf/releases/download/$version}"
+
+    if [ -x "$install_dir/leaf" ]; then
+        if installed_output=$("$install_dir/leaf" --version 2>/dev/null); then
+            installed_version=$(awk 'NR == 1 { print $2 }' <<< "$installed_output")
+            if [ "$installed_version" = "$version" ]; then
+                log_info "Leaf $version is already installed at $install_dir/leaf"
+                return 0
+            fi
+        fi
+    fi
+
+    mkdir -p "$cache_dir" "$install_dir"
+
+    if [ ! -f "$asset_path" ]; then
+        log_info "Downloading Leaf $version release binary: $asset"
+        download_file "$release_url/$asset" "$asset_path" || return 1
+    fi
+
+    if [ ! -f "$checksums_path" ]; then
+        log_info "Downloading Leaf $version release checksums"
+        download_file "$release_url/checksums.txt" "$checksums_path" || return 1
+    fi
+
+    expected_checksum=$(
+        awk -v asset="$asset" '
+            {
+                name = $2
+                sub(/^\*/, "", name)
+                if (name == asset) {
+                    print $1
+                    exit
+                }
+            }
+        ' "$checksums_path"
+    )
+    if [[ ! "$expected_checksum" =~ ^[[:xdigit:]]{64}$ ]]; then
+        log_error "Leaf checksum entry not found or invalid for $asset"
+        return 1
+    fi
+
+    log_info "Verifying Leaf $version release checksum"
+    printf '%s  %s\n' "$expected_checksum" "$asset_path" | sha256sum -c - || return 1
+
+    install -m 0755 "$asset_path" "$install_dir/leaf" || return 1
+
+    if ! installed_output=$("$install_dir/leaf" --version 2>&1); then
+        log_warning "Leaf was installed, but it could not be executed: $installed_output"
+        return 1
+    fi
+    installed_version=$(awk 'NR == 1 { print $2 }' <<< "$installed_output")
+    if [ "$installed_version" != "$version" ]; then
+        log_warning "Expected Leaf $version after installation, got: $installed_output"
+        return 1
+    fi
+
+    log_success "Leaf $version installed at $install_dir/leaf"
+}
+
 # =============================================================================
 # SETUP: command line, profiles, and resolved execution plan
 # =============================================================================
 
 readonly COMPONENTS=(
     core system-base fonts desktop-tools dwm tex gpg python-tools rust-tools
-    tree-sitter vim lsp neovim go git-lfs science gmp ntl mpfr flint julia
+    tree-sitter leaf vim lsp neovim go git-lfs science gmp ntl mpfr flint julia
     qd finiteflow finiteflow32 blade gfan fermat msolve science-extra sage
     polymake singular macaulay2 openxm node email zettelkasten krita messengers media
     system-upgrade remove-nautilus reset-user-dirs wipe-suckless
@@ -1533,7 +1630,7 @@ EOF
 
 reset_components() {
     DO_CORE=0 DO_SYSTEM=0 DO_FONTS=0 DO_DESKTOP_TOOLS=0 DO_DWM=0
-    DO_TEX=0 DO_GPG=0 DO_POETRY=0 DO_RUST_TOOLS=0 DO_TREE_SITTER=0
+    DO_TEX=0 DO_GPG=0 DO_POETRY=0 DO_RUST_TOOLS=0 DO_TREE_SITTER=0 DO_LEAF=0
     DO_VIM=0 DO_LSP=0 DO_NEOVIM=0 DO_GO_TOOLCHAIN=0 DO_GIT_LFS=0
     DO_SCI=0 DO_GMP=0 DO_NTL=0 DO_MPFR=0 DO_FLINT=0 DO_JULIA=0
     DO_QD=0 DO_FINITEFLOW=0 DO_FINITEFLOW32=0 DO_BLADE=0 DO_GFAN=0
@@ -1564,6 +1661,7 @@ set_component() {
         python-tools) DO_POETRY=$value ;;
         rust-tools) DO_RUST_TOOLS=$value ;;
         tree-sitter) DO_TREE_SITTER=$value ;;
+        leaf) DO_LEAF=$value ;;
         vim) DO_VIM=$value ;;
         lsp) DO_LSP=$value ;;
         neovim) DO_NEOVIM=$value ;;
@@ -1619,7 +1717,7 @@ component_enabled() {
         core) (( DO_CORE ));; system-base) (( DO_SYSTEM ));; fonts) (( DO_FONTS ));;
         desktop-tools) (( DO_DESKTOP_TOOLS ));; dwm) (( DO_DWM ));; tex) (( DO_TEX ));;
         gpg) (( DO_GPG ));; python-tools) (( DO_POETRY ));; rust-tools) (( DO_RUST_TOOLS ));;
-        tree-sitter) (( DO_TREE_SITTER ));; vim) (( DO_VIM ));; lsp) (( DO_LSP ));;
+        tree-sitter) (( DO_TREE_SITTER ));; leaf) (( DO_LEAF ));; vim) (( DO_VIM ));; lsp) (( DO_LSP ));;
         neovim) (( DO_NEOVIM ));; go) (( DO_GO_TOOLCHAIN ));; git-lfs) (( DO_GIT_LFS ));;
         gmp) (( DO_GMP ));; ntl) (( DO_NTL ));; mpfr) (( DO_MPFR ));;
         flint) (( DO_FLINT ));; julia) (( DO_JULIA ));; qd) (( DO_QD ));;
@@ -1649,6 +1747,7 @@ component_method() {
         python-tools) printf 'pipx' ;;
         rust-tools) printf 'rustup/cargo + git' ;;
         tree-sitter) printf 'cargo' ;;
+        leaf) printf 'pinned upstream binary' ;;
         vim|neovim) printf 'git source' ;;
         lsp) printf 'local/upstream toolchains' ;;
         go|julia) printf 'pinned upstream tarball' ;;
@@ -1680,13 +1779,13 @@ apply_profile() {
     case "$BOOTSTRAP_PROFILE" in
         desktop)
             for component in core system-base fonts desktop-tools dwm tex gpg python-tools \
-                rust-tools tree-sitter vim lsp neovim go git-lfs science sage polymake \
+                rust-tools tree-sitter leaf vim lsp neovim go git-lfs science sage polymake \
                 singular macaulay2 openxm node email zettelkasten; do
                 set_component "$component" 1
             done
             ;;
         server)
-            for component in core rust-tools tree-sitter vim lsp neovim go git-lfs \
+            for component in core rust-tools tree-sitter leaf vim lsp neovim go git-lfs \
                 science sage polymake openxm node email; do
                 set_component "$component" 1
             done
@@ -1894,6 +1993,7 @@ SRC_DIR="${SRC_DIR:-$HOME/soft}"
 : "${SINGULAR_TAG:=Release-4-4-1}"
 : "${GO_TOOLCHAIN_VERSION:=1.26.5}"
 : "${GIT_LFS_VERSION:=3.7.1}"
+: "${LEAF_VERSION:=1.28.2}"
 : "${CLANGD_TARBALL_VERSION:=21.1.6}"
 : "${NVM_VERSION:=v0.40.4}"
 : "${KRITA_VERSION:=5.2.11}"
@@ -2504,6 +2604,22 @@ if \
     fi
 else
     log_info "Skipping tree-sitter CLI installation."
+fi
+
+# =============================================================================
+# SECTION 11A: LEAF MARKDOWN READER
+# =============================================================================
+
+if \
+    (( DO_LEAF )) && \
+    prompt_continue "Install Leaf Markdown reader locally?" && \
+    : \
+; then
+    log_section "LEAF MARKDOWN READER INSTALLATION"
+
+    install_leaf
+else
+    log_info "Skipping Leaf Markdown reader installation."
 fi
 
 # =============================================================================

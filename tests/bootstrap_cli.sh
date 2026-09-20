@@ -26,6 +26,15 @@ grep -q '^  go[[:space:]]' "$tmp_dir/test.out" || fail 'test profile must includ
 grep -q '^  git-lfs[[:space:]]' "$tmp_dir/test.out" || fail 'test profile must include git-lfs'
 grep -q '(no components selected)' "$tmp_dir/nothing.out" || fail 'nothing profile must be empty'
 
+for profile in desktop server; do
+    grep -q '^  leaf[[:space:]]\+pinned upstream binary$' "$tmp_dir/$profile.out" \
+        || fail "$profile profile must include sudo-free Leaf"
+done
+
+run_plan leaf-only nothing --only leaf
+grep -q '^  leaf[[:space:]]\+pinned upstream binary$' "$tmp_dir/leaf-only.out" \
+    || fail 'leaf component was not independently selectable'
+
 if grep -Eq '^  (system-base|fonts|desktop-tools|dwm|tex|gpg|macaulay2)[[:space:]]' "$tmp_dir/server.out"; then
     fail 'server profile contains a sudo-only component'
 fi
@@ -47,6 +56,14 @@ grep -q 'require --allow-risky' "$tmp_dir/risky.out" || fail 'risky refusal was 
 if "$bootstrap" nothing --only does-not-exist --dry-run > "$tmp_dir/unknown.out" 2>&1; then
     fail 'unknown component was accepted'
 fi
+
+mkdir "$tmp_dir/symlink-home"
+HOME="$tmp_dir/symlink-home" \
+XDG_CONFIG_HOME="$tmp_dir/symlink-home/config" \
+DOTFILES_DIR="$repo_dir" \
+    "$repo_dir/makesymlinks.sh" --dry server > "$tmp_dir/server-symlinks.out"
+grep -q 'config/leaf/config.toml' "$tmp_dir/server-symlinks.out" \
+    || fail 'server profile must link Leaf configuration'
 
 mkdir "$tmp_dir/empty-home"
 HOME="$tmp_dir/empty-home" \
