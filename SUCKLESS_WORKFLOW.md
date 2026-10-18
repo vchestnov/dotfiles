@@ -74,10 +74,15 @@ of restart support requires one logout/login before that shortcut is available.
 The tag-preserving build saves each window's tags and monitor automatically,
 including assignments to multiple tags. Future restarts restore these assignments.
 The first restart from an older build without preservation can still reset tags
-once; arrange the windows again after that upgrade. Window order, selected tags
-and layout state can still reset. This does not restore applications after logout
-or reboot. Run `xprop _NET_CLIENT_INFO` and click a window to inspect its saved
-tag bitmask and monitor number.
+once; arrange the windows again after that upgrade. Each monitor's current and
+previous layouts are also saved before a restart and restored on the next start,
+so centeredmaster and the Alt+Space layout toggle are retained. The first restart
+from a build without layout preservation can reset the layout once; select Alt+U
+on the wide monitor after loading the new build. A fresh login uses the configured
+default layouts. Window order, selected tags, master widths and master counts can
+still reset. This does not restore applications after logout or reboot. Run
+`xprop _NET_CLIENT_INFO` and click a window to inspect its saved tag bitmask and
+monitor number.
 Bootstrap keeps the maintained source
 repositories in place; it no longer provides a `wipe-suckless` component.
 
@@ -89,7 +94,9 @@ it the master window. With three or more tiled windows, the master occupies the
 middle half of the screen; other windows alternate between the side stacks.
 Alt+H / Alt+L adjust the master width, and Alt+I / Alt+D adjust the number of
 master windows. Alt+T returns to the default tiled layout. Each monitor keeps
-its own layout selection while dwm is running.
+its own layout selection across dwm restarts. If you edit `layouts[]`, keep its
+symbols unique: saved layouts are identified by symbol, so reordering the array
+is safe, while removed or renamed entries fall back to defaults.
 
 For a dwm-only installation, run `scripts/suckless pin dwm`, then
 `sudo make -C /path/to/printed/build/directory install` using the build directory
