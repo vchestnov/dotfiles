@@ -98,6 +98,11 @@ its own layout selection across dwm restarts. If you edit `layouts[]`, keep its
 symbols unique: saved layouts are identified by symbol, so reordering the array
 is safe, while removed or renamed entries fall back to defaults.
 
+In centeredmaster, Alt+K cycles through master windows, the entire right column
+from top to bottom, then the entire left column from top to bottom, and wraps
+back to master. Alt+J follows the reverse order. Floating windows follow the tiled
+columns. Other layouts retain their existing Alt+J / Alt+K bindings.
+
 For a dwm-only installation, run `scripts/suckless pin dwm`, then
 `sudo make -C /path/to/printed/build/directory install` using the build directory
 printed by that command. See `~/soft/dwm/README.local.md` for patch provenance.
