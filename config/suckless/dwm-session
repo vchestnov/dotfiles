@@ -1,0 +1,46 @@
+#!/bin/sh
+
+# Source ~/.profile to load XDG environment and other exports
+[ -f "$HOME/.profile" ] && . "$HOME/.profile"
+
+# Load X resources
+[ -f "$HOME/.config/X11/Xresources" ] && xrdb -merge "$HOME/.config/X11/Xresources"
+
+# Add ~/.local/bin to PATH only if not already present
+case ":$PATH:" in
+  *:"$HOME/.local/bin":*) ;;
+  *) PATH="$HOME/.local/bin:$PATH" ;;
+esac
+export PATH
+
+# Drop legacy GTK accessibility modules injected by /etc/X11/Xsession.d/90atk-adaptor
+unset GTK_MODULES
+
+# Keyboard configuration:
+# repeat rate and key maps
+xset r rate 300 50
+setxkbmap "us,ru" -option "grp:caps_toggle"
+# setxkbmap -option altwin:swap_lalt_lwin
+
+# Set black desktop background
+xsetroot -solid black
+
+# # Disable screen saver and DPMS
+# xset s off -dpms
+
+# Enable screensaver/DPMS and lock on idle
+xset s 900 60            # start screensaver after 15 min, cycle every 60s
+xset +dpms
+xset dpms 900 1200 1800    # standby/suspend/off
+
+# Lock on idle and on suspend (systemd)
+xss-lock --transfer-sleep-lock -- lock &
+
+# Start background services
+slstatus &
+
+# xrandr --newmode "2560x1440_60.00"  312.25  2560 2752 3024 3488  1440 1443 1448 1493 -hsync +vsync
+# xrandr --addmode HDMI-1 "2560x1440_60.00"
+
+# Start dwm
+exec dwm

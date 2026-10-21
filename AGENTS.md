@@ -12,8 +12,22 @@
 - Uses shared helpers for apt refreshes, downloads, Git updates, builds, logging, and run-state reporting.
 - Stores run status in `$XDG_STATE_HOME/bootstrap/last-run`.
 
-When adding a component, update all relevant places: `COMPONENTS`, reset state, `set_component`,
-`component_enabled`, `component_method`, profile defaults, execution guard, and CLI tests.
+`bootstrap.sh` loads modules from `bootstrap/`. Register each component once in
+`bootstrap/components.sh`, in execution order. Put its installer function in
+`bootstrap/installers/`, release defaults in `bootstrap/versions.sh`, and optional
+profile membership in `bootstrap/profiles.sh`. See `bootstrap/README.md` and
+`bootstrap/installer-template.sh`. Extend CLI checks for changed behavior.
+
+Registry declarations derive component lists, selection, sudo requirements, and
+`RISKY_COMPONENTS`. Required components must be registered earlier. Installer modules
+must only define functions when sourced, so plans and listings cannot change the host.
+The runner records completed, skipped, incomplete, and failed components. Keep installer
+calls outside conditional contexts so Bash error handling remains active.
+
+The `dwm` component installs all five tools from `config/suckless.lock` through
+`scripts/lib/suckless.sh`, using fresh cached snapshots. Follow `SUCKLESS_WORKFLOW.md`
+for source maintenance. Bootstrap must not patch these tools, merge upstream, change
+existing remotes, or delete their maintained checkouts. `wipe-suckless` was removed.
 
 ### `makesymlinks.sh`
 
@@ -32,8 +46,8 @@ not force both scripts to share identical flags: installation and configuration 
 - Bash scripts use `#!/usr/bin/env bash` and `set -Eeuo pipefail`.
 - Quote paths and expansions. Prefer `[[ ... ]]`, arithmetic `(( ... ))`, arrays, and `local` variables.
 - Reuse helpers instead of duplicating apt, Git, download, backup, or link logic.
-- Keep sections named and ordered. Put reusable functions before profile resolution; gate execution
-  sections with explicit component flags.
+- Keep functions named and modules focused. Put reusable helpers in `bootstrap/lib.sh`
+  or the appropriate installer module; dispatch selected components through the registry.
 - Log intent, success, warnings, and actionable failures. Do not hide meaningful errors with `|| true`.
 - Avoid `eval`, implicit word splitting, direct edits to shell rc files, and writes through symlinks into
   tracked configuration.
@@ -48,12 +62,20 @@ not force both scripts to share identical flags: installation and configuration 
 - Track configured upstream branches for active scientific projects; pin foundational release archives
   and centralize their defaults near bootstrap path setup.
 - Keep `server` defaults free of sudo-requiring components.
-- Add destructive or strongly personal behavior only as a named entry in `RISKY_COMPONENTS`; never make
-  it a profile default.
+- Mark destructive or strongly personal components with `--risky true` in the registry;
+  this derives `RISKY_COMPONENTS`. Never make them profile defaults.
 - Put persistent configuration in the repository and link it with `makesymlinks.sh`. Keep secrets,
   credentials, generated state, and host-local data outside Git.
 - Resolve repository assets relative to `SCRIPT_DIR` or `DOTFILES_DIR`; do not assume the current directory.
 - Preserve unrelated working-tree changes. Never clone or hard-reset this dotfiles repository from bootstrap.
+
+## Archive policy
+
+- Keep obsolete source, configuration snapshots, and historical notes worth preserving in `old/`.
+- `garage/` is ignored local scratch; do not use it for history intended to be included in Git.
+- Document archived files and their current replacements in `old/README.md`.
+- Preserve historical source contents; do not modernize archived scripts or source them from active code.
+- Keep secrets, generated caches, and host-local state outside the versioned archive.
 
 ## Validation
 
@@ -61,7 +83,9 @@ Run after changing either script:
 
 ```sh
 bash -n bootstrap.sh makesymlinks.sh tests/bootstrap_cli.sh
+for script in bootstrap/*.sh bootstrap/installers/*.sh; do bash -n "$script"; done
 bash tests/bootstrap_cli.sh
+bash tests/suckless_workflow.sh
 ./bootstrap.sh desktop --dry-run
 ./bootstrap.sh server --dry-run
 git diff --check

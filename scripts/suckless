@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+source "$SCRIPT_DIR/scripts/lib/suckless.sh"
+SRC_DIR="${SRC_DIR:-$HOME/soft}"
+BUILD_DIR="${BUILD_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/bootstrap/build}"
+SUCKLESS_LOCK_FILE="${SUCKLESS_LOCK_FILE:-$SCRIPT_DIR/config/suckless.lock}"
+
+usage() {
+    cat <<'EOF'
+Usage: scripts/suckless status
+       scripts/suckless build TOOL [REF]
+       scripts/suckless pin TOOL
+
+Tools: dwm dmenu st slstatus slock
+Sources default to ~/soft (override SRC_DIR).
+build compiles a committed snapshot in the bootstrap cache; REF defaults to HEAD.
+pin requires a clean main branch, compiles it, and records its commit and origin URL.
+Neither command installs software. See SUCKLESS_WORKFLOW.md for upstream upgrades.
+EOF
+}
+
+case "${1:-}" in
+    status)
+        [[ $# -eq 1 ]] || { usage >&2; exit 2; }
+        for tool in dwm dmenu st slstatus slock; do
+            suckless_read_lock "$tool" "$SUCKLESS_LOCK_FILE"
+            printf '\n%s: pinned %s\n' "$tool" "$SUCKLESS_REVISION"
+            if git -C "$SRC_DIR/$tool" rev-parse --show-toplevel >/dev/null 2>&1; then
+                git -C "$SRC_DIR/$tool" status --short --branch
+                git -C "$SRC_DIR/$tool" remote -v
+            else
+                printf 'Repository missing: %s\n' "$SRC_DIR/$tool"
+            fi
+        done
+        ;;
+    build)
+        [[ $# -ge 2 && $# -le 3 ]] || { usage >&2; exit 2; }
+        tool=$2
+        revision=$(suckless_resolve_revision "$tool" "${3:-HEAD}")
+        suckless_build_revision "$tool" "$revision"
+        ;;
+    pin)
+        [[ $# -eq 2 ]] || { usage >&2; exit 2; }
+        tool=$2
+        suckless_read_lock "$tool" "$SUCKLESS_LOCK_FILE"
+        suckless_require_repository "$tool"
+        repo_dir="$SRC_DIR/$tool"
+        [[ "$(git -C "$repo_dir" branch --show-current)" == main ]] || {
+            suckless_error "Switch $tool to main after checking your changes before pinning"
+            exit 1
+        }
+        [[ -z "$(git -C "$repo_dir" status --porcelain)" ]] || {
+            suckless_error "Commit or preserve uncommitted files in $repo_dir before pinning"
+            exit 1
+        }
+        revision=$(suckless_resolve_revision "$tool" main)
+        repo_url='-'
+        if git -C "$repo_dir" remote get-url origin >/dev/null 2>&1; then
+            repo_url=$(git -C "$repo_dir" remote get-url origin)
+            [[ "$repo_url" != https://git.suckless.org/* && "$repo_url" != git://git.suckless.org/* && ! "$repo_url" =~ [[:space:]] ]] || {
+                suckless_error "origin must point to your maintained repository"
+                exit 1
+            }
+            # A fresh machine must be able to obtain the pinned commit from main.
+            git -C "$repo_dir" fetch origin
+            git -C "$repo_dir" merge-base --is-ancestor "$revision" refs/remotes/origin/main || {
+                suckless_error "Push $tool main to origin before recording its hosted URL"
+                exit 1
+            }
+        fi
+        suckless_build_revision "$tool" "$revision"
+        lock_tmp=$(mktemp "${SUCKLESS_LOCK_FILE}.XXXXXX")
+        trap 'if [[ -n "${lock_tmp:-}" && -f "$lock_tmp" ]]; then rm -f -- "$lock_tmp"; fi' EXIT
+        while IFS= read -r line || [[ -n "$line" ]]; do
+            read -r name _ <<< "$line"
+            if [[ "$name" == "$tool" ]]; then
+                printf '%s %s %s\n' "$tool" "$revision" "$repo_url"
+            else
+                printf '%s\n' "$line"
+            fi
+        done < "$SUCKLESS_LOCK_FILE" > "$lock_tmp"
+        chmod --reference="$SUCKLESS_LOCK_FILE" "$lock_tmp"
+        mv -- "$lock_tmp" "$SUCKLESS_LOCK_FILE"
+        printf 'Pinned %s to %s in %s\n' "$tool" "$revision" "$SUCKLESS_LOCK_FILE"
+        ;;
+    -h|--help|help) usage ;;
+    *) usage >&2; exit 2 ;;
+esac

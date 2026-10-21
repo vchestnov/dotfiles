@@ -4,4 +4,5 @@ vim/*
 !vim/after/
 !vim/config/
 # !vim/after/**
+# Local scratch; historical files intended for Git belong in old/.
 garage

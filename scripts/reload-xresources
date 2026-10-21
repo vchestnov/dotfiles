@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+xrdb -merge "$HOME/.Xresources"
+printf 'Xresources reloaded successfully\n'

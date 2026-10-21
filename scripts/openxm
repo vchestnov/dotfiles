@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+: "${XDG_DATA_HOME:=$HOME/.local/share}"
+if [ -z "${OpenXM_HOME:-}" ]; then
+  if [ -x "$HOME/soft/openxm/OpenXM/bin/openxm" ] || [ -x "$HOME/soft/openxm/OpenXM/bin/asir" ]; then
+    OpenXM_HOME="$HOME/soft/openxm/OpenXM"
+  else
+    OpenXM_HOME="$XDG_DATA_HOME/openxm"
+  fi
+fi
+export OpenXM_HOME
+export PATH="$OpenXM_HOME/bin:$PATH"
+export LD_LIBRARY_PATH="$OpenXM_HOME/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+
+if command -v openxm.orig >/dev/null 2>&1; then
+  exec openxm.orig "$@"
+fi
+
+if [ -x "$OpenXM_HOME/bin/openxm" ]; then
+  exec "$OpenXM_HOME/bin/openxm" "$@"
+fi
+
+if [ $# -gt 0 ] && [ "$1" = "asir" ] && [ -x "$OpenXM_HOME/bin/asir" ]; then
+  shift
+  exec "$OpenXM_HOME/bin/asir" "$@"
+fi
+
+echo "[openxm] Could not find OpenXM driver or asir under: $OpenXM_HOME/bin" >&2
+exit 1

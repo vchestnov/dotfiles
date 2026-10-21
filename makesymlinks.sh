@@ -107,6 +107,10 @@ trap 'handle_error $LINENO' ERR
 # Helpers
 ensure_dir() {
     if [ ! -d "$1" ]; then
+        if (( DRY_RUN )); then
+            log_info "[dry-run] Would create directory: $1"
+            return 0
+        fi
         mkdir -p "$1"
         log_info "Created directory: $1"
     fi
@@ -133,6 +137,8 @@ link_file() {
         log_info "[dry-run] Would link: $src -> $dest${label:+ ($label)}"
         return
     fi
+
+    mkdir -p "$(dirname "$dest")"
 
     # Already a symlink at dest?
     if [ -L "$dest" ]; then
@@ -270,6 +276,17 @@ case "$BOOTSTRAP_PROFILE" in
         ;;
 esac
 
+DO_FONTCONFIG=$DO_GUI
+DO_USER_DIRS=0
+while (( $# )); do
+    case "$1" in
+        --fontconfig) DO_FONTCONFIG=1 ;;
+        --neovim) DO_NEOVIM=1 ;;
+        --user-dirs) DO_USER_DIRS=1 ;;
+        *) log_error "Unknown link option: $1"; exit 2 ;;
+    esac
+    shift
+done
 
 # Logging
 log_info()    { printf "\033[1;34m[INFO]\033[0m %s\n" "$@"; }
@@ -353,6 +370,17 @@ fi
 # SECTION 04: XDG configs under ~/.config
 # =============================================================================
 
+if (( DO_FONTCONFIG )); then
+    ensure_dir "$XDG_CONFIG_HOME/fontconfig"
+    link_file "$DOTFILES_DIR/config/fontconfig/fonts.conf" "$XDG_CONFIG_HOME/fontconfig/fonts.conf" "fontconfig"
+fi
+
+if (( DO_USER_DIRS )); then
+    ensure_dir "$XDG_CONFIG_HOME"
+    link_file "$DOTFILES_DIR/config/user-dirs.dirs" "$XDG_CONFIG_HOME/user-dirs.dirs" "user directories"
+    link_file "$DOTFILES_DIR/config/user-dirs.conf" "$XDG_CONFIG_HOME/user-dirs.conf" "user directories policy"
+fi
+
 if \
     (( DO_GUI )) && \
     : \
@@ -395,10 +423,10 @@ if \
     (( DO_NEOVIM )) && \
     : \
 ; then
-    if [ -d "$DOTFILES_DIR/config/nvim" ]; then
+    if [ -d "${NVIM_CONFIG_SOURCE:-$DOTFILES_DIR/config/nvim}" ]; then
         ensure_dir "$XDG_CONFIG_HOME"
-        link_file "$DOTFILES_DIR/config/nvim" \
-                  "$XDG_CONFIG_HOME/nvim" \
+        link_file "${NVIM_CONFIG_SOURCE:-$DOTFILES_DIR/config/nvim}" \
+                  "${NVIM_CONFIG_TARGET:-$XDG_CONFIG_HOME/nvim}" \
                   "Neovim config (XDG)"
     fi
 fi

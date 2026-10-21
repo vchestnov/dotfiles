@@ -22,8 +22,29 @@ for profile in desktop server nothing test; do
     grep -q "Profile: $profile" "$tmp_dir/$profile.out" || fail "$profile profile missing"
 done
 
-grep -q '^  go[[:space:]]' "$tmp_dir/test.out" || fail 'test profile must include go'
-grep -q '^  git-lfs[[:space:]]' "$tmp_dir/test.out" || fail 'test profile must include git-lfs'
+grep -q '^  dwm[[:space:]]' "$tmp_dir/test.out" || fail 'test profile must include suckless tools'
+
+run_plan suckless-only nothing --only dwm
+grep -q '^  dwm[[:space:]]' "$tmp_dir/suckless-only.out" || fail 'dwm component must be independently selectable'
+grep -q '^  dwm[[:space:]]\+pinned custom source + system integration$' "$tmp_dir/suckless-only.out" \
+    || fail 'suckless plan must describe maintained sources'
+grep -q "Suckless sources: $HOME/soft" "$tmp_dir/suckless-only.out" \
+    || fail 'suckless sources must default to ~/soft'
+while read -r tool revision repo_url; do
+    [[ -z "$tool" || "$tool" == \#* ]] && continue
+    grep -q "^[[:space:]]*$tool[[:space:]]\+$revision$" "$tmp_dir/suckless-only.out" \
+        || fail "$tool pinned commit missing from plan"
+done < "$repo_dir/config/suckless.lock"
+SRC_DIR="$tmp_dir/custom-sources" run_plan suckless-location nothing --only dwm
+grep -q "Suckless sources: $tmp_dir/custom-sources" "$tmp_dir/suckless-location.out" \
+    || fail 'suckless source location override was ignored'
+printf 'dwm invalid -\n' > "$tmp_dir/invalid-suckless.lock"
+if SUCKLESS_LOCK_FILE="$tmp_dir/invalid-suckless.lock" \
+    "$bootstrap" nothing --only dwm --dry-run > "$tmp_dir/invalid-suckless.out" 2>&1; then
+    fail 'invalid suckless commit list was accepted'
+fi
+grep -q 'Invalid or duplicate entry for dwm' "$tmp_dir/invalid-suckless.out" \
+    || fail 'invalid suckless commit refusal was unclear'
 grep -q '(no components selected)' "$tmp_dir/nothing.out" || fail 'nothing profile must be empty'
 
 for profile in desktop server; do
@@ -34,6 +55,48 @@ done
 run_plan leaf-only nothing --only leaf
 grep -q '^  leaf[[:space:]]\+pinned upstream binary$' "$tmp_dir/leaf-only.out" \
     || fail 'leaf component was not independently selectable'
+
+# Every registry entry is independently selectable, including future additions.
+"$bootstrap" --list > "$tmp_dir/components.out"
+while read -r component; do
+    run_plan "component-$component" nothing --only "$component"
+    grep -q "^  $component[[:space:]]" "$tmp_dir/component-$component.out" \
+        || fail "$component registry entry cannot be selected"
+done < <(awk '/^Components / { listing=1; next } /^Groups:/ { listing=0 } listing {print $1}' "$tmp_dir/components.out")
+
+if grep -q 'wipe-suckless' "$tmp_dir/components.out"; then fail 'removed wipe-suckless is still listed'; fi
+if "$bootstrap" nothing --only wipe-suckless --dry-run > "$tmp_dir/wipe.out" 2>&1; then
+    fail 'removed wipe-suckless component was accepted'
+fi
+grep -q 'Unknown component: wipe-suckless' "$tmp_dir/wipe.out" || fail 'removed component refusal was unclear'
+
+run_plan science-group nothing --only science --skip julia,qd
+grep -q '^  gmp[[:space:]]' "$tmp_dir/science-group.out" || fail 'science group did not expand'
+if grep -Eq '^  (julia|qd)[[:space:]]' "$tmp_dir/science-group.out"; then fail 'skip did not remove group members'; fi
+run_plan desktop-apps nothing --only desktop-apps
+for component in krita messengers media; do
+    grep -q "^  $component[[:space:]]" "$tmp_dir/desktop-apps.out" || fail 'desktop-apps group did not expand'
+done
+
+run_plan prerequisite nothing --only zettelkasten
+grep -q '^  core[[:space:]]' "$tmp_dir/prerequisite.out" || fail 'required core was not selected'
+if "$bootstrap" nothing --only zettelkasten --skip core --dry-run > "$tmp_dir/prerequisite-error.out" 2>&1; then
+    fail 'explicitly skipped prerequisite was accepted'
+fi
+grep -q 'zettelkasten requires core' "$tmp_dir/prerequisite-error.out" || fail 'missing prerequisite refusal was unclear'
+
+run_plan empty-only desktop --only=
+grep -q '(no components selected)' "$tmp_dir/empty-only.out" || fail 'explicit empty --only retained profile defaults'
+if "$bootstrap" nothing --only --dry-run > "$tmp_dir/missing-value.out" 2>&1; then
+    fail 'missing --only value was accepted'
+fi
+grep -q -- '--only requires a value' "$tmp_dir/missing-value.out" || fail 'missing value refusal was unclear'
+
+# The plan follows the registered provider order regardless of argument order.
+run_plan ordered nothing --only lsp,julia,vim,node,polymake,singular,finiteflow32,msolve,git-lfs,go
+awk '/^  [a-z]/ {print $1}' "$tmp_dir/ordered.out" > "$tmp_dir/order.out"
+printf '%s\n' go git-lfs vim node julia msolve finiteflow32 singular polymake lsp > "$tmp_dir/expected-order.out"
+cmp -s "$tmp_dir/order.out" "$tmp_dir/expected-order.out" || fail 'plan ignored provider order'
 
 if grep -Eq '^  (system-base|fonts|desktop-tools|dwm|tex|gpg|macaulay2)[[:space:]]' "$tmp_dir/server.out"; then
     fail 'server profile contains a sudo-only component'
@@ -65,6 +128,15 @@ DOTFILES_DIR="$repo_dir" \
 grep -q 'config/leaf/config.toml' "$tmp_dir/server-symlinks.out" \
     || fail 'server profile must link Leaf configuration'
 
+HOME="$tmp_dir/symlink-home" XDG_CONFIG_HOME="$tmp_dir/symlink-home/config" DOTFILES_DIR="$repo_dir" \
+    "$repo_dir/makesymlinks.sh" --dry nothing --fontconfig --neovim --user-dirs > "$tmp_dir/targeted-symlinks.out"
+for asset in fontconfig/fonts.conf nvim user-dirs.dirs user-dirs.conf; do
+    grep -q "$asset" "$tmp_dir/targeted-symlinks.out" || fail "$asset targeted link missing"
+done
+if find "$tmp_dir/symlink-home" -mindepth 1 -print -quit | grep -q .; then
+    fail 'makesymlinks --dry created configuration directories'
+fi
+
 mkdir "$tmp_dir/empty-home"
 HOME="$tmp_dir/empty-home" \
 XDG_CONFIG_HOME="$tmp_dir/empty-home/config" \
@@ -75,6 +147,13 @@ XDG_STATE_HOME="$tmp_dir/empty-home/state" \
 if find "$tmp_dir/empty-home" -mindepth 1 -print -quit | grep -q .; then
     fail 'dry-run wrote to HOME or an XDG directory'
 fi
+
+HOME="$tmp_dir/empty-home" XDG_STATE_HOME="$tmp_dir/empty-home/state" \
+    "$bootstrap" --list > "$tmp_dir/list-no-write.out"
+if find "$tmp_dir/empty-home" -mindepth 1 -print -quit | grep -q .; then fail 'listing wrote to HOME'; fi
+
+(cd "$tmp_dir" && "$bootstrap" nothing --only leaf --dry-run) > "$tmp_dir/other-directory.out"
+grep -q '^  leaf[[:space:]]' "$tmp_dir/other-directory.out" || fail 'bootstrap depends on current directory'
 
 mkdir "$tmp_dir/empty-run"
 HOME="$tmp_dir/empty-run" \
@@ -87,5 +166,7 @@ grep -q '^status=success$' "$tmp_dir/empty-run/state/bootstrap/last-run" \
     || fail 'successful run status was not recorded under XDG_STATE_HOME'
 grep -q '^selected_components=$' "$tmp_dir/empty-run/state/bootstrap/last-run" \
     || fail 'empty run reported components that were not selected'
+
+bash "$repo_dir/tests/bootstrap_runner.sh"
 
 printf 'bootstrap CLI checks passed\n'
