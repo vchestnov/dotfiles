@@ -12,7 +12,7 @@
 [alias]
     tr = log --graph --decorate --oneline --all
 [credential "https://git.overleaf.com"]
-    username = vchestnov@gmail.com
+    username = git
 [includeIf "gitdir:~/dev/ox/"]
     path = ~/.config/git/config_ox
 [filter "lfs"]
