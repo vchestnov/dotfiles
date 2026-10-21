@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # should also work with compositor=compton, untested
 compositor=picom
@@ -78,24 +78,24 @@ function toggle_compositor {
     fi
     
     if pgrep -a -x $compositor | grep $grep_string  > /dev/null; then
-	pkill -x $compositor
-	wait_for_compositor_exit
-	$compositor "$@" -b
+	pkill -INT -x "$compositor" || return
+	wait_for_compositor_exit || return
+	$compositor "$@" -b || return
 	toggle_mode="color"
     else
-	pkill -x $compositor
-	wait_for_compositor_exit
+	pkill -INT -x "$compositor" || return
+	wait_for_compositor_exit || return
 
 	if (( $use_experimental_backends == 1 )); then
 
-	    write_managed_shader
+	    write_managed_shader || return
 
-	    $compositor "$@" -b --backend glx --window-shader-fg "${managed_shader_path}" 2> /dev/null
+	    $compositor "$@" -b --backend glx --window-shader-fg "${managed_shader_path}" || return
 
 	else
 
 	    shader='uniform sampler2D tex; uniform float opacity; void main() { vec4 c = texture2D(tex, gl_TexCoord[0].xy); float y = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722)); gl_FragColor = opacity*vec4(y, y, y, c.a); }'
-	    $compositor "$@" -b --backend glx --glx-fshader-win "${shader}" 2> /dev/null
+	    $compositor "$@" -b --backend glx --glx-fshader-win "${shader}" || return
 
 	fi
 	    
@@ -114,6 +114,7 @@ function toggle_compositor_via_reload {
 	toggle_mode="grayscale"
     fi
 
+    # picom handles SIGUSR1 by reinitializing and rereading its configuration.
     pkill -USR1 -x "$compositor"
 }
 
@@ -162,9 +163,13 @@ EOF
 function wait_for_compositor_exit {
     local retries=50
 
-    while pgrep -x "$compositor" > /dev/null && (( retries > 0 )); do
+    while pgrep -x "$compositor" > /dev/null; do
+	if (( retries == 0 )); then
+	    echo "$compositor did not exit after SIGINT; refusing to start another compositor" >&2
+	    return 1
+	fi
 	sleep 0.02
-	(( retries-- ))
+	(( retries -= 1 ))
     done
 }
 
@@ -271,5 +276,6 @@ fi
 if (( $? == 0 )); then
     echo "$mode: set to $toggle_mode"
 else
-    echo "$mode: toggle failed"
+    echo "$mode: toggle failed" >&2
+    exit 1
 fi
