@@ -157,9 +157,20 @@ nnoremap <F5> :call <SID>TrimWhitespace()<CR>
 command! -complete=file -nargs=1 Remove
     \ echo 'Remove: ' . <q-args> . ' ' . (delete(<q-args>) == 0 ? 'SUCCEEDED' : 'FAILED')
 
+if executable('rg')
+    set grepprg=rg\ --vimgrep\ --smart-case
+    set grepformat=%f:%l:%c:%m
+endif
+
 " -----------------------------------------------------------------------------
 " Filetypes and filetype-local settings
 " -----------------------------------------------------------------------------
+
+" Python: use four-space continuation indents and align closing brackets
+let g:python_indent = get(g:, 'python_indent', {})
+let g:python_indent.open_paren = 'shiftwidth()'
+let g:python_indent.closed_paren_align_last_line = v:false
+
 augroup dotfiles_filetypes
     " clear autocmds in this group to avoid re-registering autocmds when
     " re-sourcing vimrc
