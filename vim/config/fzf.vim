@@ -6,6 +6,13 @@ let g:dotfiles_fzf_config_loaded = 1
 " FZF helpers and mappings for file and buffer picking.
 " :BDelete provides a visual multi-select buffer cleanup workflow.
 
+" :Rg, :RG, and seeded searches share these ripgrep preview options.
+let g:fzf_vim = get(g:, 'fzf_vim', {})
+let g:fzf_vim.rg_options = [
+    \ '--preview-window', 'right,50%,wrap',
+    \ '--bind', 'ctrl-u:preview-half-page-up,ctrl-d:preview-half-page-down',
+    \ ]
+
 function! s:CompareBufferLastUsed(left, right) abort
     let l:left = getbufinfo(a:left)[0]
     let l:right = getbufinfo(a:right)[0]
