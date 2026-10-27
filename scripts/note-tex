@@ -33,7 +33,7 @@ which pdflatex >> $DEBUGLOG
 
 # 4. Compile template and open in zathura (in background)
 # make
-($HOME/soft/texlive/2025/bin/x86_64-linux/pdflatex note.tex &> /dev/null && exec setsid zathura note.pdf &) &
+($HOME/soft/texlive/2025/bin/x86_64-linux/pdflatex -synctex=1 note.tex &> /dev/null && exec setsid zathura note.pdf &) &
 
 # sleep 60
 

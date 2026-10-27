@@ -10,7 +10,7 @@ $(info Main LaTeX file = $(BASENAME).tex)
 RERUN = "(There were undefined references|Rerun to get (cross-references|the bars) right)"
 RERUNBIB = "No file.*\.bbl|Citation.*undefined"
 COPY = if test -r $(<:%.tex=%.toc); then cp $(<:%.tex=%.toc) $(<:%.tex=%.toc.bak); fi; if test -r $(<:%.tex=%.lof); then cp $(<:%.tex=%.lof) $(<:%.tex=%.lof.bak); fi; if test -r $(<:%.tex=%.out); then cp $(<:%.tex=%.out) $(<:%.tex=%.out.bak); fi
-LATEX = pdflatex -interaction nonstopmode -output-format pdf
+LATEX = pdflatex -synctex=1 -interaction nonstopmode -output-format pdf
 BIBTEX	= bibtex
 RM = rm -f
 

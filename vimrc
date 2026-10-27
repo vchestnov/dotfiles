@@ -57,6 +57,7 @@ endif
 
 call plug#begin(expand('~/.vim/plugged'))
     Plug 'tomasr/molokai'
+    Plug 'fxn/vim-monochrome'
     Plug 'altercation/vim-colors-solarized'
     Plug 'NLKNguyen/papercolor-theme'
     Plug 'morhetz/gruvbox'
@@ -162,6 +163,8 @@ if executable('rg')
     set grepformat=%f:%l:%c:%m
 endif
 
+let g:matchparen_timeout = 20
+
 " -----------------------------------------------------------------------------
 " Filetypes and filetype-local settings
 " -----------------------------------------------------------------------------
@@ -191,17 +194,55 @@ augroup dotfiles_comments
     autocmd FileType mma  setlocal commentstring=(*%s*)
 augroup END
 
-augroup dotfiles_tex
-    autocmd!
-    autocmd FileType tex setlocal nocursorline nornu number relativenumber
-augroup END
-
 " Soft-wrap helper for prose buffers
 function! Prose() abort
+    if !exists('b:dotfiles_prose_state')
+        let b:dotfiles_prose_state = {
+            \ 'wrap': &l:wrap,
+            \ 'linebreak': &l:linebreak,
+            \ 'textwidth': &l:textwidth,
+            \ 'expandtab': &l:expandtab,
+            \ 'maps': {},
+            \ }
+        for key in ['j', 'k']
+            let mapping = maparg(key, 'n', 0, 1)
+            let b:dotfiles_prose_state.maps[key] = get(mapping, 'buffer', 0) ? mapping : {}
+        endfor
+    endif
+
     setlocal wrap linebreak textwidth=0 expandtab
     nnoremap <buffer> j gj
     nnoremap <buffer> k gk
 endfunction
+
+function! NoProse() abort
+    if !exists('b:dotfiles_prose_state')
+        return
+    endif
+
+    let state = b:dotfiles_prose_state
+    let &l:wrap = state.wrap
+    let &l:linebreak = state.linebreak
+    let &l:textwidth = state.textwidth
+    let &l:expandtab = state.expandtab
+    for key in ['j', 'k']
+        execute 'silent! nunmap <buffer> ' . key
+        if !empty(state.maps[key])
+            call mapset('n', 0, state.maps[key])
+        endif
+    endfor
+    unlet b:dotfiles_prose_state
+endfunction
+
+command! -bar Prose call Prose()
+command! -bar NoProse call NoProse()
+
+augroup dotfiles_tex
+    autocmd!
+    autocmd FileType tex setlocal nocursorline nornu number relativenumber
+    autocmd FileType tex call Prose()
+    autocmd FileType tex let b:undo_ftplugin = get(b:, 'undo_ftplugin', '') . ' | call NoProse()'
+augroup END
 
 " Marker folds used in FORM files
 augroup dotfiles_marker_folds

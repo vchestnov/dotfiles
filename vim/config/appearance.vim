@@ -6,7 +6,24 @@ let g:dotfiles_appearance_config_loaded = 1
 " Colorscheme controls:
 " - sets the default theme and core highlight overrides
 " - provides :Colorcall to switch between dark/light themes on demand
-" - provides grayscale mode for use with PICOM_GREYSCALE / grayscale compositors
+" - follows toggle-monitor-grayscale's live display CTM state
+
+" Monochrome leaves Vim's default grey gutter and fold backgrounds in place.
+" Blend the gutter into the editor and keep closed folds on a dark grey.
+function! s:MonochromeHighlights() abort
+  for l:group in ['SignColumn', 'FoldColumn', 'GitGutterAdd', 'GitGutterChange', 'GitGutterDelete']
+    if hlexists(l:group)
+      execute 'highlight ' . l:group . ' ctermbg=NONE guibg=NONE'
+    endif
+  endfor
+  " highlight Folded ctermbg=234 guibg=#1c1c1c
+  highlight Folded ctermbg=234 guibg=#404040
+endfunction
+
+augroup dotfiles_monochrome
+  autocmd!
+  autocmd ColorScheme monochrome call <SID>MonochromeHighlights()
+augroup END
 
 set t_Co=256
 colorscheme molokai
@@ -48,84 +65,15 @@ endfunction
 command! -nargs=1 Colorcall :call SwitchColorscheme(<q-args>)
 
 " Greyscale mode:
-" - starts from molokai for a strong dark base
-" - reapplies highlights in grayscale-safe tones
+" - uses monochrome with the gutter and fold adjustments above
 " - remembers the previous colorscheme and restores it on toggle-off
 let g:greyscale_mode = 0
 let g:greyscale_prev_scheme = ''
 
-function! s:ApplyHighlights(dict) abort
-  for [grp, spec] in items(a:dict)
-    execute 'hi' grp spec
-  endfor
-endfunction
-
-let s:gray_overrides = {
-\ 'Normal':         'ctermfg=252 ctermbg=none',
-\ 'Comment':        'ctermfg=244 cterm=NONE',
-\ 'Identifier':     'ctermfg=252 cterm=bold',
-\ 'Function':       'ctermfg=255 cterm=bold',
-\ 'Statement':      'ctermfg=252 cterm=bold',
-\ 'Type':           'ctermfg=253 cterm=bold',
-\ 'Special':        'ctermfg=254',
-\ 'Underlined':     'ctermfg=252 cterm=underline',
-\ 'Todo':           'ctermfg=235 ctermbg=229 cterm=bold',
-\ 'MatchParen':     'ctermfg=231 ctermbg=242 cterm=bold',
-\ 'CursorLine':     'ctermbg=236',
-\ 'CursorColumn':   'ctermbg=236',
-\ 'LineNr':         'ctermfg=244',
-\ 'CursorLineNr':   'ctermfg=252 cterm=bold',
-\ 'VertSplit':      'ctermfg=238 ctermbg=none',
-\ 'StatusLine':     'ctermfg=252 ctermbg=236 cterm=bold',
-\ 'StatusLineNC':   'ctermfg=246 ctermbg=235',
-\ 'Pmenu':          'ctermfg=252 ctermbg=236',
-\ 'PmenuSel':       'ctermfg=235 ctermbg=252 cterm=bold',
-\ 'Search':         'ctermfg=235 ctermbg=250 cterm=bold',
-\ 'IncSearch':      'ctermfg=252 ctermbg=238 cterm=reverse',
-\ 'Visual':         'ctermfg=252 ctermbg=238',
-\ 'Directory':      'ctermfg=252 cterm=bold',
-\ 'Title':          'ctermfg=255 cterm=bold',
-\ 'Error':          'ctermfg=231 ctermbg=235 cterm=bold,underline',
-\ 'ErrorMsg':       'ctermfg=231 ctermbg=235 cterm=bold,underline',
-\ 'WarningMsg':     'ctermfg=231 ctermbg=238 cterm=bold',
-\ 'MoreMsg':        'ctermfg=252 cterm=bold',
-\ 'Question':       'ctermfg=252 cterm=bold',
-\ 'Folded':         'ctermfg=248 ctermbg=237',
-\ 'SignColumn':     'ctermbg=235',
-\ 'DiffAdd':        'ctermfg=none ctermbg=236',
-\ 'DiffChange':     'ctermfg=none ctermbg=237',
-\ 'DiffDelete':     'ctermfg=250 ctermbg=235',
-\ 'DiffText':       'ctermfg=231 ctermbg=240 cterm=bold',
-\ }
-
-let s:diag_overrides = {
-\ 'DiagnosticError':   'ctermfg=231 ctermbg=235 cterm=bold,underline',
-\ 'DiagnosticWarn':    'ctermfg=231 ctermbg=238 cterm=bold',
-\ 'DiagnosticInfo':    'ctermfg=252',
-\ 'DiagnosticHint':    'ctermfg=246',
-\ 'DiagnosticUnderlineError': 'cterm=underline',
-\ 'DiagnosticUnderlineWarn':  'cterm=underline',
-\ }
-
-let s:gray_symbol_overrides = {}
-let s:gray_symbol_overrides.Operator    = 'ctermfg=255 cterm=bold'
-let s:gray_symbol_overrides.Delimiter   = 'ctermfg=253 cterm=bold'
-let s:gray_symbol_overrides.SpecialChar = 'ctermfg=254 cterm=bold'
-let s:gray_symbol_overrides.NonText     = 'ctermfg=240'
-let s:gray_symbol_overrides.SpecialKey  = 'ctermfg=240'
-
 function! GreyscaleOn() abort
   if g:greyscale_mode | return | endif
   let g:greyscale_prev_scheme = exists('g:colors_name') ? g:colors_name : ''
-  set background=dark
-  if exists(':Colorcall')
-    silent! execute 'Colorcall molokai'
-  else
-    silent! colorscheme molokai
-  endif
-  call s:ApplyHighlights(s:gray_overrides)
-  call s:ApplyHighlights(s:gray_symbol_overrides)
-  call s:ApplyHighlights(s:diag_overrides)
+  Colorcall monochrome
   let g:greyscale_mode = 1
   echo 'Greyscale mode: ON'
 endfunction
@@ -161,13 +109,57 @@ endfunction
 command! GreyscaleToggle call GreyscaleToggle()
 nnoremap <leader>tg :GreyscaleToggle<CR>
 
-function! s:MaybeGreyscale() abort
-  if exists('$PICOM_GREYSCALE') && $PICOM_GREYSCALE ==# '1'
-    call GreyscaleOn()
+" Query live state rather than storing a second copy in the environment or a file.
+" Only react to display transitions, so a manual :GreyscaleToggle stays effective
+" until the next display transition (or an explicit :GreyscaleSync).
+let g:greyscale_auto_sync = get(g:, 'greyscale_auto_sync', 1)
+" Set g:greyscale_auto_sync = 0 before loading vimrc to keep manual-only behavior.
+let s:last_monitor_greyscale = -1
+let s:monitor_toggle = fnamemodify(resolve(expand('<sfile>:p')), ':h:h:h')
+      \ . '/scripts/toggle-monitor-grayscale'
+
+function! s:MaybeGreyscale(force) abort
+  if !g:greyscale_auto_sync && !a:force
+    return
+  endif
+
+  let l:mode = ''
+  if !empty($DISPLAY) && executable(s:monitor_toggle)
+    let l:status = trim(system(shellescape(s:monitor_toggle) . ' --status'))
+    if v:shell_error == 0 && index(['grayscale', 'color'], l:status) >= 0
+      let l:mode = l:status
+    endif
+  endif
+
+  " Retain the old startup hint for remote/headless sessions or missing scripts.
+  if empty(l:mode)
+    if s:last_monitor_greyscale == -1 && $PICOM_GREYSCALE ==# '1'
+      let l:mode = 'grayscale'
+    else
+      return
+    endif
+  endif
+
+  let l:greyscale = l:mode ==# 'grayscale'
+  if !a:force && l:greyscale == s:last_monitor_greyscale
+    return
+  endif
+  let s:last_monitor_greyscale = l:greyscale
+  if l:greyscale
+    silent call GreyscaleOn()
+  else
+    silent call GreyscaleOff()
   endif
 endfunction
 
+command! GreyscaleSync call s:MaybeGreyscale(1)
+
 augroup GreyscaleAuto
   autocmd!
-  autocmd VimEnter * call s:MaybeGreyscale()
+  autocmd VimEnter,FocusGained,VimResume,CursorHold,CursorHoldI * ++nested call s:MaybeGreyscale(0)
 augroup END
+
+" Also initialise when this config is first sourced into an existing Vim session.
+if v:vim_did_enter
+  call s:MaybeGreyscale(0)
+endif

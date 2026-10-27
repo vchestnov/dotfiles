@@ -1,5 +1,8 @@
 set selection-clipboard clipboard
 
+# Double-click follows links; f offers numbered link navigation.
+set double-click-follow true
+
 set first-page-column 2:1
 
 set recolor

@@ -21,6 +21,9 @@ syn region texMathZoneEquationC
   \ contains=@texMathZoneGroup
   \ containedin=ALLBUT,texComment,texCommandNoSpell
 
+" Vim's concealed delimiter table omits \vert/\Vert and their left/right forms.
+syn match texMathDelim /\\[bB]igg\=[lr]\=\>\s*\\[lr]\=[vV]ert\>/ contained
+
 " Extend the built-in reference rules; clearing texRefZone removes citation
 " handling (and its exclusion of citation keys from spellchecking).
 syn region texRefZone
@@ -41,10 +44,11 @@ syn match texCommandNoSpell /\\[a-zA-Z@]\+/
 syn match texCommandNoSpell /\\\%([cC]ref\|labelcref\|name[cC]ref\|pagecref\|label\|v\?ref\|eqref\|[cC]\?pageref\)\>\*\?\s*{[^}]*}/
   \ contained containedin=texComment transparent contains=@NoSpell
 
-" Math styling/operator arguments contain symbols; leave prose macros checked.
-" Reuse the exclusion wrapper and balance nested braces within the comment.
+" Math styling/operator arguments and braced subscripts/superscripts contain symbols.
+" Reuse the exclusion wrapper, balance braces, and leave prose macros checked.
 syn region texCommandNoSpell matchgroup=texComment
   \ start=/\\\%(math\%(rm\|bf\|it\|sf\|tt\|cal\|bb\|frak\|normal\|scr\)\|boldsymbol\|bm\|operatorname\)\>\*\?\s*{/
+  \ start=/\%(\%(^\|[^\\]\)\%(\\\\\)*\)\@<=[_^]\s*{/
   \ skip=/\\\\\|\\[{}]/ end=/}/
   \ contained containedin=texComment transparent oneline
   \ contains=texCommandNoSpell,@NoSpell

@@ -112,9 +112,11 @@ endfunction
 
 augroup TexFoldCache
   autocmd! * <buffer>
-  " Mark cache dirty on edits; rebuild when you leave insert / write / enter buffer
+  " Refresh cached levels without resetting manually opened/closed folds.
+  " zx resets those folds and can shift the viewport after an inverse search.
   autocmd TextChanged,TextChangedI <buffer> let b:tex_fold_dirty = 1
-  autocmd BufEnter,InsertLeave,BufWritePost <buffer> call <SID>RebuildTexFoldCache() | silent! normal! zx
+  " Reassign foldexpr to invalidate Vim's fold levels after rebuilding the cache.
+  autocmd BufEnter,InsertLeave,BufWritePost <buffer> call <SID>RebuildTexFoldCache() | let &l:foldexpr = &l:foldexpr
 augroup END
 
 nnoremap <buffer> <leader>zf :call <SID>RebuildTexFoldCache()<CR>zx
