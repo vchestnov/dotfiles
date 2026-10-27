@@ -1,281 +1,257 @@
 #!/usr/bin/env bash
+set -Eeuo pipefail
 
-# should also work with compositor=compton, untested
-compositor=picom
-script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-managed_shader_path="${script_dir}/${compositor}-grayscale.glsl"
-managed_config_path="${script_dir}/${compositor}-grayscale-toggle.conf"
+# Xorg's CTM contains nine S31.32 coefficients, each exposed as two 32-bit
+# integers (low word first on this Intel system). Each row converts RGB to
+# grayscale with the luminance weights 0.2126 R + 0.7152 G + 0.0722 B.
+gray_row='913110047,0,3071760610,0,310096639,0'
+grayscale_matrix="$gray_row,$gray_row,$gray_row"
+identity_matrix='0,1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1'
 
-function usage {
+usage() {
+    cat <<'EOF'
+Usage: toggle-monitor-grayscale [COMMAND] [--seconds N] [OUTPUT ...]
 
-    bin=$(basename $0)
+Control X11 grayscale using the Intel display driver's CTM through xrandr.
+With no outputs specified, select all active connected outputs.
 
-    echo
-    echo "Toggle monitors between color and grayscale mode."
-    echo 
-    echo "$bin [$compositor|nvidia|ddc|auto]"
-    echo "$bin $compositor [$compositor args]"
-    echo "$bin nvidia [nv mon]"
-    echo "$bin ddc [ddc mon]"
-    echo
-    echo "$compositor:   use a GLX shader to set grayscale"
-    echo "nvidia:  use NVIDIA proprietary driver Digital Vibrance setting to set grayscale"
-    echo "ddc:     use DDC/CI monitor protocol to set the monitor saturation to 0 (grayscale) if supported by monitor"
-    echo "auto:    use $compositor if running, otherwise nvidia if available, otherwise ddc if available"
-    echo
-    echo "$compositor args: in $compositor mode, optional $compositor parameters"
-    echo
-    echo "nv mon:     in nvidia mode, an optional monitor name as enumerated by xrandr."
-    echo "            if unspecified, apply to all monitors managed by the NVIDIA driver"
-    echo "ddc mon:    in ddc mode, optional ddcutil options to identify the monitor. See 'man ddcutil'"
-    echo "            if unspecified, apply to the first monitor detected by ddcutil"
-    echo "if invoked with no argument, auto is used."
-    echo
+Commands:
+  toggle   Reset to color if all selected outputs are grayscale; otherwise on
+           (default; auto is also accepted).
+  on       Apply grayscale until changed again or reset by the display session.
+  off      Reset to normal color (the identity matrix).
+  status   Report color, grayscale, or custom for each selected output.
+  --status Print grayscale if all selected outputs are grayscale, otherwise
+           color. This read-only query is used by Vim's grayscale sync.
+  trial    Apply grayscale for 15 seconds, then restore the original CTMs
+           on exit. Enter or q ends the trial early in a terminal.
+           Also restores on Ctrl+C, HUP, TERM, or an apply failure.
 
-    exit 0
-}
+Options:
+  --seconds N  Trial duration in whole seconds (1-3600; trial only).
+  -h, --help   Show this help.
 
-function toggle_nvidia {
+Examples:
+  toggle-monitor-grayscale
+  toggle-monitor-grayscale on HDMI-1
+  toggle-monitor-grayscale off
+  toggle-monitor-grayscale --status
+  toggle-monitor-grayscale trial --seconds 30 HDMI-1
 
-    dpy=$1
-    
-    value=$(nvidia-settings -t -q DigitalVibrance)
-
-    # set a value in ]-1024..0[ range to desaturate colors instead of full grayscale
-    # -1024 => full grayscale
-    desaturate_value=-1024
-    
-    if (( value == $desaturate_value )); then
-	value=0
-	toggle_mode="color"
-    else
-	value=$desaturate_value
-	toggle_mode="grayscale"
-    fi
-
-    if [ -n "$dpy" ]; then
-	param="[DPY:$dpy]/DigitalVibrance"
-    else
-	param="DigitalVibrance"
-    fi
-
-    nvidia-settings -a ${param}=${value} > /dev/null
-}
-
-function toggle_compositor {
-    if compositor_uses_managed_config; then
-	toggle_compositor_via_reload
-	return
-    fi
-
-
-    if $compositor --help | grep legacy-backends > /dev/null; then
-	use_experimental_backends=1;
-	grep_string="window-shader-fg"
-    else
-	use_experimental_backends=0;
-	grep_string="glx-fshader-win"
-    fi
-    
-    if pgrep -a -x $compositor | grep $grep_string  > /dev/null; then
-	pkill -INT -x "$compositor" || return
-	wait_for_compositor_exit || return
-	$compositor "$@" -b || return
-	toggle_mode="color"
-    else
-	pkill -INT -x "$compositor" || return
-	wait_for_compositor_exit || return
-
-	if (( $use_experimental_backends == 1 )); then
-
-	    write_managed_shader || return
-
-	    $compositor "$@" -b --backend glx --window-shader-fg "${managed_shader_path}" || return
-
-	else
-
-	    shader='uniform sampler2D tex; uniform float opacity; void main() { vec4 c = texture2D(tex, gl_TexCoord[0].xy); float y = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722)); gl_FragColor = opacity*vec4(y, y, y, c.a); }'
-	    $compositor "$@" -b --backend glx --glx-fshader-win "${shader}" || return
-
-	fi
-	    
-	    
-	toggle_mode="grayscale"
-    fi
-}
-
-function toggle_compositor_via_reload {
-    if managed_config_is_grayscale; then
-	write_managed_config color
-	toggle_mode="color"
-    else
-	write_managed_shader
-	write_managed_config grayscale
-	toggle_mode="grayscale"
-    fi
-
-    # picom handles SIGUSR1 by reinitializing and rereading its configuration.
-    pkill -USR1 -x "$compositor"
-}
-
-function compositor_uses_managed_config {
-    pgrep -a -x "$compositor" | grep -F -- "--config ${managed_config_path}" > /dev/null
-}
-
-function managed_config_is_grayscale {
-    [ -f "${managed_config_path}" ] && grep -F 'window-shader-fg' "${managed_config_path}" > /dev/null
-}
-
-function write_managed_shader {
-    cat > "${managed_shader_path}" <<EOF
-#version 330
-in vec2 texcoord;
-
-uniform sampler2D tex;
-uniform float opacity;
-
-vec4 default_post_processing(vec4 c);
-
-vec4 window_shader() {
-    vec4 c = default_post_processing(texelFetch(tex, ivec2(texcoord), 0));
-    float y = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
-    c = opacity*vec4(y, y, y, c.a);
-    return c;
-}
+Requires an X11 session and an 18-word CTM property on every selected output.
+Status reports CTM only. Turn off any existing picom grayscale shader before
+switching to CTM. The former picom implementation is in old/grayscale-picom/.
 EOF
 }
 
-function write_managed_config {
-    local mode=$1
-
-    if [ "$mode" = "grayscale" ]; then
-	cat > "${managed_config_path}" <<EOF
-backend = "glx";
-window-shader-fg = "${managed_shader_path}";
-EOF
-    else
-	cat > "${managed_config_path}" <<EOF
-backend = "glx";
-EOF
-    fi
-}
-
-function wait_for_compositor_exit {
-    local retries=50
-
-    while pgrep -x "$compositor" > /dev/null; do
-	if (( retries == 0 )); then
-	    echo "$compositor did not exit after SIGINT; refusing to start another compositor" >&2
-	    return 1
-	fi
-	sleep 0.02
-	(( retries -= 1 ))
-    done
-}
-
-function toggle_ddc {
-    
-    out=($(ddcutil $* getvcp 8a -t))
-    
-    if (( $? != 0 )); then
-	echo "ddc: this monitor does not support saturation control"
-	exit 1
-    fi
-
-    # out array:
-    #
-    # VCP 8A C 100 200
-    #           |   |
-    #          cur max
-   
-    if (( ${#out[@]} != 5 )); then
-	echo "ddc: unexpected output getting current saturation state"
-	exit 1
-    fi
-
-    cur_saturation=${out[3]}
-    max_saturation=${out[4]}
-
-    # set a value in ]0..max/2[ range to desaturate colors instead of full grayscale
-    # 0 => full grayscale
-    desaturate_value=0
-
-    if (( cur_saturation == desaturate_value  )); then
-	new_saturation=$(( max_saturation / 2 )) # nominal saturation 
-	toggle_mode="color"
-    else
-        new_saturation=$desaturate_value
-	toggle_mode="grayscale"
-    fi
-
-    ddcutil $* setvcp 8a $new_saturation
-}
-
-mode=$1
-
-case $mode in
-
-    --help|-h)
-	usage
-	;;
-
-    $compositor)
-	if ! pgrep -x $compositor > /dev/null; then
-            echo "$compositor is not running"
-            exit 1
-	fi
-	;;
-
-    nvidia)
-	if ! which nvidia-settings &> /dev/null; then
-	    echo "nvidia-settings is not installed"
-	    exit 1
-	fi
-	;;	   	
-    ddc)
-	if ! which ddcutil &> /dev/null; then 
-	    echo "ddcutil is not installed"
-	    exit 1
-	fi
-        ;;
-    
-    *)
-	[ -z "$mode" ] && mode=auto
-	
-	if [ "$mode" = "auto" ]; then
-
-	    if pgrep -x $compositor > /dev/null; then
-		mode=$compositor
-	    elif which nvidia-settings &> /dev/null; then
-		mode=nvidia
-	    elif which ddcutil &> /dev/null; then
-		mode=ddc
-	    else
-		echo "neither $compositor is running, nor nvidia-settings installed, nor ddcutil installed"
-		exit 1
-	    fi
-	else
-	    usage
-	fi
-	
-esac
-
-# pass eventual remaining arguments to toggle_* function
-if (( $# > 0 )); then
-   shift
-fi
-
-if [ "$mode" = "nvidia" ]; then
-    toggle_nvidia $*
-elif [ "$mode" = "$compositor" ]; then
-    toggle_compositor "$@"
-else
-    toggle_ddc $*
-fi
-
-if (( $? == 0 )); then
-    echo "$mode: set to $toggle_mode"
-else
-    echo "$mode: toggle failed" >&2
+die() {
+    printf 'ctm: %s\n' "$*" >&2
     exit 1
+}
+
+action=toggle
+seconds=15
+seconds_given=0
+if [[ ${1-} == trial || ${1-} == on || ${1-} == off ||
+      ${1-} == toggle || ${1-} == status || ${1-} == --status ]]; then
+    action=$1
+    shift
+elif [[ ${1-} == auto ]]; then
+    shift
+fi
+requested_outputs=()
+while (( $# )); do
+    case $1 in
+        -h|--help) usage; exit 0 ;;
+        --seconds)
+            (( $# >= 2 )) || die '--seconds requires a value'
+            [[ $2 =~ ^[1-9][0-9]{0,3}$ ]] || die '--seconds must be an integer from 1 to 3600'
+            (( $2 <= 3600 )) || die '--seconds must be an integer from 1 to 3600'
+            seconds=$2
+            seconds_given=1
+            shift 2
+            ;;
+        -*) die "unknown option: $1 (see --help)" ;;
+        *) requested_outputs+=("$1"); shift ;;
+    esac
+done
+if (( seconds_given )) && [[ $action != trial ]]; then
+    die '--seconds is only valid with trial'
+fi
+command -v xrandr > /dev/null || die 'xrandr is required'
+[[ -n ${DISPLAY-} ]] || die 'run this script from your X11 desktop session'
+snapshot=$(LC_ALL=C xrandr --props) || die 'cannot query the X11 display'
+
+# CTM values wrap onto a continuation line in xrandr's output. Keep only
+# active outputs, and include an empty matrix so missing CTM support is clear.
+mapfile -t records < <(awk '
+    function emit() { if (active) print output "|" matrix }
+    /^[^[:space:]]/ {
+        emit()
+        output = $1
+        active = ($2 == "connected" && $0 ~ /[0-9]+x[0-9]+[+-][0-9]+[+-][0-9]+/)
+        matrix = ""
+        reading = 0
+    }
+    /^[[:space:]]+CTM:/ {
+        sub(/^[[:space:]]+CTM:[[:space:]]*/, "")
+        matrix = $0
+        reading = 1
+        next
+    }
+    reading && /^[[:space:]]+-?[0-9]+([[:space:]]|$)/ {
+        matrix = matrix " " $0
+        next
+    }
+    { reading = 0 }
+    END { emit() }
+' <<< "$snapshot")
+
+declare -A original_matrices=()
+active_outputs=()
+for record in "${records[@]}"; do
+    output=${record%%|*}
+    active_outputs+=("$output")
+    original_matrices["$output"]=${record#*|}
+done
+(( ${#active_outputs[@]} )) || die 'no active connected outputs found'
+outputs=("${requested_outputs[@]}")
+if (( ${#outputs[@]} == 0 )); then
+    outputs=("${active_outputs[@]}")
+fi
+
+# Validate every selected output before making any changes. Normalize signed
+# words because xrandr may print the 0.7152 coefficient as a negative integer.
+declare -A selected=()
+for output in "${outputs[@]}"; do
+    [[ -z ${selected[$output]+present} ]] || die "duplicate output: $output"
+    selected["$output"]=1
+    [[ -n ${original_matrices[$output]+present} ]] || die "$output is not an active connected output"
+    read -r -a words <<< "${original_matrices[$output]}"
+    (( ${#words[@]} == 18 )) || die "$output does not expose a supported CTM (expected 18 words)"
+    normalized=()
+    for word in "${words[@]}"; do
+        [[ $word =~ ^-?[0-9]+$ ]] || die "$output has an invalid CTM value: $word"
+        normalized+=("$(( word & 0xffffffff ))")
+    done
+    original_matrices["$output"]=$(IFS=,; printf '%s' "${normalized[*]}")
+done
+
+matrix_status() {
+    local matrix=$1
+    local -a words
+    if [[ $matrix == "$identity_matrix" ]]; then
+        printf 'color\n'
+        return
+    fi
+    IFS=, read -r -a words <<< "$matrix"
+    # Identical RGB rows produce grayscale, including matrices set by other tools.
+    if [[ ${words[*]:0:6} == "${words[*]:6:6}" &&
+          ${words[*]:0:6} == "${words[*]:12:6}" ]]; then
+        printf 'grayscale\n'
+    else
+        printf 'custom\n'
+    fi
+}
+
+wait_for_trial() {
+    local key read_status remaining deadline=$(( SECONDS + seconds ))
+
+    if [[ -t 0 ]]; then
+        printf 'Press Enter, q, or Ctrl+C to restore sooner.\n'
+        # Keep the foreground shell reading the terminal instead of waiting on
+        # a background sleep. Also recognize Ctrl+C as input when ISIG is off.
+        while (( (remaining = deadline - SECONDS) > 0 )); do
+            key=''
+            if IFS= read -r -s -n 1 -t "$remaining" key; then
+                case $key in
+                    ''|q|Q) return ;;
+                    $'\003') exit 130 ;;
+                esac
+            else
+                read_status=$?
+                # A timed-out read returns a status greater than 128.
+                if (( read_status > 128 )); then return; fi
+                die 'terminal input closed during the trial; restoring original CTMs'
+            fi
+        done
+    else
+        sleep "$seconds" &
+        sleep_pid=$!
+        wait "$sleep_pid"
+        sleep_pid=''
+    fi
+}
+
+if [[ $action == --status ]]; then
+    overall=grayscale
+    for output in "${outputs[@]}"; do
+        if [[ $(matrix_status "${original_matrices[$output]}") != grayscale ]]; then
+            overall=color
+        fi
+    done
+    printf '%s\n' "$overall"
+    exit 0
+elif [[ $action == status ]]; then
+    for output in "${outputs[@]}"; do
+        printf '%s: %s\n' "$output" "$(matrix_status "${original_matrices[$output]}")"
+    done
+    exit 0
+fi
+
+target_matrix=$grayscale_matrix
+if [[ $action == off ]]; then
+    target_matrix=$identity_matrix
+elif [[ $action == toggle ]]; then
+    all_grayscale=1
+    for output in "${outputs[@]}"; do
+        if [[ $(matrix_status "${original_matrices[$output]}") != grayscale ]]; then
+            all_grayscale=0
+        fi
+    done
+    if (( all_grayscale )); then target_matrix=$identity_matrix; fi
+fi
+
+changed_outputs=()
+restore_on_exit=1
+sleep_pid=''
+cleanup() {
+    local exit_code=$? output
+    trap - EXIT
+    # Allow an in-progress restore to finish if Ctrl+C is pressed again.
+    trap '' HUP INT TERM
+    if [[ -n $sleep_pid ]]; then
+        # It may have exited already; a terminated sleep is expected here.
+        if kill "$sleep_pid" 2> /dev/null; then
+            if wait "$sleep_pid"; then :; fi
+        fi
+    fi
+    if (( restore_on_exit )); then
+        for output in "${changed_outputs[@]}"; do
+            if xrandr --output "$output" --set CTM "${original_matrices[$output]}"; then
+                printf '%s: restored original CTM\n' "$output"
+            else
+                printf "ctm: failed to restore %s; retry with this script's off command\n" "$output" >&2
+                exit_code=1
+            fi
+        done
+    fi
+    exit "$exit_code"
+}
+trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+for output in "${outputs[@]}"; do
+    changed_outputs+=("$output")
+    xrandr --output "$output" --set CTM "$target_matrix"
+    printf '%s: set to %s\n' "$output" "$(matrix_status "$target_matrix")"
+done
+
+if [[ $action == trial ]]; then
+    printf 'Restoring original CTMs in %s seconds.\n' "$seconds"
+    wait_for_trial
+else
+    restore_on_exit=0
 fi
