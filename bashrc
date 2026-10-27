@@ -192,11 +192,8 @@ if [[ "$host" = mac ]]; then
 fi
 
 if [[ "$host" = thinkpad ]]; then
-    # http://blog.joncairns.com/2013/12/understanding-ssh-agent-and-ssh-add/
+    # dwm-session supplies the SSH agent; keep the chooser available for manual use.
     source "$HOME/.local/src/ssh-find-agent/ssh-find-agent.sh"
-    ssh-find-agent -a \
-        || ssh-add -l \
-        || eval $(ssh-agent)
 
     [ -f "$XDG_CONFIG_HOME/fzf.bash" ] && . "$XDG_CONFIG_HOME/fzf.bash"
     [ -f "$CARGO_HOME/env" ] && . "$CARGO_HOME/env"
@@ -218,11 +215,13 @@ fi
 case "$host" in
     fire-chief-ash.maths.ox.ac.uk|\
     pc-copper.maths.ox.ac.uk)
-    # http://blog.joncairns.com/2013/12/understanding-ssh-agent-and-ssh-add/
     source "$HOME/.local/src/ssh-find-agent/ssh-find-agent.sh"
-    ssh-find-agent -a \
-        || ssh-add -l \
-        || eval $(ssh-agent)
+    # Preserve the agent supplied by ssh -A; exit 1 means reachable but empty.
+    if ssh-add -l >/dev/null 2>&1; then
+        :
+    elif [[ $? -ne 1 ]]; then
+        ssh-find-agent -a || eval $(ssh-agent)
+    fi
 
     [ -f "$XDG_CONFIG_HOME/fzf.bash" ] && . "$XDG_CONFIG_HOME/fzf.bash"
     [ -f "$CARGO_HOME/env" ] && . "$CARGO_HOME/env"
