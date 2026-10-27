@@ -277,14 +277,20 @@ ensure_git_patch_applied() {
 }
 
 ensure_cargo_toolchain() {
+    local toolchain=${1:-}
+    local -a rustup_args=(-y --no-modify-path)
     export CARGO_HOME="${CARGO_HOME:-$XDG_DATA_HOME/cargo}"
     export RUSTUP_HOME="${RUSTUP_HOME:-$XDG_DATA_HOME/rustup}"
 
     mkdir -p "$BIN_DIR" "$CARGO_HOME" "$RUSTUP_HOME"
 
-    if ! command -v cargo >/dev/null 2>&1; then
+    if ! command -v cargo >/dev/null 2>&1 \
+        || { [[ -n "$toolchain" ]] && ! command -v rustup >/dev/null 2>&1; }; then
         log_info "Installing Rust..."
-        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path
+        if [[ -n "$toolchain" ]]; then
+            rustup_args+=(--default-toolchain none --profile minimal)
+        fi
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- "${rustup_args[@]}"
     fi
 
     if [ -f "$CARGO_HOME/env" ]; then
@@ -293,6 +299,12 @@ ensure_cargo_toolchain() {
     fi
 
     export PATH="$BIN_DIR:$CARGO_HOME/bin:$PATH"
+
+    # An explicit toolchain supports newer source releases without changing the
+    # user's default compiler. Callers select it with `rustup run` when building.
+    if [[ -n "$toolchain" ]]; then
+        rustup toolchain install "$toolchain" --profile minimal --no-self-update
+    fi
 }
 
 apt_refresh() {

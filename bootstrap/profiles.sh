@@ -9,13 +9,13 @@ apply_profile() {
         desktop)
             defaults=(
                 core system-base fonts desktop-tools dwm tex gpg python-tools
-                rust-tools tree-sitter leaf vim lsp neovim go git-lfs
+                rust-tools tree-sitter zoxide eza dust tlrc duf procs leaf vim lsp neovim go git-lfs
                 science sage polymake singular macaulay2 openxm node email zettelkasten
             )
             ;;
         server)
             defaults=(
-                core rust-tools tree-sitter leaf vim lsp neovim go git-lfs
+                core rust-tools tree-sitter zoxide eza dust tlrc duf procs leaf vim lsp neovim go git-lfs
                 science sage polymake openxm node email
             )
             ;;

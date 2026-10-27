@@ -69,6 +69,31 @@ Groups such as `science` and `desktop-apps` expand to concrete components. Keep 
 membership in `components.sh`. `--skip science` removes its members; it does not
 disable separately selected SageMath or polymake.
 
+## Command-line tools
+
+Both `desktop` and `server` include `zoxide`, `eza`, `dust`, `tlrc`, `duf`, and
+`procs`. Each is independently selectable, for example:
+
+```bash
+./bootstrap.sh nothing --only zoxide,eza,dust,tlrc,duf,procs --dry-run
+```
+
+These components compile pinned upstream source releases and install into
+`$BIN_DIR` (default `~/.local/bin`) without sudo. Versions are overridable through
+`ZOXIDE_VERSION`, `EZA_VERSION`, `DUST_VERSION`, `TLRC_VERSION`, `DUF_VERSION`, and
+`PROCS_VERSION`. Source trees live under `$SRC_DIR`, downloaded archives under
+`$XDG_CACHE_HOME/bootstrap/downloads`, and build output under `$BUILD_DIR`.
+Repeated runs reuse those archives and build output.
+
+The Rust tools use `ensure_cargo_toolchain` to provision a user-local compiler
+(`CLI_RUST_TOOLCHAIN_VERSION`, default `1.95.0`) without changing the user's
+default toolchain. They require a C compiler/linker; Eza builds its bundled
+libgit2 and also needs CMake. Selecting `duf` automatically selects the existing
+user-local `go` toolchain component. The `tlrc` component installs the command
+`tldr`; run `tldr --update` to populate its page cache. To enable zoxide's shell
+integration, follow its [upstream setup instructions](https://github.com/ajeetdsouza/zoxide#installation)
+in the repository-managed shell configuration.
+
 ## Writing an installer
 
 Use `local` variables, quoted arguments, and the shared helpers. `build_and_install

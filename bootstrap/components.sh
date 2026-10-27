@@ -67,6 +67,31 @@ register_component tree-sitter \
     --installer install_tree_sitter --file rust.sh \
     --method 'cargo'
 
+register_component zoxide \
+    --installer install_zoxide --file cli-tools.sh \
+    --method 'pinned source release'
+
+register_component eza \
+    --installer install_eza --file cli-tools.sh \
+    --method 'pinned source release'
+
+register_component dust \
+    --installer install_dust --file cli-tools.sh \
+    --method 'pinned source release'
+
+register_component tlrc \
+    --installer install_tlrc --file cli-tools.sh \
+    --method 'pinned source release'
+
+register_component duf \
+    --installer install_duf --file cli-tools.sh \
+    --method 'pinned source release' \
+    --requires go
+
+register_component procs \
+    --installer install_procs --file cli-tools.sh \
+    --method 'pinned source release'
+
 register_component leaf \
     --installer install_leaf --file leaf.sh \
     --method 'pinned upstream binary'
