@@ -56,6 +56,33 @@ run_plan leaf-only nothing --only leaf
 grep -q '^  leaf[[:space:]]\+pinned upstream binary$' "$tmp_dir/leaf-only.out" \
     || fail 'leaf component was not independently selectable'
 
+cli_tools=(zoxide eza dust tlrc duf procs)
+for profile in desktop server; do
+    for component in "${cli_tools[@]}"; do
+        grep -q "^  $component[[:space:]]\+pinned source release$" "$tmp_dir/$profile.out" \
+            || fail "$profile profile must include sudo-free $component"
+    done
+done
+
+run_plan cli-tools-only nothing --only zoxide,eza,dust,tlrc,duf,procs
+awk '/^  [a-z]/ {print $1}' "$tmp_dir/cli-tools-only.out" > "$tmp_dir/cli-tools-order.out"
+printf '%s\n' go "${cli_tools[@]}" > "$tmp_dir/cli-tools-expected.out"
+cmp -s "$tmp_dir/cli-tools-order.out" "$tmp_dir/cli-tools-expected.out" \
+    || fail 'CLI tools must select only themselves and their Go prerequisite in provider order'
+
+run_plan cli-tools-skip server --skip zoxide,eza,dust,tlrc,duf,procs
+if grep -Eq '^  (zoxide|eza|dust|tlrc|duf|procs)[[:space:]]' "$tmp_dir/cli-tools-skip.out"; then
+    fail 'CLI tools could not be skipped'
+fi
+
+run_plan duf-only nothing --only duf
+grep -q '^  go[[:space:]]' "$tmp_dir/duf-only.out" || fail 'duf must select the Go toolchain'
+if "$bootstrap" nothing --only duf --skip go --dry-run > "$tmp_dir/duf-prerequisite-error.out" 2>&1; then
+    fail 'duf accepted an explicitly skipped Go prerequisite'
+fi
+grep -q 'duf requires go' "$tmp_dir/duf-prerequisite-error.out" \
+    || fail 'duf missing prerequisite refusal was unclear'
+
 # Every registry entry is independently selectable, including future additions.
 "$bootstrap" --list > "$tmp_dir/components.out"
 while read -r component; do
@@ -168,5 +195,6 @@ grep -q '^selected_components=$' "$tmp_dir/empty-run/state/bootstrap/last-run" \
     || fail 'empty run reported components that were not selected'
 
 bash "$repo_dir/tests/bootstrap_runner.sh"
+bash "$repo_dir/tests/bootstrap_cli_tools.sh"
 
 printf 'bootstrap CLI checks passed\n'

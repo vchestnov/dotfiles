@@ -86,6 +86,28 @@ monitor number.
 Bootstrap keeps the maintained source
 repositories in place; it no longer provides a `wipe-suckless` component.
 
+## SSH agent in dwm
+
+The session launcher runs `ssh-agent dwm`, so each desktop login starts an
+OpenSSH agent shared by terminals and other programs launched from dwm. The agent
+exits when the session ends. ThinkPad Bash startup preserves the inherited agent;
+`ssh_agent_start` is no longer needed after logging in to dwm.
+
+The agent starts empty. Add keys once per session, for example:
+
+```bash
+ssh-add ~/.ssh/oxford_math
+```
+
+To install only an updated session launcher from this repository, run:
+
+```bash
+sudo install -m 0755 config/suckless/dwm-session /usr/local/bin/dwm-session
+```
+
+Log out and back in to use the updated launcher. Restarting dwm alone keeps the
+current session environment.
+
 ## Per-tag layouts in dwm
 
 Focus the monitor, select a tag, and choose a layout. For example, on the wide monitor:
