@@ -83,6 +83,9 @@ Window order can still change. This does not restore applications after logout
 or reboot. Run
 `xprop _NET_CLIENT_INFO` and click a window to inspect its saved tag bitmask and
 monitor number.
+Explicit centeredmaster side preferences also survive restarts and follow each
+window across tags and monitors. Window order, including which window becomes
+master, can still change on restart.
 Bootstrap keeps the maintained source
 repositories in place; it no longer provides a `wipe-suckless` component.
 
@@ -129,8 +132,9 @@ in bar order takes control. The all-tags view has separate settings.
 
 After installing the new build, press Alt+Ctrl+Shift+Q to restart dwm, then focus
 the wide monitor and press Alt+U (`|M|`). Focus Vim and press Alt+Return to make
-it the master window. With three or more tiled windows, the master occupies the
-middle half of the screen; other windows alternate between the side stacks.
+it the master window. With side windows, the master occupies the middle half of
+the screen; other windows initially alternate between the side stacks. Empty side
+columns keep their space so the master stays centered, including with two windows.
 Alt+H / Alt+L adjust the master width, and Alt+I / Alt+D adjust the number of
 master windows. Alt+T selects normal tiling on the current tag. Each monitor/tag
 keeps its own layout selection across dwm restarts. If you edit `layouts[]`, keep
@@ -141,6 +145,13 @@ In centeredmaster, Alt+K cycles through master windows, the entire right column
 from top to bottom, then the entire left column from top to bottom, and wraps
 back to master. Alt+J follows the reverse order. Floating windows follow the tiled
 columns. Other layouts retain their existing Alt+J / Alt+K bindings.
+
+Alt+Ctrl+Left / Alt+Ctrl+Right send the focused side window to the left / right
+column. Each transfer retains the master and the other windows' column
+assignments, allowing unequal side counts. These commands act on tiled side
+windows in centeredmaster and protect all master windows. The window's side
+preference survives restarts; windows without a preference use the original
+alternating assignment.
 
 For a dwm-only installation, run `scripts/suckless pin dwm`, then
 `sudo make -C /path/to/printed/build/directory install` using the build directory
