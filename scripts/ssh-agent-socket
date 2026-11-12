@@ -1,0 +1,109 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+# Print one usable socket, for callers to export without evaluating shell code.
+mode=resolve quiet=false discover=true
+while (( $# )); do
+    case "$1" in
+        --list) mode=list ;;
+        --choose) mode=choose ;;
+        --quiet) quiet=true ;;
+        --no-discovery) discover=false ;;
+        -h|--help)
+            printf 'Usage: ssh-agent-socket [--list|--choose] [--quiet] [--no-discovery]\n'
+            exit 0 ;;
+        *) printf 'Unknown option: %s\n' "$1" >&2; exit 2 ;;
+    esac
+    shift
+done
+
+report() {
+    if ! $quiet; then printf '%s\n' "$*" >&2; fi
+}
+
+for required in ssh-add timeout; do
+    if ! command -v "$required" >/dev/null 2>&1; then
+        report "$required is required to check SSH agents."
+        exit 1
+    fi
+done
+
+reachable() {
+    local socket=$1 status
+    [[ -S "$socket" && -O "$socket" ]] || return 1
+    if timeout --foreground --kill-after=1 "${SSH_AGENT_CHECK_TIMEOUT:-1}" \
+        env SSH_AUTH_SOCK="$socket" ssh-add -l >/dev/null 2>&1; then
+        return 0
+    else
+        status=$?
+        # ssh-add returns 1 for a reachable agent with no identities.
+        [[ "$status" == 1 ]]
+    fi
+}
+
+tmux_socket=''
+if [[ -n "${TMUX:-}" ]] && command -v tmux >/dev/null 2>&1; then
+    if tmux_environment=$(tmux show-environment SSH_AUTH_SOCK 2>/dev/null) \
+        && [[ "$tmux_environment" == SSH_AUTH_SOCK=* ]]; then
+        tmux_socket=${tmux_environment#SSH_AUTH_SOCK=}
+    fi
+fi
+
+declare -A seen=()
+if [[ "$mode" == resolve ]]; then
+    for socket in "${SSH_AUTH_SOCK:-}" "$tmux_socket"; do
+        [[ -n "$socket" && ! ${seen[$socket]+present} ]] || continue
+        seen[$socket]=1
+        if reachable "$socket"; then printf '%s\n' "$socket"; exit 0; fi
+    done
+fi
+
+declare -a live=() forwarded=()
+consider() {
+    local socket=$1
+    [[ -n "$socket" && ! ${seen[$socket]+present} ]] || return 0
+    seen[$socket]=1
+    if reachable "$socket"; then
+        live+=("$socket")
+        if [[ "${socket##*/}" == s.*.sshd.* || "$socket" == */ssh-*/agent.* ]]; then
+            forwarded+=("$socket")
+        fi
+    fi
+}
+
+consider "${SSH_AUTH_SOCK:-}"
+consider "$tmux_socket"
+if $discover; then
+    shopt -s nullglob
+    for root in "$HOME/.ssh/agent" /tmp "${TMPDIR:-/tmp}"; do
+        for socket in "$root"/s.*.sshd.* "$root"/s.*.agent.* \
+            "$root"/agent.* "$root"/ssh-*/agent.*; do
+            consider "$socket"
+        done
+    done
+fi
+
+if [[ "$mode" == list ]]; then
+    if (( ${#live[@]} )); then printf '%s\n' "${live[@]}"; exit 0; fi
+fi
+if [[ "$mode" == resolve ]] && (( ${#forwarded[@]} )); then live=("${forwarded[@]}"); fi
+if (( ${#live[@]} == 0 )); then
+    report 'No reachable SSH agent found. Reconnect with agent forwarding enabled.'
+    exit 1
+fi
+if [[ "$mode" != choose ]] && (( ${#live[@]} == 1 )); then
+    printf '%s\n' "${live[0]}"
+    exit 0
+fi
+
+if $quiet || { [[ "$mode" != choose ]] && [[ ! -t 0 ]]; }; then
+    report 'Several agents are reachable; use ssh_agent_refresh --choose.'
+    exit 1
+fi
+for index in "${!live[@]}"; do printf '%d) %s\n' "$((index + 1))" "${live[index]}" >&2; done
+if ! read -r -p 'Choose SSH agent: ' choice; then exit 1; fi
+if [[ ! "$choice" =~ ^[1-9][0-9]*$ ]] || (( ${#choice} > 6 || choice > ${#live[@]} )); then
+    report 'Invalid agent selection.'
+    exit 1
+fi
+printf '%s\n' "${live[choice - 1]}"

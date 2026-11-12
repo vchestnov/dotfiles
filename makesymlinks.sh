@@ -321,6 +321,7 @@ if \
     link_file "$DOTFILES_DIR/tmux.conf"     "$HOME/.tmux.conf"     "tmux"
     link_file "$DOTFILES_DIR/vimrc"         "$HOME/.vimrc"         "vimrc"
     link_file "$DOTFILES_DIR/vim"           "$HOME/.vim"           ".vim runtime"
+    link_file "$DOTFILES_DIR/config/ssh-agent.bash" "$XDG_CONFIG_HOME/ssh-agent.bash" "SSH agent refresh"
 fi
 
 if \

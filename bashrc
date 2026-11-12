@@ -30,6 +30,10 @@ if [ -n "$BASH_VERSION" ] && [ -f "$HOME/.profile" ]; then
     . "$HOME/.profile"
 fi
 
+if [[ -r "$XDG_CONFIG_HOME/ssh-agent.bash" ]]; then
+    source "$XDG_CONFIG_HOME/ssh-agent.bash"
+fi
+
 HISTFILE="$XDG_STATE_HOME/bash/history"
 
 # If set, the pattern "**" used in a pathname expansion context will
@@ -167,7 +171,6 @@ if [[ "$host" = amps ]]; then
     source "$HOME/scratch/software/ssh-find-agent/ssh-find-agent.sh"
     # set_ssh_agent_socket
     # set_ssh_agent
-    ssh-add -l >&/dev/null || ssh-find-agent -a || eval $(ssh-agent) > /dev/null
 
     [ -f ~/.fzf.bash ] && source ~/.fzf.bash
 fi
@@ -180,7 +183,6 @@ if [[ "$host" = mac ]]; then
     # source ~/soft/ssh-find-agent/ssh-find-agent.sh
     source "$HOME/.local/src/ssh-find-agent/ssh-find-agent.sh"
     # set_ssh_agent_socket
-    ssh-add -l >&/dev/null || ssh-find-agent -a || eval $(ssh-agent) > /dev/null
 
     [ -f ~/.fzf.bash ] && source ~/.fzf.bash
     . "$CARGO_HOME/env"
@@ -219,12 +221,6 @@ case "$host" in
         source "$HOME/.local/bin/ssh-find-agent"
     elif [[ -r "$HOME/.local/src/ssh-find-agent/ssh-find-agent.sh" ]]; then
         source "$HOME/.local/src/ssh-find-agent/ssh-find-agent.sh"
-    fi
-    # Preserve the agent supplied by ssh -A; exit 1 means reachable but empty.
-    if ssh-add -l >/dev/null 2>&1; then
-        :
-    elif [[ $? -ne 1 ]]; then
-        ssh-find-agent -a || eval $(ssh-agent)
     fi
 
     [ -f "$XDG_CONFIG_HOME/fzf.bash" ] && . "$XDG_CONFIG_HOME/fzf.bash"
@@ -339,10 +335,6 @@ fi
 ssh_agent_start() {
     eval $(ssh-agent -s)
     ssh-add ~/.ssh/id_rsa 2>/dev/null || ssh-add ~/.ssh/id_ed25519 2>/dev/null || echo "No SSH keys found to add"
-}
-
-ssh_agent_list() {
-    ssh-find-agent -c
 }
 
 ssh_agent_kill() {

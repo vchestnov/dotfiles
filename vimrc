@@ -306,33 +306,24 @@ augroup END
 " SSH agent refresh helper for remote Vim sessions
 " -----------------------------------------------------------------------------
 function! RefreshSSHAuthSock() abort
-    if !executable('bash')
-        echom 'RefreshSSHAuthSock: bash not found'
+    let l:resolver = expand('~/.local/bin/ssh-agent-socket')
+    if !executable(l:resolver)
+        echom 'RefreshSSHAuthSock: resolver missing; run makesymlinks.sh server'
         return
     endif
-
-    let l:script = expand('~/.local/src/ssh-find-agent/ssh-find-agent.sh')
-    if !filereadable(l:script)
-        echom 'RefreshSSHAuthSock: script not found: ' . l:script
+    silent let l:output = system(shellescape(l:resolver))
+    if v:shell_error
+        echom 'RefreshSSHAuthSock: ' . trim(l:output)
         return
     endif
-
-    let l:inner = '. ' . shellescape(l:script) . ' >/dev/null 2>&1; ' .
-        \ 'ssh-find-agent -a >/dev/null 2>&1; ' .
-        \ 'printf %s "$SSH_AUTH_SOCK"'
-    let l:raw = substitute(system('bash -lc ' . shellescape(l:inner)), '\n\+$', '', '')
-    let l:sock = matchstr(l:raw, '/tmp/ssh-[^[:space:]]\+')
-
-    if !empty(l:sock) && l:sock !~# '^/tmp/ssh-.\+/agent\.\d\+$'
-        echom 'RefreshSSHAuthSock: ignoring suspicious socket path: ' . l:sock
-        let l:sock = ''
-    endif
-
-    if empty(l:sock)
-        echom 'RefreshSSHAuthSock: no valid socket found in output: ' . l:raw
+    let l:sock = substitute(l:output, '\n\+$', '', '')
+    if l:sock =~# '[\r\n]' || getftype(l:sock) !=# 'socket'
+        echom 'RefreshSSHAuthSock: resolver returned an invalid socket'
         return
     endif
-
+    if $SSH_AUTH_SOCK !=# l:sock
+        let $SSH_AGENT_PID = ''
+    endif
     let $SSH_AUTH_SOCK = l:sock
     echom 'SSH_AUTH_SOCK set to ' . l:sock
 endfunction
