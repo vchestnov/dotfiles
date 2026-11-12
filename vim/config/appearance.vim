@@ -112,7 +112,10 @@ nnoremap <leader>tg :GreyscaleToggle<CR>
 " Query live state rather than storing a second copy in the environment or a file.
 " Only react to display transitions, so a manual :GreyscaleToggle stays effective
 " until the next display transition (or an explicit :GreyscaleSync).
-let g:greyscale_auto_sync = get(g:, 'greyscale_auto_sync', 1)
+" A forwarded X display is not the terminal's local monitor, and querying it
+" synchronously can block startup and focus/idle events for several seconds.
+let s:local_display_session = empty($SSH_CONNECTION) && empty($SSH_TTY)
+let g:greyscale_auto_sync = get(g:, 'greyscale_auto_sync', s:local_display_session)
 " Set g:greyscale_auto_sync = 0 before loading vimrc to keep manual-only behavior.
 let s:last_monitor_greyscale = -1
 let s:monitor_toggle = fnamemodify(resolve(expand('<sfile>:p')), ':h:h:h')
