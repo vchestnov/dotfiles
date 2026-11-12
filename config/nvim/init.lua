@@ -782,6 +782,15 @@ end
 local rtp = vim.opt.rtp
 rtp:prepend(lazypath)
 
+-- Keep plugin-manager writes out of the symlinked, tracked configuration.
+-- The committed lockfile seeds the first installation.
+local lazy_lockfile = vim.fn.stdpath 'state' .. '/lazy-lock.json'
+if not vim.uv.fs_stat(lazy_lockfile) then
+  local tracked_lockfile = vim.fn.stdpath 'config' .. '/lazy-lock.json'
+  vim.fn.mkdir(vim.fn.stdpath 'state', 'p')
+  if vim.uv.fs_stat(tracked_lockfile) then vim.fn.writefile(vim.fn.readfile(tracked_lockfile), lazy_lockfile) end
+end
+
 -- [[ Configure and install plugins ]]
 --
 --  To check the current status of your plugins, run
@@ -1262,8 +1271,6 @@ require('lazy').setup({
           single_file_support = true,
         },
 
-        stylua = {}, -- Used to format Lua code
-
         -- Special Lua Config, as recommended by neovim help docs
         lua_ls = {
           on_init = function(client)
@@ -1308,13 +1315,16 @@ require('lazy').setup({
       -- You can press `g?` for help in this menu.
       local manual_servers = {
         wolfram_lsp = true,
+        clangd = vim.fn.executable 'clangd' == 1,
+        pylsp = vim.fn.executable 'pylsp' == 1,
+        julials = vim.fn.executable 'julia-lsp' == 1,
       }
       local ensure_installed = {}
       for name, _ in pairs(servers or {}) do
         if not manual_servers[name] then table.insert(ensure_installed, name) end
       end
       vim.list_extend(ensure_installed, {
-        -- You can add other tools here that you want Mason to install
+        'stylua', -- Formatter, not a language server.
       })
 
       require('mason-tool-installer').setup { ensure_installed = ensure_installed }
@@ -1699,7 +1709,7 @@ require('lazy').setup({
       })
 
       -- ensure basic parser are installed
-      local parsers = { 'bash', 'c', 'diff', 'html', 'lua', 'luadoc', 'markdown', 'markdown_inline', 'query', 'vim', 'vimdoc', 'wolfram' }
+      local parsers = { 'bash', 'c', 'cpp', 'diff', 'html', 'julia', 'lua', 'luadoc', 'markdown', 'markdown_inline', 'python', 'query', 'vim', 'vimdoc', 'wolfram' }
       ts_install.ensure_installed(parsers)
 
       ---@param buf integer
@@ -1775,6 +1785,7 @@ require('lazy').setup({
   -- In normal mode type `<space>sh` then write `lazy.nvim-plugin`
   -- you can continue same window with `<space>sr` which resumes last telescope search
 }, { ---@diagnostic disable-line: missing-fields
+  lockfile = lazy_lockfile,
   ui = {
     -- If you are using a Nerd Font: set icons to an empty table which will use the
     -- default lazy.nvim defined Nerd Font icons, otherwise define an ASCII table
