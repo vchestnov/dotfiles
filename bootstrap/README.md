@@ -86,7 +86,7 @@ These components compile pinned upstream source releases and install into
 Repeated runs reuse those archives and build output.
 
 The Rust tools use `ensure_cargo_toolchain` to provision a user-local compiler
-(`CLI_RUST_TOOLCHAIN_VERSION`, default `1.95.0`) without changing the user's
+(`CLI_RUST_TOOLCHAIN_VERSION`, default `1.96.0`) without changing the user's
 default toolchain. They require a C compiler/linker; Eza builds its bundled
 libgit2 and also needs CMake. Selecting `duf` automatically selects the existing
 user-local `go` toolchain component. The `tlrc` component installs the command

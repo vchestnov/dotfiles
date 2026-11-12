@@ -164,6 +164,16 @@ if find "$tmp_dir/symlink-home" -mindepth 1 -print -quit | grep -q .; then
     fail 'makesymlinks --dry created configuration directories'
 fi
 
+# Inspection must not change source permissions, even when a script needs chmod.
+mkdir -p "$tmp_dir/symlink-assets/scripts"
+printf '#!/usr/bin/env bash\n' > "$tmp_dir/symlink-assets/scripts/example"
+chmod 0644 "$tmp_dir/symlink-assets/scripts/example"
+HOME="$tmp_dir/symlink-home" XDG_CONFIG_HOME="$tmp_dir/symlink-home/config" \
+DOTFILES_DIR="$tmp_dir/symlink-assets" \
+    "$repo_dir/makesymlinks.sh" --dry server > "$tmp_dir/symlink-permissions.out"
+[[ "$(stat -c '%a' "$tmp_dir/symlink-assets/scripts/example")" == 644 ]] \
+    || fail 'makesymlinks --dry changed source permissions'
+
 mkdir "$tmp_dir/empty-home"
 HOME="$tmp_dir/empty-home" \
 XDG_CONFIG_HOME="$tmp_dir/empty-home/config" \

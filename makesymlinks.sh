@@ -538,7 +538,9 @@ if \
             dest="$HOME/.local/bin/$(basename "$script")"
             link_file "$script" "$dest" "user script"
             # Keep source executable; dest inherits via symlink
-            chmod +x "$script" || true
+            if (( ! DRY_RUN )); then
+                chmod +x "$script"
+            fi
         done
     fi
 fi

@@ -1,11 +1,24 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
+install_rust_git_tool() {
+    local name=$1 repository=$2 binary=$3
+    local source_dir="$SRC_DIR/$name" target_dir="$BUILD_DIR/$name"
+
+    log_info "Installing $name..."
+    clone_or_update "$repository" "$source_dir"
+    CARGO_TARGET_DIR="$target_dir" rustup run "$CLI_RUST_TOOLCHAIN_VERSION" cargo build \
+        --manifest-path "$source_dir/Cargo.toml" --locked --release --bin "$binary" \
+        --jobs "${BUILD_JOBS:-$(default_build_jobs)}"
+    install -m 0755 "$target_dir/release/$binary" "$BIN_DIR/$binary"
+    log_success "$name installed"
+}
+
 install_rust_tools() {
 
     log_section "RUST TOOLS INSTALLATION"
 
-    ensure_cargo_toolchain
+    ensure_cargo_toolchain "$CLI_RUST_TOOLCHAIN_VERSION"
 
     # Install fzf from git
     log_info "Installing fzf..."
@@ -19,33 +32,9 @@ install_rust_tools() {
 
     log_success "fzf installed"
 
-    # Install ripgrep (rg) from git
-    log_info "Installing ripgrep..."
-    clone_or_update "https://github.com/BurntSushi/ripgrep.git" "$SRC_DIR/ripgrep"
-    cd "$SRC_DIR/ripgrep"
-    cargo build --release
-    cp target/release/rg "$BIN_DIR/"
-
-    log_success "ripgrep installed"
-
-    # Install fd from git
-    log_info "Installing fd..."
-    clone_or_update "https://github.com/sharkdp/fd.git" "$SRC_DIR/fd"
-    cd "$SRC_DIR/fd"
-    cargo build --release
-    cp target/release/fd "$BIN_DIR/"
-
-    log_success "fd installed"
-
-	# Install bat from git
-	log_info "Installing bat..."
-
-	clone_or_update "https://github.com/sharkdp/bat.git" "$SRC_DIR/bat"
-	cd "$SRC_DIR/bat"
-	cargo build --release
-	cp target/release/bat "$BIN_DIR"
-
-	log_success "bat installed"
+    install_rust_git_tool ripgrep https://github.com/BurntSushi/ripgrep.git rg
+    install_rust_git_tool fd https://github.com/sharkdp/fd.git fd
+    install_rust_git_tool bat https://github.com/sharkdp/bat.git bat
 }
 
 install_tree_sitter() {
@@ -53,17 +42,19 @@ install_tree_sitter() {
 
     log_section "TREE-SITTER CLI INSTALLATION"
 
-    ensure_cargo_toolchain
+    ensure_cargo_toolchain "$CLI_RUST_TOOLCHAIN_VERSION"
 
     TREE_SITTER_CLI_ROOT="${TREE_SITTER_CLI_ROOT:-$HOME/.local}"
 
     log_info "Installing/updating tree-sitter CLI..."
-    if cargo install --locked tree-sitter-cli --root "$TREE_SITTER_CLI_ROOT"; then
+    if rustup run "$CLI_RUST_TOOLCHAIN_VERSION" cargo install --locked tree-sitter-cli \
+        --root "$TREE_SITTER_CLI_ROOT" --jobs "${BUILD_JOBS:-$(default_build_jobs)}"; then
         :
     else
         log_warning "Full tree-sitter CLI build failed; retrying without the QuickJS runtime feature."
         log_warning "This fallback is usually enough for building parsers from repos that already ship generated C sources."
-        cargo install --locked --no-default-features tree-sitter-cli --root "$TREE_SITTER_CLI_ROOT"
+        rustup run "$CLI_RUST_TOOLCHAIN_VERSION" cargo install --locked --no-default-features tree-sitter-cli \
+            --root "$TREE_SITTER_CLI_ROOT" --jobs "${BUILD_JOBS:-$(default_build_jobs)}"
     fi
 
     hash -r

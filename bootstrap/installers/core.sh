@@ -83,9 +83,6 @@ install_ssh_find_agent() {
     cp ssh-find-agent.sh "$BIN_DIR/ssh-find-agent"
     chmod +x "$BIN_DIR/ssh-find-agent"
 
-    # Ensure proper ownership
-    chown "$USER:$(id -gn)" "$BIN_DIR/ssh-find-agent"
-
     log_success "ssh-find-agent installed successfully"
 
     # Provide usage information

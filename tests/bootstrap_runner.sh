@@ -102,6 +102,22 @@ before=$(git -C "$HOME/checkout" status --porcelain)
 clone_or_update "$HOME/upstream" "$HOME/checkout" main
 [[ "$(git -C "$HOME/checkout" status --porcelain)" == "$before" ]]
 [[ "$(git -C "$HOME/checkout" branch --show-current)" == '' ]]
+
+# User-owned local installs must not depend on NSS name lookup or chown access.
+source "$BOOTSTRAP_TEST_REPO/bootstrap/installers/core.sh"
+SRC_DIR="$HOME/sources"
+BIN_DIR="$HOME/bin"
+mkdir -p "$BIN_DIR"
+clone_or_update() {
+    mkdir -p "$2"
+    printf '#!/usr/bin/env bash\nprintf "agent fixture\\n"\n' > "$2/ssh-find-agent.sh"
+}
+id() { printf 'account lookup unavailable\n' >&2; return 1; }
+chown() { printf 'ownership changes unavailable\n' >&2; return 1; }
+unset USER
+install_ssh_find_agent
+[[ -x "$BIN_DIR/ssh-find-agent" ]]
+[[ "$("$BIN_DIR/ssh-find-agent")" == 'agent fixture' ]]
 EOF
 
 printf 'bootstrap runner checks passed\n'
