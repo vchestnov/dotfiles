@@ -94,6 +94,27 @@ user-local `go` toolchain component. The `tlrc` component installs the command
 integration, follow its [upstream setup instructions](https://github.com/ajeetdsouza/zoxide#installation)
 in the repository-managed shell configuration.
 
+## Language servers
+
+The LSP installer reuses an existing clangd by default. Set
+`CLANGD_INSTALL_METHOD=existing` to require that behavior, or select `tar`, `git`,
+or `apt` explicitly to replace it. Broken Python LSP virtual environments are
+preserved as timestamped backups before a new environment is created.
+
+## SSH agent refresh
+
+Core configuration links `config/ssh-agent.bash`; user scripts include
+`ssh-agent-socket`. Run `ssh_agent_refresh` to repair a stale shell,
+`ssh_agent_refresh --choose` to select an agent, or `ssh_agent_list` to list
+reachable sockets. Vim's `:RefreshSSHAuthSock` uses the same resolver.
+
+The resolver preserves a reachable current agent, including an empty one, then
+tries the current tmux session's agent. Discovery recognizes modern `.sshd.` and
+`.agent.` names and legacy `/tmp/ssh-*/agent.*` sockets owned by the user.
+Ambiguous discovery requires a choice. Checks have a short timeout and never
+delete sockets or start agents. The prompt hook reacts to tmux socket changes
+without doing discovery on every prompt.
+
 ## Writing an installer
 
 Use `local` variables, quoted arguments, and the shared helpers. `build_and_install

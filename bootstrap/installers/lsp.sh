@@ -15,6 +15,14 @@ install_python_lsp() {
 
         if python3 -m venv --help >/dev/null 2>&1; then
             mkdir -p "$(dirname "$pylsp_venv")" "$HOME/.local/bin"
+            if [[ -e "$pylsp_venv" || -L "$pylsp_venv" ]]; then
+                if [[ ! -x "$pylsp_venv/bin/python" ]] \
+                    || ! "$pylsp_venv/bin/python" -m pip --version >/dev/null 2>&1; then
+                    local backup="$pylsp_venv.backup.$(date +%Y%m%dT%H%M%S).$$"
+                    log_warning "Preserving broken Python LSP environment as $backup"
+                    mv -- "$pylsp_venv" "$backup"
+                fi
+            fi
             if [ ! -x "$pylsp_venv/bin/python" ]; then
                 python3 -m venv "$pylsp_venv"
             fi
@@ -182,10 +190,12 @@ install_lsp() {
     mkdir -p "$BIN_DIR"
     CLANGD_INSTALL_METHOD="${CLANGD_INSTALL_METHOD:-${CLANGD_INSTALL_METHOD_DEFAULT:-git}}"
     if [ "$CLANGD_INSTALL_METHOD" = "auto" ]; then
-        if component_enabled system-base && command -v sudo >/dev/null 2>&1; then
+        if command -v clangd >/dev/null 2>&1; then
+            CLANGD_INSTALL_METHOD=existing
+        elif component_enabled system-base && command -v sudo >/dev/null 2>&1; then
             CLANGD_INSTALL_METHOD="apt"
         else
-            CLANGD_INSTALL_METHOD="${CLANGD_SOURCE_KIND:-git}"
+            CLANGD_INSTALL_METHOD="${CLANGD_SOURCE_KIND:-tar}"
         fi
     fi
 
@@ -196,6 +206,13 @@ install_lsp() {
     log_info "clangd installation method: $CLANGD_INSTALL_METHOD"
 
     case "$CLANGD_INSTALL_METHOD" in
+        existing)
+            if ! command -v clangd >/dev/null 2>&1; then
+                log_error 'CLANGD_INSTALL_METHOD=existing requires clangd on PATH.'
+                return 1
+            fi
+            clangd --version
+            ;;
         apt)
             if component_enabled system-base && command -v sudo >/dev/null 2>&1; then
                 log_info "Installing clangd from apt..."
@@ -212,7 +229,7 @@ install_lsp() {
             install_clangd_from_source "$CLANGD_INSTALL_METHOD" "$HOME/.local"
             ;;
         *)
-            log_error "Unknown CLANGD_INSTALL_METHOD='$CLANGD_INSTALL_METHOD'. Use auto, apt, git, or tar."
+            log_error "Unknown CLANGD_INSTALL_METHOD='$CLANGD_INSTALL_METHOD'. Use auto, existing, apt, git, or tar."
             return 1
             ;;
     esac

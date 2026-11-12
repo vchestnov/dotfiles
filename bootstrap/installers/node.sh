@@ -16,8 +16,6 @@ install_nvm_node_tools() {
         vim-language-server
         vscode-langservers-extracted
         yaml-language-server
-        typescript
-        typescript-language-server
     )
 
     if ! command -v git >/dev/null 2>&1; then

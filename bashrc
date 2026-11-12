@@ -354,7 +354,7 @@ openxm() {
     command openxm "$@"
 }
 
-# load nvm on machines where npm is not provided by the system
-if ! command -v npm >/dev/null 2>&1 && [ -f "$HOME/.config/nvm/env.sh" ]; then
-    source "$HOME/.config/nvm/env.sh"
+# Activate the managed Node toolchain and its language-server commands.
+if [[ -r "$XDG_CONFIG_HOME/nvm/env.sh" ]]; then
+    source "$XDG_CONFIG_HOME/nvm/env.sh"
 fi
