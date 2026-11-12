@@ -215,7 +215,11 @@ fi
 case "$host" in
     fire-chief-ash.maths.ox.ac.uk|\
     pc-copper.maths.ox.ac.uk)
-    source "$HOME/.local/src/ssh-find-agent/ssh-find-agent.sh"
+    if [[ -r "$HOME/.local/bin/ssh-find-agent" ]]; then
+        source "$HOME/.local/bin/ssh-find-agent"
+    elif [[ -r "$HOME/.local/src/ssh-find-agent/ssh-find-agent.sh" ]]; then
+        source "$HOME/.local/src/ssh-find-agent/ssh-find-agent.sh"
+    fi
     # Preserve the agent supplied by ssh -A; exit 1 means reachable but empty.
     if ssh-add -l >/dev/null 2>&1; then
         :
@@ -248,6 +252,11 @@ alias vf='vifm'
 alias za='zathura'
 alias rg='rg --smart-case'
 alias fd='fd --hidden'
+
+# zoxide directory history and the z/zi commands
+if command -v zoxide >/dev/null 2>&1; then
+    source <(zoxide init bash)
+fi
 
 # fzf integration
 export FZF_DEFAULT_COMMAND='fd --type f --hidden --follow --exclude .git'
