@@ -39,6 +39,7 @@ endfunction
 " Source LSP options before plug#end(), so vim-lsp/vim-lsp-settings see them
 " even in sessions started with g:dotfiles_lsp_auto_enable = 1
 call s:SourceConfig('lsp.vim')
+call s:SourceConfig('clipboard.vim')
 
 " -----------------------------------------------------------------------------
 " vim-plug bootstrap
