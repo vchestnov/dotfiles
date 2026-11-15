@@ -63,3 +63,6 @@ syn match texRefZone /\\cite\%([tp]\)\?\>\*\?/
   \ containedin=texComment
   \ contains=texStatement
   \ nextgroup=texRefOption,texCite skipwhite skipnl
+
+" Bounded synchronization can lose nested math context in multiline macros.
+syntax sync fromstart

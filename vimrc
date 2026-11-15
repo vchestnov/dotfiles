@@ -22,6 +22,10 @@ let g:lsp_auto_enable = g:dotfiles_lsp_auto_enable
 let g:dotfiles_clangd_background_index = get(g:, 'dotfiles_clangd_background_index', 0)
 let g:dotfiles_clangd_tidy = get(g:, 'dotfiles_clangd_tidy', 0)
 
+" Show exact changed characters in unified patches and Fugitive inline diffs.
+let g:DiffUnit = get(g:, 'DiffUnit', 'Char')
+let g:DiffColors = get(g:, 'DiffColors', 0)
+
 " -----------------------------------------------------------------------------
 " Helper for split config files
 " -----------------------------------------------------------------------------
@@ -67,6 +71,7 @@ call plug#begin(expand('~/.vim/plugged'))
     Plug 'tpope/vim-commentary'
     Plug 'tpope/vim-surround'
     Plug 'tpope/vim-fugitive'
+    Plug 'rickhowe/diffunitsyntax'
     Plug 'airblade/vim-gitgutter'
     Plug 'godlygeek/tabular'
     Plug 'bling/vim-airline'
@@ -123,6 +128,11 @@ set formatoptions+=ct
 set textwidth=79
 set showcmd
 set splitbelow splitright
+
+" Show separate changed character ranges in side-by-side diffs too.
+if has('patch-9.1.1243')
+    set diffopt+=inline:char
+endif
 
 " Shared completion menu:
 "   SuperTab drives normal completion via <Tab>;
