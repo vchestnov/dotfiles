@@ -167,22 +167,12 @@ if [[ "$host" = amps ]]; then
     export FERMATPATH="$HOME/scratch/software/fermat/ferl6/fer64"
     source "/media/scratch/software/OpenXM/rc/dot.bashrc"
 
-    # http://blog.joncairns.com/2013/12/understanding-ssh-agent-and-ssh-add/
-    source "$HOME/scratch/software/ssh-find-agent/ssh-find-agent.sh"
-    # set_ssh_agent_socket
-    # set_ssh_agent
-
     [ -f ~/.fzf.bash ] && source ~/.fzf.bash
 fi
 
 if [[ "$host" = mac ]]; then
     # export FERMATPATH="$HOME/soft/ferl6/fer64"
     # source "$HOME/soft/OpenXM/rc/dot.bashrc"
-
-    # http://blog.joncairns.com/2013/12/understanding-ssh-agent-and-ssh-add/
-    # source ~/soft/ssh-find-agent/ssh-find-agent.sh
-    source "$HOME/.local/src/ssh-find-agent/ssh-find-agent.sh"
-    # set_ssh_agent_socket
 
     [ -f ~/.fzf.bash ] && source ~/.fzf.bash
     . "$CARGO_HOME/env"
@@ -194,9 +184,6 @@ if [[ "$host" = mac ]]; then
 fi
 
 if [[ "$host" = thinkpad ]]; then
-    # dwm-session supplies the SSH agent; keep the chooser available for manual use.
-    source "$HOME/.local/src/ssh-find-agent/ssh-find-agent.sh"
-
     [ -f "$XDG_CONFIG_HOME/fzf.bash" ] && . "$XDG_CONFIG_HOME/fzf.bash"
     [ -f "$CARGO_HOME/env" ] && . "$CARGO_HOME/env"
 
@@ -217,12 +204,6 @@ fi
 case "$host" in
     fire-chief-ash.maths.ox.ac.uk|\
     pc-copper.maths.ox.ac.uk)
-    if [[ -r "$HOME/.local/bin/ssh-find-agent" ]]; then
-        source "$HOME/.local/bin/ssh-find-agent"
-    elif [[ -r "$HOME/.local/src/ssh-find-agent/ssh-find-agent.sh" ]]; then
-        source "$HOME/.local/src/ssh-find-agent/ssh-find-agent.sh"
-    fi
-
     [ -f "$XDG_CONFIG_HOME/fzf.bash" ] && . "$XDG_CONFIG_HOME/fzf.bash"
     [ -f "$CARGO_HOME/env" ] && . "$CARGO_HOME/env"
 

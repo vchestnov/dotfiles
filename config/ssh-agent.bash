@@ -1,4 +1,7 @@
 # Sourced Bash configuration: preserve the caller's shell options and agent.
+# Clear retired entry points when reloading a shell that used the old helper.
+unset -f ssh_find_agent ssh-find-agent
+
 ssh_agent_refresh() {
     local resolver="$HOME/.local/bin/ssh-agent-socket" socket tmux_environment seen_tmux=''
     if [[ ! -x "$resolver" ]]; then

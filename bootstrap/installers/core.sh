@@ -67,31 +67,4 @@ install_core() {
     install_core_directories
     install_core_home
     install_core_links
-    install_ssh_find_agent
-}
-
-install_ssh_find_agent() {
-    log_section "SSH-FIND-AGENT INSTALLATION"
-
-    # Clone ssh-find-agent repository
-    log_info "Installing ssh-find-agent..."
-    clone_or_update "https://github.com/wwalker/ssh-find-agent.git" "$SRC_DIR/ssh-find-agent"
-
-    cd "$SRC_DIR/ssh-find-agent"
-
-    # Install the script to local bin directory
-    cp ssh-find-agent.sh "$BIN_DIR/ssh-find-agent"
-    chmod +x "$BIN_DIR/ssh-find-agent"
-
-    log_success "ssh-find-agent installed successfully"
-
-    # Provide usage information
-    log_info "ssh-find-agent usage:"
-    echo "  • ssh_agent_start  - Start SSH agent and add keys"
-    echo "  • ssh_agent_list   - List available SSH agents"
-    echo "  • ssh_agent_kill   - Kill current SSH agent"
-    echo "  • ssh-find-agent   - Run ssh-find-agent directly"
-    echo
-    log_info "ssh-find-agent will automatically find and use existing SSH agents"
-    log_info "This helps avoid multiple SSH agent instances and keeps your keys loaded"
 }

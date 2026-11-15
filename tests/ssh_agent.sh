@@ -85,9 +85,16 @@ printf '0\n' > "$first.status"
 printf '%s\n' "$first" > "$tmp_dir/tmux-socket"
 export SSH_AUTH_SOCK="$current" SSH_AGENT_PID=123 TMUX=fixture
 PROMPT_COMMAND='printf existing'
+ssh_find_agent() { printf 'retired helper\n'; }
+ssh-find-agent() { ssh_find_agent "$@"; }
 source "$repo_dir/config/ssh-agent.bash"
+for helper in ssh_find_agent ssh-find-agent; do
+    if declare -F "$helper" >/dev/null; then fail "retired function remains loaded: $helper"; fi
+done
 [[ "$SSH_AUTH_SOCK" == "$first" && ! ${SSH_AGENT_PID+present} ]] || fail 'shell refresh did not update its environment'
 [[ "${PROMPT_COMMAND[0]}" == 'printf existing' ]] || fail 'prompt command was overwritten'
+ssh_agent_list > "$tmp_dir/listed-agents"
+grep -qxF "$first" "$tmp_dir/listed-agents" || fail 'shell command did not list the forwarded agent'
 : > "$tmp_dir/probes"
 _ssh_agent_prompt_refresh
 [[ ! -s "$tmp_dir/probes" ]] || fail 'first prompt repeated the startup agent probe'

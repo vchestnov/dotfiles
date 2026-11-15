@@ -163,6 +163,8 @@ grep -q 'config/leaf/config.toml' "$tmp_dir/server-symlinks.out" \
     || fail 'server profile must link Leaf configuration'
 grep -q 'config/ssh-agent.bash' "$tmp_dir/server-symlinks.out" \
     || fail 'server profile must link the SSH agent refresh configuration'
+grep -q 'scripts/ssh-agent-socket' "$tmp_dir/server-symlinks.out" \
+    || fail 'server profile must link the repository SSH agent resolver'
 grep -q 'config/nvm/shell.bash' "$tmp_dir/server-symlinks.out" \
     || fail 'server profile must link fast Node shell activation'
 

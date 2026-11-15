@@ -10,6 +10,7 @@ replace configuration if run; use the current entry points linked below.
 | Archive | Contents | Current replacement |
 | --- | --- | --- |
 | [bootstrap/](bootstrap/) | Three older `makesymlinks` implementations | [makesymlinks.sh](../makesymlinks.sh) |
+| [ssh-find-agent/](ssh-find-agent/) | Retired third-party SSH agent helper, preserved unchanged from the deployed copy on 15 November 2026 | [SSH agent shell commands](../config/ssh-agent.bash) and [socket resolver](../scripts/ssh-agent-socket) |
 | [grayscale-picom/](grayscale-picom/) | Original picom-based grayscale toggle, shader, and configuration, including uncommitted fixes at the time of archival | [CTM grayscale toggle](../scripts/toggle-monitor-grayscale) |
 | [bootstrap/neovim-follow-up.md](bootstrap/neovim-follow-up.md) | Completed Neovim source installation request, formerly in `TODO.md` | [Neovim installer](../bootstrap/installers/neovim.sh) and [bootstrap maintenance guide](../bootstrap/README.md) |
 | [suckless/SUCKLESS_PATCH_NOTES.md](suckless/SUCKLESS_PATCH_NOTES.md) | Troubleshooting instructions for the retired bootstrap patch workflow | [SUCKLESS_WORKFLOW.md](../SUCKLESS_WORKFLOW.md) |

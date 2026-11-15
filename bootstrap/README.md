@@ -113,6 +113,12 @@ Core configuration links `config/ssh-agent.bash`; user scripts include
 `ssh_agent_refresh --choose` to select an agent, or `ssh_agent_list` to list
 reachable sockets. Vim's `:RefreshSSHAuthSock` uses the same resolver.
 
+The third-party `ssh-find-agent` helper is retired; core setup no longer installs
+it and Bash no longer sources it. Reload `~/.bashrc` in existing shells to clear
+its `ssh_find_agent` and `ssh-find-agent` functions. Use `ssh_agent_refresh --choose`
+in place of `ssh_find_agent -c`. Its historical source is kept in
+[`old/ssh-find-agent/`](../old/ssh-find-agent/).
+
 The resolver preserves a reachable current agent, including an empty one, then
 tries the current tmux session's agent. Discovery recognizes modern `.sshd.` and
 `.agent.` names and legacy `/tmp/ssh-*/agent.*` sockets owned by the user.

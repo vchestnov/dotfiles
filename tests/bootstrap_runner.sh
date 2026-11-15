@@ -103,21 +103,30 @@ clone_or_update "$HOME/upstream" "$HOME/checkout" main
 [[ "$(git -C "$HOME/checkout" status --porcelain)" == "$before" ]]
 [[ "$(git -C "$HOME/checkout" branch --show-current)" == '' ]]
 
-# User-owned local installs must not depend on NSS name lookup or chown access.
+# Core setup links the repository resolver without Git, NSS, or chown access.
 source "$BOOTSTRAP_TEST_REPO/bootstrap/installers/core.sh"
+SCRIPT_DIR="$HOME/core-assets"
 SRC_DIR="$HOME/sources"
-BIN_DIR="$HOME/bin"
-mkdir -p "$BIN_DIR"
+BIN_DIR="$HOME/.local/bin"
+BUILD_DIR="$HOME/build"
+export XDG_CONFIG_HOME="$HOME/config"
+BOOTSTRAP_PROFILE=server
+mkdir -p "$SCRIPT_DIR/config" "$SCRIPT_DIR/scripts"
+cp "$BOOTSTRAP_TEST_REPO/makesymlinks.sh" "$SCRIPT_DIR/makesymlinks.sh"
+cp "$BOOTSTRAP_TEST_REPO/config/ssh-agent.bash" "$SCRIPT_DIR/config/ssh-agent.bash"
+cp "$BOOTSTRAP_TEST_REPO/scripts/ssh-agent-socket" "$SCRIPT_DIR/scripts/ssh-agent-socket"
 clone_or_update() {
-    mkdir -p "$2"
-    printf '#!/usr/bin/env bash\nprintf "agent fixture\\n"\n' > "$2/ssh-find-agent.sh"
+    printf 'core setup must not clone repositories\n' >&2
+    return 1
 }
 id() { printf 'account lookup unavailable\n' >&2; return 1; }
 chown() { printf 'ownership changes unavailable\n' >&2; return 1; }
 unset USER
-install_ssh_find_agent
-[[ -x "$BIN_DIR/ssh-find-agent" ]]
-[[ "$("$BIN_DIR/ssh-find-agent")" == 'agent fixture' ]]
+install_core
+[[ -d "$SRC_DIR" && ! -e "$BIN_DIR/ssh-find-agent" ]]
+[[ "$(readlink "$XDG_CONFIG_HOME/ssh-agent.bash")" == "$SCRIPT_DIR/config/ssh-agent.bash" ]]
+[[ "$(readlink "$BIN_DIR/ssh-agent-socket")" == "$SCRIPT_DIR/scripts/ssh-agent-socket" ]]
+"$BIN_DIR/ssh-agent-socket" --help
 EOF
 
 printf 'bootstrap runner checks passed\n'
