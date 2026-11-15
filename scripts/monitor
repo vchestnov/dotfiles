@@ -1,0 +1,252 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+usage() {
+    cat <<'EOF'
+Usage: monitor [on|off|toggle|arrange|status|menu] [OPTIONS]
+
+Control external monitors in an X11 session. With no command, show status.
+The dwm session runs arrange once at login. Cable connection triggers nothing.
+
+  on       Enable an external output above the laptop. With several connected
+           outputs, choose through dmenu or specify --output.
+  off      Disable external outputs without configuring the laptop output.
+  toggle   Use laptop-only if any external output is active; otherwise on.
+  arrange  Stack already-active external outputs above the laptop, preserving
+           their modes and leaving disabled outputs alone. No selection menu.
+  status   Show output connection states, active modes, and preferred modes.
+  menu     Choose an external output, laptop-only layout, or status in dmenu.
+
+Options:
+  --output NAME   External output to enable (on only).
+  --mode MODE     Advertised resolution to use (on only).
+  --internal NAME Override laptop output detection (eDP, LVDS, or DSI).
+  --dry-run       Print the xrandr command without applying it (all except status).
+  -h, --help      Show this help.
+
+Resolution selection prefers 3440x1440, then 1920x1080, then the output's
+preferred mode, then its first advertised mode. The laptop output is used only
+as a positioning reference; its mode and position are never explicitly set.
+Disabling an active monitor still makes dwm move its windows to a remaining one.
+
+Examples:
+  monitor on
+  monitor on --output HDMI-1 --mode 1920x1080
+  monitor off
+  monitor toggle
+  monitor arrange
+  monitor on --dry-run
+EOF
+}
+
+die() {
+    printf 'monitor: %s\n' "$*" >&2
+    exit 1
+}
+
+# dmenu permits arbitrary text; accept only exact entries from our list.
+choose() {
+    local prompt=$1 item result
+    shift
+    command -v dmenu >/dev/null || die 'dmenu is required for selection; use on --output NAME or off directly'
+    if choice=$(printf '%s\n' "$@" | dmenu -i -p "$prompt"); then
+        [[ -n $choice ]] || exit 0
+    else
+        result=$?
+        if (( result == 1 )); then exit 0; fi
+        die "dmenu failed (exit $result)"
+    fi
+    for item in "$@"; do
+        if [[ $choice == "$item" ]]; then return 0; fi
+    done
+    die 'choose one of the listed entries'
+}
+
+show_status() {
+    local output
+    for output in "${outputs[@]}"; do
+        if [[ ${connected[$output]} == 0 ]]; then
+            printf '%s: disconnected' "$output"
+        elif [[ -n ${geometry[$output]-} ]]; then
+            printf '%s: connected, active %s (%s)' "$output" \
+                "${active_mode[$output]:-${geometry[$output]%%[+-]*}}" "${geometry[$output]}"
+        else
+            printf '%s: connected, disabled' "$output"
+        fi
+        if [[ -n ${preferred[$output]-} ]]; then
+            printf '; preferred %s' "${preferred[$output]}"
+        fi
+        printf '\n'
+    done
+}
+
+action=${1:-status}
+if (( $# )); then shift; fi
+case $action in
+    -h|--help) usage; exit 0 ;;
+    on|off|toggle|arrange|status|menu) ;;
+    *) die "unknown command: $action (see --help)" ;;
+esac
+requested_output=''
+requested_mode=''
+internal=''
+dry_run=0
+while (( $# )); do
+    case $1 in
+        --output|--mode|--internal)
+            (( $# >= 2 )) && [[ -n $2 && $2 != -* ]] || die "$1 requires a value"
+            case $1 in
+                --output) requested_output=$2 ;;
+                --mode) requested_mode=$2 ;;
+                --internal) internal=$2 ;;
+            esac
+            shift 2
+            ;;
+        --dry-run) dry_run=1; shift ;;
+        -h|--help) usage; exit 0 ;;
+        *) die "unknown option: $1 (see --help)" ;;
+    esac
+done
+if [[ $action != on && ( -n $requested_output || -n $requested_mode ) ]]; then
+    die '--output and --mode are only valid with on'
+fi
+if [[ $action == status ]] && (( dry_run )); then
+    die 'status is already read-only; use --dry-run with a layout command'
+fi
+command -v xrandr >/dev/null || die 'xrandr is required'
+[[ -n ${DISPLAY-} ]] || die 'run this script from your X11 desktop session'
+snapshot=$(LC_ALL=C xrandr --query) || die 'cannot query the X11 display'
+
+outputs=()
+internal_outputs=()
+external_outputs=()
+declare -A connected=() modes=() preferred=() active_mode=() geometry=()
+current_output=''
+while IFS= read -r line; do
+    if [[ $line =~ ^([^[:space:]]+)[[:space:]]+(connected|disconnected)([[:space:]]|$) ]]; then
+        current_output=${BASH_REMATCH[1]}
+        state=${BASH_REMATCH[2]}
+        outputs+=("$current_output")
+        connected["$current_output"]=0
+        if [[ $state == connected ]]; then connected["$current_output"]=1; fi
+        if [[ $line =~ [0-9]+x[0-9]+[+-][0-9]+[+-][0-9]+ ]]; then
+            geometry["$current_output"]=${BASH_REMATCH[0]}
+        fi
+    elif [[ -n $current_output && $line =~ ^[[:space:]]+([^[:space:]]+)[[:space:]]+[0-9] ]]; then
+        mode=${BASH_REMATCH[1]}
+        modes["$current_output"]+="$mode "
+        if [[ $line == *'+'* ]]; then preferred["$current_output"]=$mode; fi
+        if [[ $line == *'*'* ]]; then active_mode["$current_output"]=$mode; fi
+    fi
+done <<< "$snapshot"
+(( ${#outputs[@]} )) || die 'no display outputs found'
+
+if [[ $action == status ]]; then
+    show_status
+    exit 0
+fi
+
+if [[ -z $internal ]]; then
+    for output in "${outputs[@]}"; do
+        if [[ ${connected[$output]} == 1 && $output =~ ^(eDP|LVDS|DSI)(-|[0-9]|$) ]]; then
+            internal_outputs+=("$output")
+        fi
+    done
+    (( ${#internal_outputs[@]} == 1 )) || die 'cannot identify one laptop output; use --internal NAME'
+    internal=${internal_outputs[0]}
+fi
+[[ ${connected[$internal]-0} == 1 ]] || die "$internal is not a connected laptop output"
+for output in "${outputs[@]}"; do
+    if [[ $output != "$internal" && ${connected[$output]} == 1 ]]; then
+        external_outputs+=("$output")
+    fi
+done
+
+if [[ $action == toggle ]]; then
+    action=on
+    for output in "${outputs[@]}"; do
+        # A disconnected output may still have an active CRTC to turn off.
+        if [[ $output != "$internal" && -n ${geometry[$output]-} ]]; then
+            action=off
+            break
+        fi
+    done
+fi
+
+if [[ $action == menu ]]; then
+    entries=()
+    for output in "${external_outputs[@]}"; do entries+=("Enable $output"); done
+    entries+=('Laptop only' 'Status')
+    choose 'Monitor:' "${entries[@]}"
+    case $choice in
+        'Laptop only') action=off ;;
+        Status) show_status; exit 0 ;;
+        *) action=on; requested_output=${choice#Enable } ;;
+    esac
+fi
+
+args=()
+if [[ $action == on ]]; then
+    [[ -n ${geometry[$internal]-} ]] || die "$internal is not active; enable the laptop display separately"
+    if [[ -z $requested_output ]]; then
+        (( ${#external_outputs[@]} )) || die 'no external monitor connected'
+        if (( ${#external_outputs[@]} == 1 )); then
+            requested_output=${external_outputs[0]}
+        else
+            choose 'External output:' "${external_outputs[@]}"
+            requested_output=$choice
+        fi
+    fi
+    [[ $requested_output != "$internal" ]] || die '--output must name an external output'
+    [[ ${connected[$requested_output]-0} == 1 ]] || die "$requested_output is not connected"
+    if [[ -z $requested_mode ]]; then
+        for mode in 3440x1440 1920x1080 "${preferred[$requested_output]-}"; do
+            if [[ -n $mode && " ${modes[$requested_output]-}" == *" $mode "* ]]; then
+                requested_mode=$mode
+                break
+            fi
+        done
+        if [[ -z $requested_mode ]]; then
+            requested_mode=${modes[$requested_output]-}
+            requested_mode=${requested_mode%% *}
+        fi
+    fi
+    [[ -n $requested_mode ]] || die "$requested_output has no advertised modes"
+    [[ " ${modes[$requested_output]-}" == *" $requested_mode "* ]] \
+        || die "$requested_output does not advertise mode $requested_mode (see xrandr --query)"
+    args+=(--output "$requested_output" --mode "$requested_mode" --above "$internal")
+    printf 'monitor: enabling %s at %s above %s\n' "$requested_output" "$requested_mode" "$internal"
+elif [[ $action == arrange ]]; then
+    reference=$internal
+    for output in "${external_outputs[@]}"; do
+        if [[ -n ${geometry[$output]-} ]]; then
+            args+=(--output "$output" --above "$reference")
+            reference=$output
+        fi
+    done
+    if (( ${#args[@]} == 0 )); then
+        printf 'monitor: no active external outputs to arrange\n'
+        exit 0
+    fi
+    [[ -n ${geometry[$internal]-} ]] || die "$internal is not active; enable the laptop display separately"
+    printf 'monitor: arranging active external outputs above %s\n' "$internal"
+else
+    # Include disconnected outputs: X11 can retain an active CRTC after unplugging.
+    for output in "${outputs[@]}"; do
+        if [[ $output != "$internal" ]]; then args+=(--output "$output" --off); fi
+    done
+    if (( ${#args[@]} == 0 )); then
+        printf 'monitor: no external outputs to disable\n'
+        exit 0
+    fi
+    printf 'monitor: disabling external outputs\n'
+fi
+
+if (( dry_run )); then
+    printf 'xrandr'
+    printf ' %q' "${args[@]}"
+    printf '\n'
+else
+    xrandr "${args[@]}" || die 'xrandr could not apply the layout'
+    printf 'monitor: layout applied\n'
+fi

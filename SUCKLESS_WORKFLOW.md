@@ -111,7 +111,20 @@ sudo install -m 0755 config/suckless/dwm-session /usr/local/bin/dwm-session
 Log out and back in to use the updated launcher. Restarting dwm alone keeps the
 current session environment.
 
+Before starting dwm, the session runs `monitor arrange` once if the helper is
+available. This places already-active external outputs above the laptop without
+changing modes or enabling disabled outputs. An arrangement failure is logged and
+login continues with the existing layout. Install launcher changes with the
+command above; rebuilding dwm alone does not update the launcher.
+
 ## Per-tag layouts in dwm
+
+Alt+Shift+M runs `monitor toggle` from `~/.local/bin`: it disables external outputs
+if any are active, otherwise enables a connected external monitor above the laptop.
+The helper configures external outputs only, using the laptop as a placement reference.
+Alt+M still selects monocle. The helper comes from `dotfiles/scripts/monitor` and
+is linked by `makesymlinks.sh` with the other user scripts. Disabling an output
+moves its windows to a remaining monitor; reconnecting does not move them back.
 
 Focus the monitor, select a tag, and choose a layout. For example, on the wide monitor:
 
