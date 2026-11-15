@@ -1,0 +1,368 @@
+#!/usr/bin/env python3
+import json
+import os
+import re
+import sys
+import tempfile
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+from pathlib import Path
+
+
+IMAP_SCOPE = "https://outlook.office.com/IMAP.AccessAsUser.All"
+SMTP_SCOPE = "https://outlook.office.com/SMTP.Send"
+DEFAULT_SCOPES = [IMAP_SCOPE, SMTP_SCOPE, "offline_access"]
+CONFIG_KEYS = {
+    "OXFORD_OAUTH_CLIENT_ID",
+    "OXFORD_OAUTH_TENANT",
+    "OXFORD_OAUTH_SCOPE",
+    "OXFORD_OAUTH_CACHE_FILE",
+    "OXFORD_OAUTH_CONFIG_FILE",
+}
+
+
+def die(message: str, code: int = 1) -> None:
+    print(f"oauth2-oxford-token: {message}", file=sys.stderr)
+    raise SystemExit(code)
+
+
+def usage() -> None:
+    print(
+        """Usage:
+  oauth2-oxford-token imap         Print access token for IMAP/XOAUTH2
+  oauth2-oxford-token smtp         Print access token for SMTP/XOAUTH2
+  oauth2-oxford-token all          Print access token with both scopes
+  oauth2-oxford-token login        Force interactive device login
+  oauth2-oxford-token clear        Remove cached tokens
+  oauth2-oxford-token info         Show config/cache info
+  oauth2-oxford-token help         Show this message
+
+Config:
+  Reads optional env-style file from:
+    $OXFORD_OAUTH_CONFIG_FILE
+    or ~/.config/oxford-oauth/env
+
+Required setting:
+  OXFORD_OAUTH_CLIENT_ID
+
+Optional settings:
+  OXFORD_OAUTH_TENANT      Default: organizations
+  OXFORD_OAUTH_SCOPE       Override default combined scopes
+  OXFORD_OAUTH_CACHE_FILE  Default: ~/.local/state/oxford-oauth/token.json
+
+Notes:
+  - This helper uses Microsoft device-code flow.
+  - First run opens no browser automatically; it prints a URL and code.
+  - Token cache stores refresh_token locally with mode 600.
+"""
+    )
+
+
+def parse_env_file(path: Path) -> dict[str, str]:
+    values: dict[str, str] = {}
+    if not path.is_file():
+        return values
+
+    pattern = re.compile(r"^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=(.*)$")
+    for line in path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        match = pattern.match(line)
+        if not match:
+            continue
+        key, value = match.groups()
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+            value = value[1:-1]
+        values[key] = value
+    return values
+
+
+def load_settings() -> dict[str, str]:
+    home = Path.home()
+    xdg_config_home = Path(os.environ.get("XDG_CONFIG_HOME", home / ".config"))
+    xdg_state_home = Path(os.environ.get("XDG_STATE_HOME", home / ".local/state"))
+    default_config_file = xdg_config_home / "oxford-oauth" / "env"
+
+    config_file = Path(
+        os.environ.get("OXFORD_OAUTH_CONFIG_FILE", str(default_config_file))
+    ).expanduser()
+    file_values = parse_env_file(config_file)
+
+    settings: dict[str, str] = {}
+    for key in CONFIG_KEYS:
+        if key in os.environ and os.environ[key]:
+            settings[key] = os.environ[key]
+        elif key in file_values and file_values[key]:
+            settings[key] = file_values[key]
+
+    settings["config_file"] = str(config_file)
+    settings["tenant"] = settings.get("OXFORD_OAUTH_TENANT", "organizations")
+    settings["client_id"] = settings.get("OXFORD_OAUTH_CLIENT_ID", "")
+    settings["scope"] = settings.get("OXFORD_OAUTH_SCOPE", " ".join(DEFAULT_SCOPES))
+    settings["cache_file"] = settings.get(
+        "OXFORD_OAUTH_CACHE_FILE",
+        str(xdg_state_home / "oxford-oauth" / "token.json"),
+    )
+    settings["authority"] = (
+        f"https://login.microsoftonline.com/{settings['tenant']}/oauth2/v2.0"
+    )
+    return settings
+
+
+def http_post_json(url: str, data: dict[str, str]) -> tuple[int, dict]:
+    encoded = urllib.parse.urlencode(data).encode("utf-8")
+    request = urllib.request.Request(
+        url,
+        data=encoded,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request) as response:
+            payload = response.read().decode("utf-8")
+            return response.status, json.loads(payload)
+    except urllib.error.HTTPError as exc:
+        payload = exc.read().decode("utf-8")
+        try:
+            parsed = json.loads(payload)
+        except json.JSONDecodeError:
+            parsed = {"error": exc.reason, "error_description": payload}
+        return exc.code, parsed
+
+
+def load_cache(cache_file: Path) -> dict:
+    if not cache_file.is_file():
+        return {}
+    try:
+        return json.loads(cache_file.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def save_cache(cache_file: Path, data: dict) -> None:
+    cache_file.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    # Create with 0600 before writing credentials, and give concurrent writers
+    # separate temporary files. Replacement keeps readers from seeing partial JSON.
+    with tempfile.NamedTemporaryFile(
+        mode="w", encoding="utf-8", dir=cache_file.parent,
+        prefix=".token-", suffix=".tmp", delete=False,
+    ) as stream:
+        temporary = Path(stream.name)
+        try:
+            json.dump(data, stream, indent=2, sort_keys=True)
+            stream.close()
+            temporary.replace(cache_file)
+        finally:
+            temporary.unlink(missing_ok=True)
+
+
+def clear_cache(cache_file: Path) -> None:
+    if cache_file.exists():
+        cache_file.unlink()
+
+
+def token_valid(cache: dict, required_scopes: list[str]) -> bool:
+    access_token = cache.get("access_token")
+    expires_at = int(cache.get("expires_at", 0))
+    scope = cache.get("scope", "")
+    if not access_token:
+        return False
+    if time.time() >= expires_at - 300:
+        return False
+    return set(required_scopes).issubset(scope.split())
+
+
+def refresh_token(settings: dict[str, str], refresh: str, scope: str) -> dict | None:
+    token_url = f"{settings['authority']}/token"
+    status, payload = http_post_json(
+        token_url,
+        {
+            "client_id": settings["client_id"],
+            "grant_type": "refresh_token",
+            "refresh_token": refresh,
+            "scope": scope,
+        },
+    )
+    if status != 200:
+        return None
+    return payload
+
+
+def device_login(settings: dict[str, str], scope: str) -> dict:
+    device_url = f"{settings['authority']}/devicecode"
+    token_url = f"{settings['authority']}/token"
+
+    status, device = http_post_json(
+        device_url,
+        {
+            "client_id": settings["client_id"],
+            "scope": scope,
+        },
+    )
+    if status != 200:
+        description = device.get("error_description", device.get("error", "unknown error"))
+        die(f"device-code request failed: {description}")
+
+    message = device.get("message")
+    if message:
+        print(message, file=sys.stderr)
+    else:
+        verification_uri = device.get("verification_uri", "")
+        user_code = device.get("user_code", "")
+        print(
+            f"Visit {verification_uri} and enter code {user_code}",
+            file=sys.stderr,
+        )
+
+    interval = int(device.get("interval", 5))
+    while True:
+        time.sleep(interval)
+        status, token = http_post_json(
+            token_url,
+            {
+                "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+                "client_id": settings["client_id"],
+                "device_code": device["device_code"],
+            },
+        )
+        if status == 200:
+            return token
+
+        error = token.get("error", "")
+        if error == "authorization_pending":
+            continue
+        if error == "slow_down":
+            interval += 5
+            continue
+        if error == "authorization_declined":
+            die("authorization declined in browser")
+        if error == "expired_token":
+            die("device code expired before authentication completed")
+        description = token.get("error_description", error or "unknown error")
+        die(f"token request failed: {description}")
+
+
+def normalize_token_payload(token: dict, scope: str) -> dict:
+    expires_in = int(token.get("expires_in", 0))
+    return {
+        "access_token": token["access_token"],
+        "refresh_token": token.get("refresh_token", ""),
+        "scope": token.get("scope", scope),
+        "token_type": token.get("token_type", "Bearer"),
+        "obtained_at": int(time.time()),
+        "expires_at": int(time.time()) + expires_in,
+    }
+
+
+def get_access_token(
+    settings: dict[str, str],
+    scope: str,
+    required_scopes: list[str],
+    force_login: bool = False,
+) -> str:
+    cache_file = Path(settings["cache_file"]).expanduser()
+    cache = load_cache(cache_file)
+
+    if not force_login and cache.get("client_id") == settings["client_id"] and cache.get("tenant") == settings["tenant"]:
+        if token_valid(cache, required_scopes):
+            return cache["access_token"]
+
+        refresh = cache.get("refresh_token")
+        if refresh:
+            refreshed = refresh_token(settings, refresh, scope)
+            if refreshed and "access_token" in refreshed:
+                normalized = normalize_token_payload(refreshed, scope)
+                normalized["client_id"] = settings["client_id"]
+                normalized["tenant"] = settings["tenant"]
+                save_cache(cache_file, normalized)
+                return normalized["access_token"]
+
+    token = device_login(settings, scope)
+    normalized = normalize_token_payload(token, scope)
+    normalized["client_id"] = settings["client_id"]
+    normalized["tenant"] = settings["tenant"]
+    save_cache(Path(settings["cache_file"]).expanduser(), normalized)
+    return normalized["access_token"]
+
+
+def requested_scope(mode: str, settings: dict[str, str]) -> str:
+    configured = settings["scope"]
+    if mode == "imap":
+        if IMAP_SCOPE in configured:
+            return configured
+        return " ".join([IMAP_SCOPE, "offline_access"])
+    if mode == "smtp":
+        if SMTP_SCOPE in configured:
+            return configured
+        return " ".join([SMTP_SCOPE, "offline_access"])
+    return configured
+
+
+def required_scopes(mode: str) -> list[str]:
+    if mode == "imap":
+        return [IMAP_SCOPE]
+    if mode == "smtp":
+        return [SMTP_SCOPE]
+    return [IMAP_SCOPE, SMTP_SCOPE]
+
+
+def info(settings: dict[str, str]) -> None:
+    cache_file = Path(settings["cache_file"]).expanduser()
+    cache = load_cache(cache_file)
+    print(f"config_file={settings['config_file']}")
+    print(f"cache_file={cache_file}")
+    print(f"tenant={settings['tenant']}")
+    print(f"client_id={'set' if settings['client_id'] else 'missing'}")
+    print(f"scope={settings['scope']}")
+    print(f"cache_present={'yes' if cache else 'no'}")
+    if cache:
+        expires_at = cache.get("expires_at", 0)
+        print(f"cached_scope={cache.get('scope', '')}")
+        print(f"expires_at={expires_at}")
+
+
+def main() -> None:
+    args = sys.argv[1:]
+    if not args or args[0] == "help":
+        usage()
+        return
+
+    settings = load_settings()
+    if args[0] == "clear":
+        clear_cache(Path(settings["cache_file"]).expanduser())
+        return
+    if args[0] == "info":
+        info(settings)
+        return
+
+    if not settings["client_id"]:
+        die(
+            "missing OXFORD_OAUTH_CLIENT_ID. Set it in ~/.config/oxford-oauth/env "
+            "or the environment."
+        )
+
+    command = args[0]
+    if command == "login":
+        mode = args[1] if len(args) > 1 else "all"
+        scope = requested_scope(mode, settings)
+        get_access_token(settings, scope, required_scopes(mode), force_login=True)
+        print("login complete; token cached", file=sys.stderr)
+        return
+    if command in {"imap", "smtp", "all"}:
+        scope = requested_scope(command, settings)
+        token = get_access_token(settings, scope, required_scopes(command))
+        print(token)
+        return
+
+    die(f"unknown command: {command}")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        die("interrupted", 130)
