@@ -1,0 +1,3 @@
+# Preserve archived snapshots and unified-diff context lines verbatim.
+/old/** -whitespace
+*.patch -whitespace

@@ -3,6 +3,21 @@ private/
 vim/*
 !vim/after/
 !vim/config/
+!vim/autoload/
+vim/autoload/*
+!vim/autoload/coderef.vim
+!vim/autoload/diffunitsyntax.vim
+!vim/plugin/
+vim/plugin/*
+!vim/plugin/coderef.vim
+!vim/CODE_REFERENCES.md
 # !vim/after/**
 # Local scratch; historical files intended for Git belong in old/.
 garage
+
+# Host-local editor, Python, and Codex runtime artifacts.
+.nvimlog
+__pycache__/
+*.py[cod]
+/.codex
+/scripts/.codex
