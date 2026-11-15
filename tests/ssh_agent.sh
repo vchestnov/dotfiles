@@ -88,6 +88,9 @@ PROMPT_COMMAND='printf existing'
 source "$repo_dir/config/ssh-agent.bash"
 [[ "$SSH_AUTH_SOCK" == "$first" && ! ${SSH_AGENT_PID+present} ]] || fail 'shell refresh did not update its environment'
 [[ "${PROMPT_COMMAND[0]}" == 'printf existing' ]] || fail 'prompt command was overwritten'
+: > "$tmp_dir/probes"
+_ssh_agent_prompt_refresh
+[[ ! -s "$tmp_dir/probes" ]] || fail 'first prompt repeated the startup agent probe'
 source "$repo_dir/config/ssh-agent.bash"
 [[ ${#PROMPT_COMMAND[@]} == 2 ]] || fail 'prompt hook was installed twice'
 
