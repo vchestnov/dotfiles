@@ -1,0 +1,120 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+export LC_ALL=C
+connection=${VPN_CONNECTION:-redshield}
+
+usage() {
+    cat <<'EOF'
+Usage: vpn [on|off|toggle|status|check|--status]
+
+Control the on-demand Redshield WireGuard profile in NetworkManager.
+With no command, show status. VPN_CONNECTION selects another profile by name.
+
+  on/off/toggle  Change connection state; these commands do not verify traffic.
+  status        Show whether the profile is active (traffic remains unverified).
+  --status      Print VPN:on or VPN:off for a status bar.
+  check         Verify IPv4/IPv6 routing, test tunnel-bound IPv4 HTTPS traffic,
+                probe IPv6 availability, and show systemd-resolved DNS settings.
+
+Requires an existing WireGuard profile. No kill switch is installed.
+EOF
+}
+
+die() {
+    printf 'vpn: %s\n' "$*" >&2
+    exit 1
+}
+
+(( $# <= 1 )) || die 'expected one command (see --help)'
+action=${1:-status}
+case $action in
+    -h|--help) usage; exit 0 ;;
+    on|off|toggle|status|--status|check) ;;
+    *) die "unknown command: $action (see --help)" ;;
+esac
+command -v nmcli >/dev/null || die 'NetworkManager/nmcli is required'
+type=$(nmcli --get-values connection.type connection show id "$connection") \
+    || die "cannot read profile '$connection'; check NetworkManager and profile setup"
+[[ $type == wireguard ]] || die "'$connection' is not a WireGuard profile"
+state=$(nmcli --get-values GENERAL.STATE connection show id "$connection") \
+    || die 'cannot query connection state'
+
+if [[ $action == toggle ]]; then
+    if [[ $state == activated || $state == activating ]]; then
+        action=off
+    else
+        action=on
+    fi
+fi
+
+case $action in
+    on)
+        if [[ $state != activated ]]; then
+            nmcli --wait 30 connection up id "$connection"
+        fi
+        printf 'vpn: %s active; run "vpn check" to verify traffic\n' "$connection"
+        ;;
+    off)
+        if [[ -n $state && $state != deactivated ]]; then
+            nmcli --wait 15 connection down id "$connection"
+        fi
+        printf 'vpn: %s off\n' "$connection"
+        ;;
+    status)
+        if [[ $state == activated ]]; then
+            printf 'vpn: %s active (traffic unverified; use "vpn check")\n' "$connection"
+        elif [[ -n $state && $state != deactivated ]]; then
+            printf 'vpn: %s %s\n' "$connection" "$state"
+        else
+            printf 'vpn: %s off\n' "$connection"
+        fi
+        ;;
+    --status)
+        if [[ $state == activated ]]; then
+            printf 'VPN:on\n'
+        else
+            printf 'VPN:off\n'
+        fi
+        ;;
+    check)
+        [[ $state == activated ]] || die 'VPN is not active; run "vpn on" first'
+        command -v curl >/dev/null || die 'curl is required for traffic checks'
+        command -v ip >/dev/null || die 'iproute2 is required for routing checks'
+        interface=$(nmcli --get-values GENERAL.DEVICES connection show id "$connection") \
+            || die 'cannot query the tunnel interface'
+        [[ -n $interface && $interface != *$'\n'* && $interface != *','* ]] \
+            || die 'expected exactly one tunnel interface'
+        # Probe both normal routing tables before making interface-bound requests;
+        # a bound request alone cannot reveal traffic bypassing the VPN by default.
+        for family in 4 6; do
+            if [[ $family == 4 ]]; then destination=1.1.1.1; else destination=2606:4700:4700::1111; fi
+            route=$(ip "-$family" route get "$destination") \
+                || die "cannot verify IPv$family routing"
+            [[ " $route " == *" dev $interface "* ]] \
+                || die "IPv$family route bypasses $interface"
+            printf 'IPv%s routing: %s\n' "$family" "$interface"
+        done
+        for family in 4 6; do
+            # Bind traffic to WireGuard and ignore proxy environment variables.
+            # An unavailable tunnel must never turn this into a direct request.
+            if ! trace=$(curl "--ipv$family" --fail --silent --show-error \
+                --noproxy '*' --interface "$interface" \
+                --connect-timeout 5 --max-time 15 \
+                https://www.cloudflare.com/cdn-cgi/trace); then
+                if [[ $family == 4 ]]; then die "IPv4 traffic check failed through $interface"; fi
+                printf 'IPv6 internet unavailable; tested IPv6 route remains inside the tunnel\n'
+                continue
+            fi
+            address=$(awk -F= '$1 == "ip" {print $2}' <<< "$trace")
+            location=$(awk -F= '$1 == "loc" {print $2}' <<< "$trace")
+            [[ -n $address ]] || die "IPv$family check returned no public address"
+            printf 'IPv%s through %s: %s (%s)\n' "$family" "$interface" "$address" "${location:-unknown country}"
+        done
+        if command -v resolvectl >/dev/null; then
+            resolvectl dns "$interface"
+            resolvectl domain "$interface"
+        fi
+        printf 'vpn: IPv4 traffic and IPv4/IPv6 route checks passed; this is not a DNS leak test\n'
+        ;;
+esac
