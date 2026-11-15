@@ -7,6 +7,7 @@ profiles.
 ```bash
 cht              # Choose a sheet with fzf
 cht rg           # Read a sheet by name
+cht regex        # Compare regular-expression syntax across CLI tools
 cht -l           # List available sheets
 cht -e awk       # Edit a sheet using $EDITOR, defaulting to Vim
 ```

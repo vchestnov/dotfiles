@@ -77,11 +77,54 @@ Installation recipes are under `bootstrap/installers/`. To add software, registe
 its installer once in `bootstrap/components.sh`; see
 [Maintaining bootstrap](bootstrap/README.md) for the template, profiles, and validation.
 
+Tool guides cover [terminal email](EMAIL_SETUP.md), [Vim LSP](LSP_CHEATSHEET.md),
+[Telescope](config/nvim/TELESCOPE.md), and the
+[Wolfram Tree-sitter integration](config/nvim/WOLFRAM_TREESITTER_NOTES.md).
+
 Validate profile resolution and safety rules without installing anything:
 
 ```sh
 bash tests/bootstrap_cli.sh
 ```
+
+### Shared Codex CLI preferences
+
+The `desktop` and `server` link profiles install the shared
+[Codex profile](config/codex/dotfiles.config.toml) at
+`${CODEX_HOME:-$HOME/.codex}/dotfiles.config.toml`. To link just this file on an
+existing machine, preview and apply it from this checkout:
+
+```sh
+DOTFILES_DIR="$PWD" ./makesymlinks.sh --dry nothing --codex
+DOTFILES_DIR="$PWD" ./makesymlinks.sh nothing --codex
+command codex --profile dotfiles
+```
+
+The shared `bashrc` aliases `codex` to `codex --profile dotfiles`. Open a new
+Bash terminal or run `source ~/.bashrc`, then launch with just `codex`.
+Use `command codex` to bypass the alias, for example to select another profile.
+
+After transferring repository changes to the server, use the same commands there,
+or run `./makesymlinks.sh server` as part of the normal server configuration setup.
+The link script preserves an existing profile file as a timestamped `.bak` backup.
+Use a current Codex CLI; separate profile files require version 0.134.0 or later
+(see [Codex profiles](https://learn.chatgpt.com/docs/config-file/config-advanced#profiles)).
+
+The shared profile contains the laptop's model and reasoning defaults, status line,
+dense session picker, status colors, and `Alt-V` / `F1` key bindings. Edit the file
+in this repository to change shared preferences, then transfer those changes to
+the other machine. Changes saved by the CLI to a machine's base `config.toml`
+are not automatically exported; copy wanted preferences into the shared profile.
+The selected profile overrides matching base settings; project configuration and
+explicit CLI flags can override the profile.
+
+Each machine keeps its own `config.toml`, project trust records, login credentials,
+rules, sessions, history, caches, and other runtime state. Only the named profile
+is linked; `~/.codex` itself stays local. Log in separately on each machine.
+The `nothing` and `test` link profiles leave Codex alone unless `--codex` is given.
+
+Repository-local agent skills are backed up under `.agents/skills`, with source
+metadata in `skills-lock.json`.
 
 ## Assumptions
 
@@ -102,6 +145,26 @@ This repo reflects my preferences; it is not intended to be a universal solution
 
 ## Notes
 
+- `monitor on` detects the connected external screen and enables it above the
+  laptop. It prefers `3440x1440`, then `1920x1080`, then the monitor's preferred
+  mode. `monitor off` disables external outputs. All commands configure only
+  external outputs; the laptop is used only as a positioning reference.
+  `monitor toggle` turns external outputs off if any are active, otherwise on.
+  `monitor status` (also the default command) shows connections and active modes.
+  Use `monitor menu` for a dmenu chooser, or
+  `monitor on --output HDMI-1 --mode 1920x1080` for an explicit override.
+  With multiple external screens connected, `on` asks through dmenu unless
+  `--output` is given. Add `--dry-run` to preview a layout command, and use
+  `--internal NAME` if the laptop output cannot be detected automatically.
+  Run it from an X11 session. `makesymlinks.sh` links the helper into
+  `~/.local/bin` with the other user scripts; it can also be run directly as
+  `./scripts/monitor`. Nothing runs automatically on cable connection.
+  At login, the dwm session runs `monitor arrange` once to stack already-active
+  external outputs above the laptop, preserving their modes and leaving disabled
+  outputs alone. Run `monitor arrange` manually to reapply that positioning.
+  Disabling or unplugging an active screen still moves its windows onto the
+  remaining screen in dwm; reconnecting does not restore their former placement.
+  The maintained dwm binds Alt+Shift+M to `monitor toggle`; Alt+M selects monocle.
 - `toggle-monitor-grayscale` toggles all active screens using the Intel display
   driver's CTM through `xrandr`, without restarting a compositor. Use `on` or `off`
   to select a mode, and add an output such as `HDMI-1` to target one screen.
@@ -134,6 +197,34 @@ This repo reflects my preferences; it is not intended to be a universal solution
   Older Zathura versions without the D-Bus `ExecuteCommand` method need the PDF
   window closed once and reopened with `:TexView`. The jump opens folds around
   the target line.
+- [PDF code references](./vim/CODE_REFERENCES.md) — Ctrl + click on report code
+  references to jump to the file and highlighted line range in an existing Vim.
+- [Zathura regexp search](./config/zathura/REGEX_SEARCH.md) — `/` and `?` accept
+  Vim patterns such as `\<BP\>` or `\<\(BP\|GB\)\>`, with `n` / `N` navigation.
+  The native literal search remains available under `g/` and `g?`.
+- `vpn on`, `vpn off`, and `vpn toggle` control the on-demand Redshield WireGuard
+  profile. `vpn status` reports activation; `vpn check` verifies representative
+  IPv4/IPv6 routes, tests HTTPS traffic through the tunnel to Cloudflare, and shows
+  the tunnel's DNS settings. IPv4 connectivity must work; unavailable IPv6 is
+  reported separately, with its tested route still required to use the tunnel.
+  `vpn --status` prints `VPN:on` or `VPN:off` for slstatus; activation alone does
+  not verify traffic. The helper installs no kill switch. Changing the public
+  source address can interrupt existing SSH connections.
+  Keep the original configuration outside Git at
+  `~/.config/vpn/redshield/Netherlands.conf` (directory mode 0700, file mode 0600).
+  For initial setup, run
+  `/usr/bin/python3 scripts/lib/redshield-import.py ~/.config/vpn/redshield/Netherlands.conf`
+  from this checkout (`--dry-run` validates without changing anything).
+  This requires `python3-gi` and `gir1.2-nm-1.0`, saves a NetworkManager profile
+  named `redshield` with autoconnect disabled, restricts the downloaded file to
+  mode 0600, and sets the default DNS route (`~.`) and priority 50 for
+  systemd-resolved. Local network DNS domains remain available. Both IP
+  families must have tunnel addresses and default routes. Existing profiles are
+  preserved; wg-quick hooks and custom routing tables are refused. Keep the
+  downloaded file and installed profile outside Git. NetworkManager stores the
+  installed profile under `/etc/NetworkManager/system-connections/`.
+  `makesymlinks.sh desktop` links the helper into `~/.local/bin`; run `vpn toggle`
+  from dmenu, or bind it in the maintained dwm source using the suckless workflow.
 - [FZF_SEARCH_CHEATSHEET.md](./FZF_SEARCH_CHEATSHEET.md) — quick reference for seeded `RG` search and fuzzy project-word picking
 - [SSH_X11_FORWARDING_NOTES.md](./SSH_X11_FORWARDING_NOTES.md) — notes on recovering broken second-hop X forwarding in the SSH/tmux workflow
 - [Offline CLI cheatsheets](./cheatsheets/README.md) — using and extending `cht`
