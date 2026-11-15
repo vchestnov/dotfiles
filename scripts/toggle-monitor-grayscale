@@ -158,9 +158,12 @@ wait_for_trial() {
     local key read_status remaining deadline=$(( SECONDS + seconds ))
 
     if [[ -t 0 ]]; then
+        # Set terminal input mode before announcing readiness. Switching modes
+        # inside read can otherwise lose a Ctrl+C sent just after the prompt.
+        terminal_state=$(stty -g)
+        stty -echo -icanon -isig min 1 time 0
         printf 'Press Enter, q, or Ctrl+C to restore sooner.\n'
-        # Keep the foreground shell reading the terminal instead of waiting on
-        # a background sleep. Also recognize Ctrl+C as input when ISIG is off.
+        # Read Ctrl+C as input; the exit trap restores the original terminal mode.
         while (( (remaining = deadline - SECONDS) > 0 )); do
             key=''
             if IFS= read -r -s -n 1 -t "$remaining" key; then
@@ -215,11 +218,18 @@ fi
 changed_outputs=()
 restore_on_exit=1
 sleep_pid=''
+terminal_state=''
 cleanup() {
     local exit_code=$? output
     trap - EXIT
     # Allow an in-progress restore to finish if Ctrl+C is pressed again.
     trap '' HUP INT TERM
+    if [[ -n $terminal_state ]]; then
+        if ! stty "$terminal_state"; then
+            printf 'ctm: failed to restore terminal settings\n' >&2
+            exit_code=1
+        fi
+    fi
     if [[ -n $sleep_pid ]]; then
         # It may have exited already; a terminated sleep is expected here.
         if kill "$sleep_pid" 2> /dev/null; then
