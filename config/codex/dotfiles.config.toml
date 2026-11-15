@@ -1,0 +1,15 @@
+# Shared preferences for: codex --profile dotfiles
+# Keep credentials, project trust, and generated state in the host's CODEX_HOME.
+model = "gpt-6.1-sol"
+model_reasoning_effort = "xhigh"
+
+[tui]
+status_line = ["model-with-reasoning", "current-dir", "context-used", "weekly-limit", "five-hour-limit", "used-tokens"]
+session_picker_view = "dense"
+status_line_use_colors = true
+
+[tui.keymap.global]
+toggle_vim_mode = "alt-v"
+
+[tui.keymap.composer]
+submit = "f1"

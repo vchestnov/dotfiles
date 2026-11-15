@@ -187,6 +187,61 @@ DOTFILES_DIR="$tmp_dir/symlink-assets" \
 [[ "$(stat -c '%a' "$tmp_dir/symlink-assets/scripts/example")" == 644 ]] \
     || fail 'makesymlinks --dry changed source permissions'
 
+# A minimal source fixture isolates Codex profile selection from other tools.
+codex_home="$tmp_dir/codex home"
+codex_repo="$tmp_dir/codex-dotfiles"
+codex_source="$repo_dir/config/codex/dotfiles.config.toml"
+mkdir -p "$codex_repo/config" "$codex_home/.ssh" "$codex_home/.gnupg"
+ln -s "$repo_dir/config/codex" "$codex_repo/config/codex"
+for profile in desktop server nothing test; do
+    HOME="$codex_home" CODEX_HOME= DOTFILES_DIR="$codex_repo" \
+        "$repo_dir/makesymlinks.sh" --dry "$profile" > "$tmp_dir/codex-$profile.out"
+    case "$profile" in
+        desktop|server)
+            grep -Fq -- "-> $codex_home/.codex/dotfiles.config.toml" "$tmp_dir/codex-$profile.out" \
+                || fail "$profile profile must link Codex preferences in the default location"
+            ;;
+        nothing|test)
+            if grep -Fq 'dotfiles.config.toml' "$tmp_dir/codex-$profile.out"; then
+                fail "$profile profile unexpectedly selected Codex preferences"
+            fi
+            ;;
+    esac
+done
+[[ ! -e "$codex_home/.codex" ]] || fail 'Codex profile dry-run created CODEX_HOME'
+
+codex_target="$codex_home/custom codex/dotfiles.config.toml"
+HOME="$codex_home" CODEX_HOME="${codex_target%/*}" DOTFILES_DIR="$repo_dir" \
+    "$repo_dir/makesymlinks.sh" --dry nothing --codex > "$tmp_dir/codex-targeted.out"
+grep -Fq -- "$codex_source -> $codex_target" "$tmp_dir/codex-targeted.out" \
+    || fail 'targeted Codex link ignored CODEX_HOME'
+[[ ! -e "${codex_target%/*}" ]] || fail 'targeted Codex dry-run created CODEX_HOME'
+
+mkdir -p "${codex_target%/*}/sessions"
+printf 'original profile\n' > "$codex_target"
+for file in config.toml auth.json history.jsonl sessions/local-state; do
+    printf 'host-local %s\n' "$file" > "${codex_target%/*}/$file"
+done
+HOME="$codex_home" CODEX_HOME="${codex_target%/*}" DOTFILES_DIR="$repo_dir" \
+    "$repo_dir/makesymlinks.sh" nothing --codex > "$tmp_dir/codex-link.out"
+[[ -L "$codex_target" && "$(readlink -- "$codex_target")" == "$codex_source" ]] \
+    || fail 'Codex profile link missing or incorrect'
+codex_backups=("$codex_target".bak.*)
+[[ ${#codex_backups[@]} -eq 1 && -f "${codex_backups[0]}" ]] \
+    || fail 'existing Codex profile was not backed up exactly once'
+grep -qx 'original profile' "${codex_backups[0]}" || fail 'Codex profile backup lost its contents'
+HOME="$codex_home" CODEX_HOME="${codex_target%/*}" DOTFILES_DIR="$repo_dir" \
+    "$repo_dir/makesymlinks.sh" nothing --codex > "$tmp_dir/codex-repeat.out"
+grep -Fq "Symlink already correct: $codex_target" "$tmp_dir/codex-repeat.out" \
+    || fail 'repeated Codex setup did not recognize the existing link'
+codex_backups=("$codex_target".bak.*)
+[[ ${#codex_backups[@]} -eq 1 ]] || fail 'repeated Codex setup created another backup'
+for file in config.toml auth.json history.jsonl sessions/local-state; do
+    [[ ! -L "${codex_target%/*}/$file" ]] || fail "Codex setup linked host-local $file"
+    [[ "$(cat "${codex_target%/*}/$file")" == "host-local $file" ]] \
+        || fail "Codex setup changed host-local $file"
+done
+
 mkdir "$tmp_dir/empty-home"
 HOME="$tmp_dir/empty-home" \
 XDG_CONFIG_HOME="$tmp_dir/empty-home/config" \

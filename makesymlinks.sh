@@ -12,6 +12,7 @@ set -Eeuo pipefail # Exit on error, undefined var; fail pipelines
 
 DOTFILES_DIR="${DOTFILES_DIR:-$HOME/dotfiles}"
 XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
+CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
 
 DRY_RUN=0
 if [[ "${1-}" == "--dry" ]]; then
@@ -202,6 +203,7 @@ DO_NPM=1
 DO_NEOVIM=1
 DO_TREE_SITTER=1  # bootstrap-only tool install flag; kept here for profile parity
 DO_LEAF=1
+DO_CODEX=1
 
 case "$BOOTSTRAP_PROFILE" in
     desktop)
@@ -227,6 +229,7 @@ case "$BOOTSTRAP_PROFILE" in
         DO_NEOVIM=1
         DO_TREE_SITTER=1
         DO_LEAF=1
+        DO_CODEX=1
         ;;
     nothing)
         DO_CORE=0
@@ -248,6 +251,7 @@ case "$BOOTSTRAP_PROFILE" in
         DO_NEOVIM=0
         DO_TREE_SITTER=0
         DO_LEAF=0
+        DO_CODEX=0
         ;;
     test)
         DO_CORE=0
@@ -269,6 +273,7 @@ case "$BOOTSTRAP_PROFILE" in
         DO_NEOVIM=0
         DO_TREE_SITTER=0
         DO_LEAF=1
+        DO_CODEX=0
         ;;
     *)
         log_error "Unknown profile '$BOOTSTRAP_PROFILE'!"
@@ -280,6 +285,7 @@ DO_FONTCONFIG=$DO_GUI
 DO_USER_DIRS=0
 while (( $# )); do
     case "$1" in
+        --codex) DO_CODEX=1 ;;
         --fontconfig) DO_FONTCONFIG=1 ;;
         --neovim) DO_NEOVIM=1 ;;
         --user-dirs) DO_USER_DIRS=1 ;;
@@ -366,6 +372,16 @@ if \
     link_file "$DOTFILES_DIR/config/go/env.sh" \
               "$XDG_CONFIG_HOME/go/env.sh" \
               "Go toolchain env (XDG)"
+fi
+
+# =============================================================================
+# SECTION 03B: Shared Codex profile (base config and state stay host-local)
+# =============================================================================
+
+if (( DO_CODEX )); then
+    link_file "$DOTFILES_DIR/config/codex/dotfiles.config.toml" \
+              "$CODEX_HOME/dotfiles.config.toml" \
+              "Codex profile (codex --profile dotfiles)"
 fi
 
 # =============================================================================

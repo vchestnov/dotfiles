@@ -223,6 +223,7 @@ esac
 alias gnomecc='XDG_CURRENT_DESKTOP=GNOME gnome-control-center'
 
 # Custom aliases for development environment
+alias codex='codex --profile dotfiles'
 alias v='vim'
 alias nv='nvim'
 alias vf='vifm'
