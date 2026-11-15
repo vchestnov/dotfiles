@@ -156,6 +156,8 @@ grep -q 'config/leaf/config.toml' "$tmp_dir/server-symlinks.out" \
     || fail 'server profile must link Leaf configuration'
 grep -q 'config/ssh-agent.bash' "$tmp_dir/server-symlinks.out" \
     || fail 'server profile must link the SSH agent refresh configuration'
+grep -q 'config/nvm/shell.bash' "$tmp_dir/server-symlinks.out" \
+    || fail 'server profile must link fast Node shell activation'
 
 HOME="$tmp_dir/symlink-home" XDG_CONFIG_HOME="$tmp_dir/symlink-home/config" DOTFILES_DIR="$repo_dir" \
     "$repo_dir/makesymlinks.sh" --dry nothing --fontconfig --neovim --user-dirs > "$tmp_dir/targeted-symlinks.out"
@@ -210,5 +212,6 @@ bash "$repo_dir/tests/bootstrap_runner.sh"
 bash "$repo_dir/tests/bootstrap_cli_tools.sh"
 bash "$repo_dir/tests/ssh_agent.sh"
 bash "$repo_dir/tests/lsp_installers.sh"
+bash "$repo_dir/tests/nvm_shell.sh"
 
 printf 'bootstrap CLI checks passed\n'

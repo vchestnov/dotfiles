@@ -101,6 +101,11 @@ The LSP installer reuses an existing clangd by default. Set
 or `apt` explicitly to replace it. Broken Python LSP virtual environments are
 preserved as timestamped backups before a new environment is created.
 
+Bash loads nvm with automatic activation disabled, then selects the installed
+default from its alias files. This avoids repeated Node processes and version
+scans when opening panes. Inherited managed Node selections are preserved;
+partial versions and other aliases fall back to nvm's normal activation.
+
 ## SSH agent refresh
 
 Core configuration links `config/ssh-agent.bash`; user scripts include
