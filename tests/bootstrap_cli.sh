@@ -129,6 +129,13 @@ if grep -Eq '^  (system-base|fonts|desktop-tools|dwm|tex|gpg|macaulay2)[[:space:
     fail 'server profile contains a sudo-only component'
 fi
 
+if grep -q '^  email[[:space:]]' "$tmp_dir/server.out"; then
+    fail 'server profile must leave email setup opt-in'
+fi
+grep -q '^  email[[:space:]]' "$tmp_dir/desktop.out" || fail 'desktop profile must include email setup'
+run_plan server-email server --enable email
+grep -q '^  email[[:space:]]' "$tmp_dir/server-email.out" || fail 'server profile must allow explicit email setup'
+
 if grep -Eq '^  (krita|messengers|media|system-upgrade|remove-nautilus|reset-user-dirs|wipe-suckless)[[:space:]]' "$tmp_dir/desktop.out"; then
     fail 'desktop profile contains an optional or risky component'
 fi

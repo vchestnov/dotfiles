@@ -52,6 +52,7 @@ Inspect the resolved desktop plan, then apply it:
 The bootstrap prints the complete component plan and asks once before applying it.
 The `server` profile never selects components that require sudo; `nothing` is an
 empty base for targeted runs; `test` selects the maintained suckless bundle.
+Email setup is included in `desktop` and is opt-in on `server` with `--enable email`.
 
 Useful controls:
 

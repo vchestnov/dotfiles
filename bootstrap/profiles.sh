@@ -16,7 +16,7 @@ apply_profile() {
         server)
             defaults=(
                 core rust-tools tree-sitter zoxide eza dust tlrc duf procs leaf vim lsp neovim go git-lfs
-                science sage polymake openxm node email
+                science sage polymake openxm node
             )
             ;;
         nothing) ;;
