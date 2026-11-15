@@ -1,0 +1,26 @@
+--- a/zathura/dbus-interface.c
++++ b/zathura/dbus-interface.c
+@@ -243,10 +243,9 @@
+ 
+   synctex_highlight_rects(data->zathura, data->page, data->rectangles);
+ 
+-  for (unsigned int i = 0; i != data->number_of_pages; ++i) {
+-    girara_list_free(data->rectangles[i]);
+-  }
++  /* Page widgets own the lists after synctex_highlight_rects. */
+   g_free(data->rectangles);
++  g_free(data);
+   return false;
+ }
+ 
+--- a/meson.build
++++ b/meson.build
+@@ -24,7 +24,7 @@
+ conf_data.set('ZVREV', version_array[2])
+ conf_data.set('ZVAPI', plugin_api_version)
+ conf_data.set('ZVABI', plugin_abi_version)
+-conf_data.set('version', version)
++conf_data.set('version', version + '+highlightfix')
+ 
+ cc = meson.get_compiler('c')
+ 

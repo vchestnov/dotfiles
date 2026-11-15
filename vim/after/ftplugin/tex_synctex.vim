@@ -6,6 +6,8 @@ let b:did_dotfiles_tex_synctex = 1
 
 " Keep viewer jobs alive when switching or closing source buffers.
 let s:view_jobs = get(s:, 'view_jobs', [])
+let s:inverse_helper = fnamemodify(resolve(expand('<sfile>:p')), ':h:h:h:h')
+      \ . '/scripts/tex-inverse-search'
 
 function! s:ViewError(channel, message) abort
   echohl ErrorMsg
@@ -56,27 +58,23 @@ function! s:InverseSearchCommand() abort
     call s:ViewError(0, 'inverse search requires Vim with +clientserver support')
     return ''
   endif
-  try
-    if empty(v:servername)
-      call remote_startserver('DOTFILES_TEX_' . getpid())
-    endif
-  catch
-    call s:ViewError(0, 'could not enable inverse search: ' . v:exception)
+  if !executable('python3') || !filereadable(s:inverse_helper)
+    call s:ViewError(0, 'inverse search needs python3 and scripts/tex-inverse-search')
     return ''
-  endtry
+  endif
+  call coderef#StartServer()
   if empty(v:servername)
     call s:ViewError(0, 'could not enable inverse search; Vim needs a working display or socket server')
     return ''
   endif
 
-  let command = [v:progpath]
+  let command = [exepath('python3'), s:inverse_helper,
+        \ '--vim', v:progpath, '--server', v:servername]
   if has('socketserver') && v:servername =~# '^/'
-    call extend(command, ['--clientserver', 'socket'])
+    call extend(command, ['--backend', 'socket'])
   endif
   " Zathura parses arguments before substituting the source path and numbers.
-  " :drop reuses an existing window or preserves changes in another buffer.
-  call extend(command, ['--servername', v:servername, '--remote-silent',
-        \ '+call cursor(%{line}, max([1, %{column}])) | execute "normal! zvzz"', '%{input}'])
+  call extend(command, ['--source', '%{input}', '--line=%{line}', '--column=%{column}'])
   return join(map(command, 'shellescape(v:val)'), ' ')
 endfunction
 

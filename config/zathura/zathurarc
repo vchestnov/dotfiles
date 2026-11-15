@@ -13,3 +13,13 @@ set guioptions none
 
 # map D exec "sh -c 'zathura --fork -P $PAGE -- \"$FILE\" >/dev/null 2>&1'"
 map D exec "zathura --fork --log-level=error -P $PAGE -- $FILE"
+
+# Vim regexp searches (dmenu prompt), with native literal search under g/ and g?.
+map / exec "sh -c 'exec \"${DOTFILES_DIR:-$HOME/dotfiles}/scripts/zathura-regex-search\" --bus \"$1\"' sh $DBUS"
+map ? exec "sh -c 'exec \"${DOTFILES_DIR:-$HOME/dotfiles}/scripts/zathura-regex-search\" --bus \"$1\" --backward' sh $DBUS"
+map n exec "sh -c 'exec \"${DOTFILES_DIR:-$HOME/dotfiles}/scripts/zathura-regex-search\" --bus \"$1\" --next' sh $DBUS"
+map N exec "sh -c 'exec \"${DOTFILES_DIR:-$HOME/dotfiles}/scripts/zathura-regex-search\" --bus \"$1\" --previous' sh $DBUS"
+map g/ focus_inputbar /
+map g? focus_inputbar ?
+map gn search forward
+map gN search backward

@@ -1,0 +1,26 @@
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{coderef}[2026/11/01 Code references for Vim SyncTeX navigation]
+\RequirePackage{xcolor}
+\RequirePackage[abspath]{currfile}
+% Compile with -synctex=1 -recorder. Each generated input gives SyncTeX a
+% distinct tag, even inside tabularx and other environments that collect tokens.
+\newcounter{coderef}
+\newwrite\coderef@out
+\newcommand{\codereftarget}[4]{}
+\newcommand{\codelink}[4]{%
+  \stepcounter{coderef}%
+  \begingroup
+  \edef\coderef@file{\jobname.coderef-\arabic{coderef}.tex}%
+  \immediate\openout\coderef@out=\coderef@file\relax
+  \immediate\write\coderef@out{\@percentchar\space coderef-generated-v1}%
+  \immediate\write\coderef@out{%
+    \string\codereftarget{\currfileabspath}{\detokenize{#1}}{#2}{#3}\@percentchar}%
+  \immediate\write\coderef@out{%
+    \string\mbox{\string\textcolor{blue}{\unexpanded{#4}}}\@percentchar}%
+  \immediate\write\coderef@out{\string\endinput}%
+  \immediate\closeout\coderef@out
+  \input{\coderef@file}%
+  \endgroup}
+\newcommand{\coderef}[4]{%
+  \codelink{#1}{#2}{#3}{\texttt{\detokenize{#4}}: lines #2--#3}}
+\endinput

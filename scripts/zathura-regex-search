@@ -1,0 +1,237 @@
+#!/usr/bin/python3
+"""Vim regular-expression searches, highlighted in a running Zathura PDF."""
+
+import argparse
+import fcntl
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+
+import gi
+
+gi.require_version('Gio', '2.0')
+gi.require_version('Poppler', '0.18')
+from gi.repository import Gio, GLib, Poppler
+
+
+class Viewer:
+    path = '/org/pwmt/zathura'
+    interface = 'org.pwmt.zathura'
+
+    def __init__(self, name):
+        if not re.fullmatch(r'org\.pwmt\.zathura\.PID-[0-9]+', name):
+            raise ValueError('Invalid Zathura bus name')
+        self.name = name
+        self.bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+
+    def call(self, interface, method, signature, arguments):
+        result = self.bus.call_sync(
+            self.name, self.path, interface, method,
+            GLib.Variant(signature, arguments), None,
+            Gio.DBusCallFlags.NONE, 5000, None,
+        )
+        return result.unpack()[0]
+
+    def property(self, name):
+        return self.call('org.freedesktop.DBus.Properties', 'Get', '(ss)',
+                         (self.interface, name))
+
+    def highlight(self, selected, matches):
+        # Stock 0.5.x frees lists still owned by its page widgets. Do not send
+        # rectangles to an old window after installing the corrected viewer.
+        executable = Path('/proc') / self.name.rsplit('-', 1)[1] / 'exe'
+        version = subprocess.run([str(executable), '--version'], capture_output=True,
+                                 text=True, timeout=5, check=True).stdout.splitlines()[0]
+        if version.startswith('zathura 0.5.') and '+highlightfix' not in version:
+            raise ValueError('This Zathura window has the old highlighting bug. '
+                             'Close it and reopen the PDF with ~/.local/bin/zathura')
+        primary = selected['rectangles']
+        secondary = []
+        for match in matches:
+            if match is selected:
+                continue
+            secondary.extend((match['page'], *rect) for rect in match['rectangles'])
+        if not self.call(self.interface, 'HighlightRects', '(ua(dddd)a(udddd))',
+                         (selected['page'], primary, secondary)):
+            raise ValueError('Zathura rejected the search highlights')
+
+
+def private_directory(path):
+    path.mkdir(parents=True, exist_ok=True, mode=0o700)
+    return path
+
+
+def read_json(path, default):
+    try:
+        return json.loads(path.read_text())
+    except (FileNotFoundError, ValueError):
+        return default
+
+
+def write_json(path, value):
+    with tempfile.NamedTemporaryFile(mode='w', dir=path.parent, delete=False) as stream:
+        temporary = Path(stream.name)
+        try:
+            json.dump(value, stream, ensure_ascii=False)
+            stream.flush()
+            os.replace(temporary, path)
+        finally:
+            temporary.unlink(missing_ok=True)
+
+
+def prompt(backward):
+    dmenu = shutil.which('dmenu')
+    if not dmenu:
+        raise ValueError('dmenu is required to enter a search expression')
+    result = subprocess.run(
+        [dmenu, '-p', 'Vim regex ?' if backward else 'Vim regex /'],
+        input='', capture_output=True, text=True,
+    )
+    if result.returncode:
+        return None
+    return result.stdout.rstrip('\n')
+
+
+def vim_matches(pattern, pages, directory):
+    vim = shutil.which('vim')
+    if not vim:
+        raise ValueError('Vim is required for its regexp engine')
+    matcher = Path(__file__).resolve().parent / 'lib/zathura-regex.vim'
+    with tempfile.TemporaryDirectory(prefix='match-', dir=directory) as folder:
+        source, output = Path(folder) / 'input.json', Path(folder) / 'output.json'
+        source.write_text(json.dumps({'pattern': pattern, 'pages': pages}, ensure_ascii=False))
+        result = subprocess.run(
+            [vim, '-Nu', 'NONE', '-n', '-i', 'NONE', '-X', '-es',
+             '-S', str(matcher), '--', str(source), str(output)],
+            capture_output=True, text=True, timeout=20,
+        )
+        if not output.exists():
+            raise ValueError('Vim regexp matching failed: ' + result.stderr.strip())
+        response = json.loads(output.read_text())
+        if 'error' in response:
+            raise ValueError(response['error'])
+        if result.returncode:
+            raise ValueError('Vim regexp matching failed: ' + result.stderr.strip())
+        return response['matches']
+
+
+def rectangles(boxes):
+    """Merge contiguous character rectangles into one rectangle per text line."""
+    merged = []
+    for box in boxes:
+        if box.x2 <= box.x1 or box.y2 <= box.y1:
+            continue
+        # The D-Bus API orders coordinates as x1,x2,y1,y2.
+        rect = [box.x1, box.x2, box.y1, box.y2]
+        if (merged and abs(merged[-1][2] - rect[2]) < 1
+                and abs(merged[-1][3] - rect[3]) < 1
+                and merged[-1][0] <= rect[0] <= merged[-1][1] + 2):
+            merged[-1][1] = max(merged[-1][1], rect[1])
+        else:
+            merged.append(rect)
+    return merged
+
+
+def search_pdf(file, pattern, directory):
+    document = Poppler.Document.new_from_file(file.as_uri(), None)
+    pages = [document.get_page(i) for i in range(document.get_n_pages())]
+    texts = [page.get_text() or '' for page in pages]
+    spans = vim_matches(pattern, texts, directory)
+    matches = []
+    for number, (page, text, found) in enumerate(zip(pages, texts, spans)):
+        if not found:
+            continue
+        ok, layout = page.get_text_layout()
+        if not ok or len(layout) != len(text):
+            raise ValueError(f'PDF text layout is unavailable or inconsistent on page {number + 1}')
+        for start, end in found:
+            rects = rectangles(layout[start:end])
+            if rects:
+                matches.append({'page': number, 'rectangles': rects})
+    return matches
+
+
+def identity(file):
+    stat = file.stat()
+    return [str(file), stat.st_mtime_ns, stat.st_size]
+
+
+def first_match(matches, page, direction):
+    indices = range(len(matches)) if direction > 0 else range(len(matches) - 1, -1, -1)
+    for index in indices:
+        if (matches[index]['page'] - page) * direction >= 0:
+            return index
+    return 0 if direction > 0 else len(matches) - 1
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--bus', required=True)
+    action = parser.add_mutually_exclusive_group()
+    action.add_argument('--pattern', help='literal Vim regexp argument; bypass dmenu')
+    action.add_argument('--next', action='store_true')
+    action.add_argument('--previous', action='store_true')
+    parser.add_argument('--backward', action='store_true')
+    args = parser.parse_args()
+    viewer = Viewer(args.bus)
+    file = Path(viewer.property('filename')).resolve()
+    if file.suffix.lower() != '.pdf':
+        raise ValueError('Regexp search currently supports PDF documents')
+    cache = Path(os.environ.get('XDG_CACHE_HOME', Path.home() / '.cache'))
+    runtime = private_directory(Path(os.environ.get('XDG_RUNTIME_DIR', cache)) / 'zathura-regex')
+    state_path = runtime / (args.bus + '.json')
+    repeat = args.next or args.previous
+    pattern = args.pattern
+    if not repeat and pattern is None:
+        pattern = prompt(args.backward)
+        if pattern is None:
+            return
+    with (runtime / (args.bus + '.lock')).open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        state = read_json(state_path, {})
+        if repeat and (not state or state.get('identity', [None])[0] != str(file)):
+            raise ValueError('Start a regexp search with / first; use gn/gN for literal searches')
+        if pattern == '':
+            pattern = state.get('pattern')
+            if not pattern:
+                return
+        fingerprint = identity(file)
+        recompute = not repeat or state.get('identity') != fingerprint
+        if repeat:
+            pattern = state['pattern']
+        if recompute:
+            matches = search_pdf(file, pattern, runtime)
+            if not matches:
+                raise ValueError('No visible text matches: ' + pattern)
+            direction = state.get('direction', 1) if repeat else (-1 if args.backward else 1)
+            state = {'identity': fingerprint, 'pattern': pattern, 'matches': matches,
+                     'direction': direction,
+                     'index': first_match(matches, viewer.property('pagenumber'), direction)}
+        else:
+            step = state['direction'] * (-1 if args.previous else 1)
+            state['index'] = (state['index'] + step) % len(state['matches'])
+        # Check again after a possibly long search/reload; never navigate another PDF.
+        if Path(viewer.property('filename')).resolve() != file or identity(file) != fingerprint:
+            raise ValueError('The document changed while searching; search again')
+        viewer.highlight(state['matches'][state['index']], state['matches'])
+        write_json(state_path, state)
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except (OSError, ValueError, GLib.Error, subprocess.SubprocessError) as error:
+        message = 'Zathura regexp search: ' + str(error)
+        print(message, file=sys.stderr)
+        # A shortcut launched by Zathura has no interactive terminal for errors.
+        explicit_pattern = any(arg == '--pattern' or arg.startswith('--pattern=')
+                               for arg in sys.argv[1:])
+        if not explicit_pattern and shutil.which('zenity'):
+            subprocess.run(['zenity', '--error', '--title=Zathura regexp search',
+                            '--text=' + message], check=False)
+        sys.exit(1)

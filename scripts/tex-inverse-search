@@ -1,0 +1,128 @@
+#!/usr/bin/env python3
+"""Route SyncTeX clicks to a literal code reference or the LaTeX source."""
+
+import argparse
+import json
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+
+def vim_string(value):
+    return "'" + value.replace("'", "''") + "'"
+
+
+def group(text, offset):
+    while offset < len(text) and text[offset].isspace():
+        offset += 1
+    if offset >= len(text) or text[offset] != "{":
+        raise ValueError("Expected a braced argument")
+    start = offset + 1
+    depth = 1
+    offset = start
+    while offset < len(text):
+        if text[offset] == "\\":
+            offset += 2
+            continue
+        if text[offset] == "{":
+            depth += 1
+        elif text[offset] == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start:offset], offset + 1
+        offset += 1
+    raise ValueError("Unclosed braced argument")
+
+
+def code_reference(source, line, column):
+    # Only generated navigation markers contain targets. Plain TeX, comments,
+    # macro definitions and verbatim examples retain normal inverse search.
+    with source.open() as stream:
+        if stream.readline().rstrip() != "% coderef-generated-v1":
+            return None
+        text = stream.readline().strip()
+    prefix = r"\codereftarget"
+    if not text.startswith(prefix):
+        raise ValueError("Invalid code-reference marker; recompile the report")
+    arguments = []
+    offset = len(prefix)
+    for _ in range(4):
+        argument, offset = group(text, offset)
+        arguments.append(argument.strip())
+    origin, file, first, last = arguments
+    if not Path(origin).is_absolute():
+        raise ValueError("Code references need -recorder; recompile the report twice")
+    if not re.fullmatch(r"[0-9]+", first) or not re.fullmatch(r"[0-9]+", last):
+        raise ValueError("Code-reference line numbers must be literal positive integers")
+    if int(first) < 1 or int(last) < int(first):
+        raise ValueError("Invalid code-reference line range")
+    if not file or "\\" in file or "\n" in file or "\0" in file:
+        raise ValueError("Code-reference paths must be literal paths on one line")
+    target = Path(file).expanduser()
+    if not target.is_absolute():
+        target = Path(origin).parent / target
+    return {"file": str(target.resolve()), "line": int(first), "end": int(last), "code": 1}
+
+
+def vim_call(vim, backend, arguments):
+    command = [vim]
+    if backend == "socket":
+        command += ["--clientserver", "socket"]
+    return subprocess.run(command + arguments, capture_output=True, text=True, timeout=5)
+
+
+def remote(vim, backend, server, expression):
+    result = vim_call(vim, backend, ["--servername", server, "--remote-expr", expression])
+    if result.returncode or "Send expression failed" in result.stdout + result.stderr:
+        raise ValueError(f"Vim session {server} is unavailable: {(result.stderr or result.stdout).strip()}")
+    return result.stdout.strip()
+
+
+def destination(vim, backend, origin, file):
+    servers = vim_call(vim, backend, ["--serverlist"])
+    if servers.returncode:
+        raise ValueError("Could not list Vim sessions: " + servers.stderr.strip())
+    names = list(dict.fromkeys([origin] + servers.stdout.splitlines()))
+    best, score = origin, 0
+    for server in names:
+        try:
+            found = int(remote(vim, backend, server, f"coderef#Score({vim_string(file)})"))
+        except (ValueError, subprocess.TimeoutExpired):
+            continue
+        if found > score:
+            best, score = server, found
+    return best
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--vim", required=True)
+    parser.add_argument("--server", required=True)
+    parser.add_argument("--backend", choices=["x11", "socket"], default="x11")
+    parser.add_argument("--source", required=True, type=Path)
+    parser.add_argument("--line", required=True, type=int)
+    parser.add_argument("--column", type=int, default=1)
+    args = parser.parse_args()
+    source = args.source.expanduser().resolve()
+    if args.line < 1:
+        raise ValueError("SyncTeX supplied an invalid source line")
+    request = code_reference(source, args.line, args.column)
+    server = args.server
+    if request is None:
+        request = {"file": str(source), "line": args.line, "column": max(1, args.column)}
+    else:
+        server = destination(args.vim, args.backend, server, request["file"])
+    # Pass paths as JSON data in a quoted Vim string, never as Ex commands.
+    expression = "coderef#Open(json_decode(" + vim_string(json.dumps(request)) + "))"
+    result = json.loads(remote(args.vim, args.backend, server, expression))
+    if not result.get("ok"):
+        raise ValueError(result.get("error", "Vim could not complete the jump"))
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (OSError, ValueError, subprocess.TimeoutExpired) as error:
+        print(f"tex-inverse-search: {error}", file=sys.stderr)
+        sys.exit(1)
