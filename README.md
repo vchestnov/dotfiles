@@ -172,6 +172,18 @@ This repo reflects my preferences; it is not intended to be a universal solution
 
 ## Notes
 
+- `ff-personal` and `ff-maths` launch the corresponding Firefox
+  profiles from the terminal or dmenu. Extra arguments are passed to Firefox,
+  for example `ff-maths --new-window https://arxiv.org`.
+  The maintained dwm binds Alt+Ctrl+P to `ff-personal --new-tab about:newtab`
+  and Alt+Ctrl+M to `ff-maths --new-tab about:newtab`.
+  The launchers live in `scripts/`; `makesymlinks.sh desktop` (or `server`)
+  links them into `~/.local/bin` with the other user scripts.
+  They require Python 3 and resolve display names from Firefox's local profile
+  metadata, supporting the newer profile manager and legacy `profiles.ini`.
+  Profile directories and browser data stay outside Git. Snap, native, and XDG
+  profile locations are searched; set `FIREFOX_PROFILE_ROOT` to the directory
+  containing `profiles.ini` and/or `Profile Groups` to select one installation.
 - `monitor on` detects the connected external screen and enables it above the
   laptop. It prefers `3440x1440`, then `1920x1080`, then the monitor's preferred
   mode. `monitor off` disables external outputs. All commands configure only

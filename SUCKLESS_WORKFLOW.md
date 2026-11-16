@@ -117,6 +117,13 @@ changing modes or enabling disabled outputs. An arrangement failure is logged an
 login continues with the existing layout. Install launcher changes with the
 command above; rebuilding dwm alone does not update the launcher.
 
+## Firefox profiles in dwm
+
+Alt+Ctrl+P runs `ff-personal --new-tab about:newtab`; Alt+Ctrl+M runs
+`ff-maths --new-tab about:newtab`. Each shortcut opens a tab in that profile's
+window, starting the profile if needed. The helpers live in `dotfiles/scripts/`
+and are linked into `~/.local/bin` by `makesymlinks.sh desktop` (or `server`).
+
 ## Per-tag layouts in dwm
 
 Alt+Shift+M runs `monitor toggle` from `~/.local/bin`: it disables external outputs

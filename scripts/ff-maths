@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+script_path=$(readlink -f -- "${BASH_SOURCE[0]}")
+exec /usr/bin/python3 "$(dirname -- "$script_path")/lib/firefox-profile.py" maths "$@"
