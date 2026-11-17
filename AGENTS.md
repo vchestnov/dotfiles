@@ -45,7 +45,14 @@ that modify shell startup files. Cover repeat upgrades in `tests/amflow_installe
 - Creates missing parent directories, preserves existing paths as timestamped backups, and replaces
   incorrect symlinks safely.
 - Supports standalone inspection with `--dry`.
-- Must not install packages, clone repositories, or generate machine state.
+- Must not install packages, clone repositories, or generate unrelated machine state.
+
+Codex profiles are writable application configuration. Merge the shared defaults
+into a regular host-local profile with `scripts/lib/codex-profile.py`; never link
+the active profile into Git. Preserve local settings and project trust when
+migrating old symlinks or reapplying defaults. The host-local defaults snapshot
+supports comparison on later syncs; keep it outside Git. Python 3.11+ is required
+for this optional configuration sync. Cover it in `tests/codex_profile.sh`.
 
 `bootstrap.sh` calls `makesymlinks.sh` with the selected profile. Keep profile meaning aligned, but do
 not force both scripts to share identical flags: installation and configuration have different scopes.
@@ -75,6 +82,9 @@ not force both scripts to share identical flags: installation and configuration 
   this derives `RISKY_COMPONENTS`. Never make them profile defaults.
 - Put persistent configuration in the repository and link it with `makesymlinks.sh`. Keep secrets,
   credentials, generated state, and host-local data outside Git.
+- Keep Codex project trust records and CLI-saved settings in the machine's local
+  configuration files, outside `config/codex/dotfiles.config.toml`. The selected
+  local profile may contain trust records because Codex saves them there.
 - Resolve repository assets relative to `SCRIPT_DIR` or `DOTFILES_DIR`; do not assume the current directory.
 - Preserve unrelated working-tree changes. Never clone or hard-reset this dotfiles repository from bootstrap.
 
@@ -91,9 +101,11 @@ not force both scripts to share identical flags: installation and configuration 
 Run after changing either script:
 
 ```sh
-bash -n bootstrap.sh makesymlinks.sh tests/bootstrap_cli.sh
+bash -n bootstrap.sh makesymlinks.sh tests/bootstrap_cli.sh tests/amflow_installer.sh tests/codex_profile.sh
 for script in bootstrap/*.sh bootstrap/installers/*.sh; do bash -n "$script"; done
 bash tests/bootstrap_cli.sh
+bash tests/amflow_installer.sh
+bash tests/codex_profile.sh
 bash tests/suckless_workflow.sh
 ./bootstrap.sh desktop --dry-run
 ./bootstrap.sh server --dry-run

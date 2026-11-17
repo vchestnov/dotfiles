@@ -216,7 +216,7 @@ for profile in desktop server nothing test; do
     case "$profile" in
         desktop|server)
             grep -Fq -- "-> $codex_home/.codex/dotfiles.config.toml" "$tmp_dir/codex-$profile.out" \
-                || fail "$profile profile must link Codex preferences in the default location"
+                || fail "$profile profile must sync Codex preferences in the default location"
             ;;
         nothing|test)
             if grep -Fq 'dotfiles.config.toml' "$tmp_dir/codex-$profile.out"; then
@@ -231,26 +231,26 @@ codex_target="$codex_home/custom codex/dotfiles.config.toml"
 HOME="$codex_home" CODEX_HOME="${codex_target%/*}" DOTFILES_DIR="$repo_dir" \
     "$repo_dir/makesymlinks.sh" --dry nothing --codex > "$tmp_dir/codex-targeted.out"
 grep -Fq -- "$codex_source -> $codex_target" "$tmp_dir/codex-targeted.out" \
-    || fail 'targeted Codex link ignored CODEX_HOME'
+    || fail 'targeted Codex sync ignored CODEX_HOME'
 [[ ! -e "${codex_target%/*}" ]] || fail 'targeted Codex dry-run created CODEX_HOME'
 
 mkdir -p "${codex_target%/*}/sessions"
-printf 'original profile\n' > "$codex_target"
+printf 'model = "host-local-model"\n' > "$codex_target"
 for file in config.toml auth.json history.jsonl sessions/local-state; do
     printf 'host-local %s\n' "$file" > "${codex_target%/*}/$file"
 done
 HOME="$codex_home" CODEX_HOME="${codex_target%/*}" DOTFILES_DIR="$repo_dir" \
     "$repo_dir/makesymlinks.sh" nothing --codex > "$tmp_dir/codex-link.out"
-[[ -L "$codex_target" && "$(readlink -- "$codex_target")" == "$codex_source" ]] \
-    || fail 'Codex profile link missing or incorrect'
+[[ -f "$codex_target" && ! -L "$codex_target" ]] \
+    || fail 'Codex profile must be a regular local file'
 codex_backups=("$codex_target".bak.*)
 [[ ${#codex_backups[@]} -eq 1 && -f "${codex_backups[0]}" ]] \
     || fail 'existing Codex profile was not backed up exactly once'
-grep -qx 'original profile' "${codex_backups[0]}" || fail 'Codex profile backup lost its contents'
+grep -qx 'model = "host-local-model"' "${codex_backups[0]}" || fail 'Codex profile backup lost its contents'
 HOME="$codex_home" CODEX_HOME="${codex_target%/*}" DOTFILES_DIR="$repo_dir" \
     "$repo_dir/makesymlinks.sh" nothing --codex > "$tmp_dir/codex-repeat.out"
-grep -Fq "Symlink already correct: $codex_target" "$tmp_dir/codex-repeat.out" \
-    || fail 'repeated Codex setup did not recognize the existing link'
+grep -Fq "Local Codex profile already current: $codex_target" "$tmp_dir/codex-repeat.out" \
+    || fail 'repeated Codex setup did not preserve the existing local profile'
 codex_backups=("$codex_target".bak.*)
 [[ ${#codex_backups[@]} -eq 1 ]] || fail 'repeated Codex setup created another backup'
 for file in config.toml auth.json history.jsonl sessions/local-state; do
@@ -294,5 +294,7 @@ bash "$repo_dir/tests/bootstrap_cli_tools.sh"
 bash "$repo_dir/tests/ssh_agent.sh"
 bash "$repo_dir/tests/lsp_installers.sh"
 bash "$repo_dir/tests/nvm_shell.sh"
+bash "$repo_dir/tests/amflow_installer.sh"
+bash "$repo_dir/tests/codex_profile.sh"
 
 printf 'bootstrap CLI checks passed\n'

@@ -20,7 +20,7 @@ Most of the setup is shell-driven and designed to be readable, hackable, and eas
   Intended to be run on a fresh or semi-fresh system.
 
 - `makesymlinks.sh`  
-  Creates symlinks from this repository into `$HOME`, keeping dotfiles version-controlled while remaining editable in place.
+  Links configuration into `$HOME` and synchronizes writable Codex profiles from shared defaults.
 
 - `config/`, `dotfiles/`, etc.  
   Application-specific configuration (window manager, terminal, editor, CLI tools).
@@ -125,21 +125,29 @@ Use `command codex` to bypass the alias, for example to select another profile.
 
 After transferring repository changes to the server, use the same commands there,
 or run `./makesymlinks.sh server` as part of the normal server configuration setup.
-The link script preserves an existing profile file as a timestamped `.bak` backup.
+The sync requires Python 3.11+ and preserves changed profiles as timestamped
+`.bak` copies. Existing profile symlinks are migrated to regular local files;
+their contents, including trust records, are preserved. Backups contain the old
+contents rather than another link into the repository.
 Use a current Codex CLI; separate profile files require version 0.134.0 or later
 (see [Codex profiles](https://learn.chatgpt.com/docs/config-file/config-advanced#profiles)).
 
-The shared profile contains the laptop's model and reasoning defaults, status line,
-dense session picker, status colors, and `Alt-V` / `F1` key bindings. Edit the file
-in this repository to change shared preferences, then transfer those changes to
-the other machine. Changes saved by the CLI to a machine's base `config.toml`
-are not automatically exported; copy wanted preferences into the shared profile.
-The selected profile overrides matching base settings; project configuration and
-explicit CLI flags can override the profile.
+The shared defaults contain model and reasoning preferences, status line, dense
+session picker, status colors, and `Alt-V` / `F1` key bindings. Edit this repository
+file to change shared preferences, then transfer and synchronize it on each machine.
+The local `.dotfiles-profile-defaults.toml` snapshot records the last shared defaults:
+later syncs update or remove defaults that are still unchanged locally. Local
+overrides and deletions are preserved, including when the shared value also changes.
+On the first sync, existing local settings take precedence. Project trust is never
+distributed from the shared template to a new profile.
 
-Each machine keeps its own `config.toml`, project trust records, login credentials,
-rules, sessions, history, caches, and other runtime state. Only the named profile
-is linked; `~/.codex` itself stays local. Log in separately on each machine.
+Changes saved through Codex stay local. Copy only preferences you want to share
+back into the repository template. The selected profile overrides matching base
+settings; project configuration and explicit CLI flags can override the profile.
+
+Each machine keeps its own `config.toml`, writable `dotfiles.config.toml`, defaults
+snapshot, project trust records, login credentials, rules, sessions, history,
+caches, and other runtime state. `~/.codex` stays local. Log in separately on each machine.
 The `nothing` and `test` link profiles leave Codex alone unless `--codex` is given.
 
 Repository-local agent skills are backed up under `.agents/skills`, with source

@@ -1,5 +1,5 @@
-# Shared preferences for: codex --profile dotfiles
-# Keep credentials, project trust, and generated state in the host's CODEX_HOME.
+# Shared defaults merged into the local profile by makesymlinks.sh --codex.
+# Keep project trust and CLI-saved changes in CODEX_HOME, never symlink this file.
 model = "gpt-6.1-sol"
 model_reasoning_effort = "xhigh"
 

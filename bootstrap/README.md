@@ -195,6 +195,12 @@ System assets are installed from repository files. For generated files containin
 host paths, use `write_generated_file PATH [MODE]` with a heredoc; it backs up
 changed paths and never writes through an existing symlink.
 
+Codex is a writable configuration exception: `makesymlinks.sh nothing --codex`
+merges shared defaults into a regular local profile and preserves local trust and
+preference changes. Its last-defaults snapshot stays in `CODEX_HOME`. Never
+symlink the live profile into the repository; see
+[shared Codex preferences](../README.md#shared-codex-cli-preferences).
+
 ## Suckless tools
 
 `dwm` still selects all five maintained tools and their desktop integration.
@@ -213,9 +219,11 @@ identify them. Required command failures return the failing command's status.
 Cancelled plans, listings, and dry runs do not write run state.
 
 ```bash
-bash -n bootstrap.sh makesymlinks.sh tests/bootstrap_cli.sh
+bash -n bootstrap.sh makesymlinks.sh tests/bootstrap_cli.sh tests/amflow_installer.sh tests/codex_profile.sh
 for script in bootstrap/*.sh bootstrap/installers/*.sh; do bash -n "$script"; done
 bash tests/bootstrap_cli.sh
+bash tests/amflow_installer.sh
+bash tests/codex_profile.sh
 bash tests/suckless_workflow.sh
 ./bootstrap.sh desktop --dry-run
 ./bootstrap.sh server --dry-run

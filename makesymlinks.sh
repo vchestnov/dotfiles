@@ -11,6 +11,7 @@ set -Eeuo pipefail # Exit on error, undefined var; fail pipelines
 # ============================================================
 
 DOTFILES_DIR="${DOTFILES_DIR:-$HOME/dotfiles}"
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
 
@@ -163,6 +164,18 @@ link_file() {
 
     ln -s -- "$src" "$dest"
     log_info "Linked: $dest -> $src${label:+ ($label)}"
+}
+
+sync_codex_profile() {
+    local source="$DOTFILES_DIR/config/codex/dotfiles.config.toml"
+    local -a arguments=()
+    if [[ ! -f "$source" ]]; then
+        log_warn "Source missing, skipping: $source (Codex shared defaults)"
+        return 0
+    fi
+    if (( DRY_RUN )); then arguments+=(--dry-run); fi
+    python3 "$SCRIPT_DIR/scripts/lib/codex-profile.py" "${arguments[@]}" \
+        "$source" "$CODEX_HOME/dotfiles.config.toml"
 }
 
 # =============================================================================
@@ -375,13 +388,11 @@ if \
 fi
 
 # =============================================================================
-# SECTION 03B: Shared Codex profile (base config and state stay host-local)
+# SECTION 03B: Local Codex profile merged with shared defaults
 # =============================================================================
 
 if (( DO_CODEX )); then
-    link_file "$DOTFILES_DIR/config/codex/dotfiles.config.toml" \
-              "$CODEX_HOME/dotfiles.config.toml" \
-              "Codex profile (codex --profile dotfiles)"
+    sync_codex_profile
 fi
 
 # =============================================================================
