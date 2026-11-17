@@ -156,9 +156,14 @@ register_component fermat \
     --installer install_fermat --file science.sh \
     --method 'pinned source release'
 
+register_component amflow \
+    --installer install_amflow --file amflow.sh \
+    --method 'tracked upstream source + C++ solver'
+
 register_component science-extra \
     --installer install_science_extra --file science.sh \
-    --method 'tracked upstream source'
+    --method 'tracked upstream source' \
+    --requires amflow
 
 register_component singular \
     --installer install_singular --file singular.sh \
@@ -218,5 +223,5 @@ register_component media \
     --method 'apt/system' \
     --sudo true
 
-register_group science 'gmp,ntl,mpfr,flint,julia,qd,finiteflow,finiteflow32,blade,gfan,fermat,msolve,science-extra'
+register_group science 'gmp,ntl,mpfr,flint,julia,qd,finiteflow,finiteflow32,blade,gfan,fermat,msolve,amflow,science-extra'
 register_group desktop-apps 'krita,messengers,media'

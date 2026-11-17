@@ -56,6 +56,23 @@ run_plan leaf-only nothing --only leaf
 grep -q '^  leaf[[:space:]]\+pinned upstream binary$' "$tmp_dir/leaf-only.out" \
     || fail 'leaf component was not independently selectable'
 
+run_plan amflow-only nothing --only amflow
+grep -q '^  amflow[[:space:]]\+tracked upstream source + C++ solver$' "$tmp_dir/amflow-only.out" \
+    || fail 'AMFlow must be independently selectable with its native solver'
+if grep -q '^  system-base[[:space:]]' "$tmp_dir/amflow-only.out"; then
+    fail 'AMFlow must not require sudo on servers with existing dependencies'
+fi
+run_plan science-extra-amflow nothing --only science-extra
+awk '/^  [a-z]/ {print $1}' "$tmp_dir/science-extra-amflow.out" > "$tmp_dir/science-extra-order.out"
+printf '%s\n' amflow science-extra > "$tmp_dir/science-extra-expected.out"
+cmp -s "$tmp_dir/science-extra-order.out" "$tmp_dir/science-extra-expected.out" \
+    || fail 'science-extra must select AMFlow once, before cloning the other packages'
+if "$bootstrap" nothing --only science-extra --skip amflow --dry-run > "$tmp_dir/amflow-prerequisite-error.out" 2>&1; then
+    fail 'science-extra accepted an explicitly skipped AMFlow prerequisite'
+fi
+grep -q 'science-extra requires amflow' "$tmp_dir/amflow-prerequisite-error.out" \
+    || fail 'AMFlow prerequisite refusal was unclear'
+
 cli_tools=(zoxide eza dust tlrc duf procs)
 for profile in desktop server; do
     for component in "${cli_tools[@]}"; do

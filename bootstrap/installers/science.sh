@@ -428,8 +428,7 @@ install_science_extra() {
     clone_sci_repo "Libra"     "https://github.com/rnlg/Libra.git"
     clone_sci_repo "Fermatica" "https://github.com/rnlg/Fermatica.git"
 
-    # AMFlow / CalcLoop
-    clone_sci_repo "amflow"   "https://gitlab.com/multiloop-pku/amflow.git"
+    # CalcLoop (AMFlow is a registry prerequisite of science-extra.)
     clone_sci_repo "calcloop" "https://gitlab.com/multiloop-pku/calcloop.git"
 
     # BaikovLetter

@@ -87,12 +87,31 @@ Validate profile resolution and safety rules without installing anything:
 bash tests/bootstrap_cli.sh
 ```
 
+### AMFlow 2.0
+
+AMFlow is included in the scientific components and can also be updated on its own:
+
+```sh
+./bootstrap.sh nothing --only amflow --dry-run
+./bootstrap.sh nothing --only amflow
+```
+
+The installer builds the native solver and WSTP link in the cache and backs up
+replaced executables. Local Git excludes keep those binaries and backups from
+blocking later upgrades; source edits, reducer settings, and calculation results
+are preserved. See [AMFlow installation details](bootstrap/README.md#amflow-20)
+for dependencies, WSTP detection, and validation limits.
+
 ### Shared Codex CLI preferences
 
-The `desktop` and `server` link profiles install the shared
-[Codex profile](config/codex/dotfiles.config.toml) at
-`${CODEX_HOME:-$HOME/.codex}/dotfiles.config.toml`. To link just this file on an
-existing machine, preview and apply it from this checkout:
+See the [Codex permissions and unattended work reference](cheatsheets/cli/codex.md)
+(`cht codex`) for approval boundaries, automatic review, and overnight task examples.
+
+The `desktop` and `server` configuration profiles merge the shared
+[Codex defaults](config/codex/dotfiles.config.toml) into a regular local file at
+`${CODEX_HOME:-$HOME/.codex}/dotfiles.config.toml`. Codex saves settings and project
+trust into its active profile, so this file must stay outside Git. To synchronize
+just Codex configuration, preview and apply it from this checkout:
 
 ```sh
 DOTFILES_DIR="$PWD" ./makesymlinks.sh --dry nothing --codex

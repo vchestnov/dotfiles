@@ -94,6 +94,42 @@ user-local `go` toolchain component. The `tlrc` component installs the command
 integration, follow its [upstream setup instructions](https://github.com/ajeetdsouza/zoxide#installation)
 in the repository-managed shell configuration.
 
+## AMFlow 2.0
+
+`./bootstrap.sh nothing --only amflow` updates AMFlow by fast-forward when its
+checkout is clean, then builds `diffeq_solver/desolver` and the WSTP `link` binary.
+`science-extra` also selects this component. Dirty source trees, reducer paths,
+example settings, and calculation results are preserved. AMFlow uses the shared
+Git update helper; no release pin is needed.
+
+Ubuntu 24.04 desktop base packages include `libgmp-dev`, `libmpfr-dev`,
+`libmpc-dev`, `libyaml-cpp-dev`, `libboost-dev` (Boost >= 1.83), and `mpsolve`.
+On servers, supply these dependencies in the system or `$SCI_PREFIX` first;
+missing dependencies produce an incomplete component report. No sudo or
+shell startup edits are performed by the AMFlow installer.
+
+The installer detects the WSTP Developer Kit through the installed Wolfram
+commands, including symlinked installations such as `/opt/bin/math`, without
+starting a licensed kernel. Override detection with `AMFLOW_WSTP_DIR` pointing
+at `.../SystemFiles/Links/WSTP/DeveloperKit/Linux-x86-64`. `AMFLOW_DIR` overrides
+the checkout location (default `$SCI_REPOS_DIR/amflow`). Compilation and generated
+configuration stay under `$BUILD_DIR`; only the executables are installed into
+the checkout. Existing differing executables are backed up.
+
+The installer adds local `.git/info/exclude` rules only for `diffeq_solver/desolver`,
+`diffeq_solver/link`, and their `.backup.*` files. It adds these rules
+before checking an existing clone for updates, including clones built by older
+installers. Existing exclude rules are preserved, and repeated runs leave them
+unchanged. Upstream `.gitignore` stays untouched; tracked edits and other
+untracked files still prevent automatic updates.
+
+If the WSTP kit is missing, only `desolver` is built and the component is marked
+incomplete. The traditional Wolfram backend is available with
+`SetAMFOptions["DESolver" -> "MMA"]`. A working Wolfram licence is required to
+validate package loading, the WSTP link, and reducer calculations; building the
+link alone does not validate them. Run numerical checks in a temporary copy of
+`diffeq_solver/check` so generated results do not overwrite scientific work.
+
 ## Language servers
 
 The LSP installer reuses an existing clangd by default. Set

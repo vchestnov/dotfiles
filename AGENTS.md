@@ -29,6 +29,15 @@ The `dwm` component installs all five tools from `config/suckless.lock` through
 for source maintenance. Bootstrap must not patch these tools, merge upstream, change
 existing remotes, or delete their maintained checkouts. `wipe-suckless` was removed.
 
+The `amflow` component builds AMFlow's native solver and WSTP link in the cache,
+then installs the executables into its checkout with backups. Add local Git
+exclusions only for those executables and backups, preserving the clone's existing
+`.git/info/exclude` rules. Configure these exclusions before the shared Git update
+helper checks an existing clone.
+Tracked edits, reducer settings, and calculation results must still prevent
+automatic updates. Do not change upstream `.gitignore` or run upstream installers
+that modify shell startup files. Cover repeat upgrades in `tests/amflow_installer.sh`.
+
 ### `makesymlinks.sh`
 
 - Distributes Git-backed configuration from `DOTFILES_DIR` into `$HOME` and XDG locations.

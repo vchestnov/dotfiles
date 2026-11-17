@@ -22,6 +22,11 @@ install_system_base() {
         unzip \
         gettext \
         libboost-dev \
+        libgmp-dev \
+        libmpfr-dev \
+        libmpc-dev \
+        libyaml-cpp-dev \
+        mpsolve \
         libjson-perl \
         libperl-dev \
         libreadline-dev \
