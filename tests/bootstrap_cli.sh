@@ -73,6 +73,12 @@ fi
 grep -q 'science-extra requires amflow' "$tmp_dir/amflow-prerequisite-error.out" \
     || fail 'AMFlow prerequisite refusal was unclear'
 
+run_plan pysecdec-only server --only pysecdec
+awk '/^  [a-z]/ {print $1}' "$tmp_dir/pysecdec-only.out" > "$tmp_dir/pysecdec-components.out"
+printf 'pysecdec\n' > "$tmp_dir/pysecdec-expected.out"
+cmp -s "$tmp_dir/pysecdec-components.out" "$tmp_dir/pysecdec-expected.out" \
+    || fail 'pySecDec must be selectable without unrelated components or sudo'
+
 cli_tools=(zoxide eza dust tlrc duf procs)
 for profile in desktop server; do
     for component in "${cli_tools[@]}"; do
@@ -293,6 +299,7 @@ bash "$repo_dir/tests/bootstrap_runner.sh"
 bash "$repo_dir/tests/bootstrap_cli_tools.sh"
 bash "$repo_dir/tests/ssh_agent.sh"
 bash "$repo_dir/tests/lsp_installers.sh"
+bash "$repo_dir/tests/pysecdec_installer.sh"
 bash "$repo_dir/tests/nvm_shell.sh"
 bash "$repo_dir/tests/amflow_installer.sh"
 bash "$repo_dir/tests/codex_profile.sh"

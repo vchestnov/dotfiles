@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+script_path=$(readlink -f -- "${BASH_SOURCE[0]}")
+repo_dir=$(cd "$(dirname "$script_path")/.." && pwd)
+SCRIPT_DIR=$repo_dir
+source "$repo_dir/bootstrap/paths.sh"
+source "$repo_dir/bootstrap/lib.sh"
+
+python="${PYSECDEC_VENV_DIR:-$XDG_DATA_HOME/pysecdec}/bin/python"
+if [[ ! -x "$python" ]]; then
+    log_error 'Install pySecDec first: ./bootstrap.sh server --only pysecdec'
+    exit 1
+fi
+version=$("$python" -c 'import pySecDec; print(pySecDec.__version__)')
+downloads="$XDG_CACHE_HOME/bootstrap/downloads/pysecdec-$version-box1L"
+mkdir -p "$downloads" "$BUILD_DIR"
+work_dir=$(mktemp -d "$BUILD_DIR/pysecdec-box1L-$version.XXXXXX")
+phase=download
+trap 'status=$?; log_error "box1L $phase failed; retained work directory: $work_dir"; if [[ -f "$work_dir/$phase.log" ]]; then tail -n 30 "$work_dir/$phase.log" >&2; fi; exit "$status"' ERR
+
+for example in generate_box1L.py integrate_box1L.py; do
+    cached="$downloads/$example"
+    if [[ ! -s "$cached" ]]; then
+        download_file "https://raw.githubusercontent.com/secdec-research/secdec/v$version/examples/box1L/$example" "$cached.download"
+        mv -- "$cached.download" "$cached"
+    fi
+    cp -- "$cached" "$work_dir/$example"
+done
+
+log_info "pySecDec $version; box1L work directory: $work_dir"
+cd "$work_dir"
+phase=generation
+log_info 'Generating the upstream box1L integral through order epsilon^0'
+"$python" generate_box1L.py > generation.log 2>&1
+phase=build
+log_info 'Compiling the generated C++ integration library'
+make -C box1L -j"${PYSECDEC_JOBS:-${BUILD_JOBS:-$(default_build_jobs)}}" > build.log 2>&1
+phase=integration
+log_info 'Integrating at s=4, t=-0.75, s1=1.25, msq=1 and comparing with the analytic reference'
+"$python" - <<'PY' 2>&1 | tee integration.log
+import json
+import math
+from pathlib import Path
+import runpy
+
+namespace = runpy.run_path("integrate_box1L.py", run_name="__main__")
+values = namespace["values"]
+# Analytic coefficients printed by the upstream v1.6.6 example, including
+# its prefactor. The rounding allowance exceeds their last printed digit.
+reference = {-2: complex(-0.1428571429), -1: complex(0.6384337090),
+             0: complex(-0.426354612, 1.866502363)}
+report = {"parameters": {"s": 4.0, "t": -0.75, "s1": 1.25, "msq": 1.0},
+          "epsrel": 1e-3, "epsabs": 1e-10, "coefficients": {}}
+passed = True
+for order, expected in reference.items():
+    value, error = map(complex, values[(order,)])
+    components = []
+    for actual, target, uncertainty in ((value.real, expected.real, error.real),
+                                         (value.imag, expected.imag, error.imag)):
+        components.append(all(map(math.isfinite, (actual, uncertainty)))
+                          and abs(actual - target) <= 5 * abs(uncertainty) + 1e-8)
+    ok = all(components)
+    passed &= ok
+    report["coefficients"][str(order)] = {
+        "value": [value.real, value.imag], "error": [error.real, error.imag],
+        "reference": [expected.real, expected.imag], "passed": ok}
+    print(f"epsilon^{order}: {'PASS' if ok else 'FAIL'} (five estimated errors + rounding allowance)")
+report["passed"] = passed
+Path("validation.json").write_text(json.dumps(report, indent=2) + "\n")
+if not passed:
+    raise SystemExit("box1L disagrees with the analytic reference")
+PY
+log_success "box1L passed; logs and validation.json: $work_dir"

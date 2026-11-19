@@ -165,6 +165,10 @@ register_component science-extra \
     --method 'tracked upstream source' \
     --requires amflow
 
+register_component pysecdec \
+    --installer install_pysecdec --file pysecdec.sh \
+    --method 'pinned Python release in isolated venv'
+
 register_component singular \
     --installer install_singular --file singular.sh \
     --method 'pinned source release'

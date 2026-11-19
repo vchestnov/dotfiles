@@ -94,6 +94,31 @@ user-local `go` toolchain component. The `tlrc` component installs the command
 integration, follow its [upstream setup instructions](https://github.com/ajeetdsouza/zoxide#installation)
 in the repository-managed shell configuration.
 
+## pySecDec
+
+Install with `./bootstrap.sh server --only pysecdec`. This optional component
+installs the pinned `PYSECDEC_VERSION` release and its dependencies into
+`$XDG_DATA_HOME/pysecdec`, preferring binary wheels. It requires Python 3.8+ with
+venv support, a C++ compiler, and GNU Make 4+; it never uses sudo. pySecDec keeps
+its bundled native tools within the environment. Existing scientific libraries
+and the system Python environment are not modified.
+
+Activate with `source ~/.local/share/pysecdec/bin/activate`, or invoke
+`~/.local/share/pysecdec/bin/python` directly. Override `PYSECDEC_PYTHON` to select
+the Python used to create the environment, and `PYSECDEC_VENV_DIR` to change its
+location. Existing unrecognized environments are preserved with an actionable
+error instead of being overwritten.
+
+Run `scripts/check-pysecdec-box1l` after installation. It downloads the upstream
+example matching the installed release, generates and compiles the integral,
+and compares its three Laurent coefficients at `s=4`, `t=-0.75`, `s1=1.25`,
+`msq=1` with the upstream analytic reference. Comparisons allow five estimated
+integration errors per real/imaginary part plus rounding of the reference.
+Every run gets a fresh directory under `$BUILD_DIR` with generation/build logs,
+the numerical output, and `validation.json`. `PYSECDEC_JOBS` controls compilation
+parallelism. This numerical check needs downloads and a compiler; the isolated
+`tests/pysecdec_installer.sh` fixtures run as part of the normal CLI checks.
+
 ## AMFlow 2.0
 
 `./bootstrap.sh nothing --only amflow` updates AMFlow by fast-forward when its

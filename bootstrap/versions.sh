@@ -4,6 +4,7 @@ set -Eeuo pipefail
 # Central release defaults. Git-based scientific projects intentionally track
 # their configured upstream branch; release-only dependencies remain explicit.
 : "${JULIA_VERSION:=1.12.6}"
+: "${PYSECDEC_VERSION:=1.6.6}"
 : "${GMP_VERSION:=6.3.0}"
 : "${NTL_VERSION:=11.6.0}"
 : "${MPFR_VERSION:=4.2.2}"
