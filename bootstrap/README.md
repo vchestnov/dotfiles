@@ -130,6 +130,20 @@ validate package loading, the WSTP link, and reducer calculations; building the
 link alone does not validate them. Run numerical checks in a temporary copy of
 `diffeq_solver/check` so generated results do not overwrite scientific work.
 
+## Blade and FLINT upgrades
+
+Blade's native search and solver code uses full FLINT directly, in addition to
+its FiniteFlow dependency. The minimal `flint-finiteflow-dep` library does not
+provide the matrix routines Blade needs.
+
+After a FLINT ABI change, rebuild Blade with an unused `BLADE_BUILD_DIR` under
+`$BUILD_DIR` so CMake selects the current headers and libraries through
+`SCI_PREFIX`. Preserve the old installed tools before replacing them, then check
+`bin/{redg1,fitrel,ssolve,recmod,dynamicrr}` and `lib/libsearch.so` with `ldd -r`.
+Validate a forced `"BladeMode" -> Full` reduction against plain IBP; an automatic
+one-loop example can choose plain IBP and leave the compiled search path untested.
+Keep the custom-cache patch on the maintained Blade branch when rebuilding.
+
 ## Language servers
 
 The LSP installer reuses an existing clangd by default. Set
