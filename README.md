@@ -153,6 +153,24 @@ The `nothing` and `test` link profiles leave Codex alone unless `--codex` is giv
 Repository-local agent skills are backed up under `.agents/skills`, with source
 metadata in `skills-lock.json`.
 
+### npm global installs and Codex updates
+
+The shared Node shell configuration uses nvm when installed. Without nvm, it
+exports `NPM_CONFIG_PREFIX="$HOME/.local"`, including to npm processes started by
+Codex. Global installs then use a user-owned directory on desktop and server.
+The npm config file keeps `prefix` unset because nvm rejects that setting.
+
+After syncing this checkout, reload the helper in an existing shell and update:
+
+```sh
+source "${XDG_CONFIG_HOME:-$HOME/.config}/nvm/shell.bash"
+npm config get prefix
+npm install -g @openai/codex
+```
+
+The prefix should be `~/.local` with system Node, or the selected Node version's
+directory under nvm. New Bash terminals load this helper automatically.
+
 ## Assumptions
 
 * Ubuntu 24.04 for the desktop profile

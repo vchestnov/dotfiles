@@ -1,2 +1,2 @@
-; prefix=${HOME}/.local
+; config/nvm/shell.bash selects the global prefix; keep this file nvm-compatible.
 cache=${HOME}/.cache/npm

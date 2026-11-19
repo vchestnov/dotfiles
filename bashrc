@@ -336,12 +336,9 @@ openxm() {
     command openxm "$@"
 }
 
-# Activate the managed Node toolchain and its language-server commands.
-if [[ -r "$XDG_CONFIG_HOME/nvm/env.sh" ]]; then
-    source "$XDG_CONFIG_HOME/nvm/env.sh" --no-use
-    if [[ -r "$XDG_CONFIG_HOME/nvm/shell.bash" ]]; then
-        source "$XDG_CONFIG_HOME/nvm/shell.bash"
-    elif declare -F nvm >/dev/null; then
-        nvm use --silent default
-    fi
+# Select nvm when installed, or a user-local npm prefix with system Node.
+if [[ -r "$XDG_CONFIG_HOME/nvm/shell.bash" ]]; then
+    source "$XDG_CONFIG_HOME/nvm/shell.bash"
+elif [[ -r "$XDG_CONFIG_HOME/nvm/env.sh" ]]; then
+    source "$XDG_CONFIG_HOME/nvm/env.sh"
 fi

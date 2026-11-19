@@ -43,6 +43,12 @@ fi
 EOF
 
     # Load nvm in the current bootstrap session.
+    # A system-Node shell can supply our user-local npm fallback; nvm owns the
+    # prefix once installed. Preserve unrelated explicit prefix overrides.
+    if [[ -n "${DOTFILES_NPM_FALLBACK_PREFIX:-}" \
+        && "${NPM_CONFIG_PREFIX:-}" == "$DOTFILES_NPM_FALLBACK_PREFIX" ]]; then
+        unset NPM_CONFIG_PREFIX DOTFILES_NPM_FALLBACK_PREFIX
+    fi
     # shellcheck disable=SC1090
     source "$nvm_env_file"
 
