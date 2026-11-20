@@ -25,7 +25,7 @@ case ${0##*/} in
 esac
 EOF
 chmod +x "$test_dir/bin/stub"
-for program in monitor ssh-agent xrdb xset setxkbmap xsetroot xss-lock slstatus; do
+for program in monitor ssh-agent xrdb xset setxkbmap xmodmap xsetroot xss-lock slstatus; do
     ln -s stub "$test_dir/bin/$program"
 done
 

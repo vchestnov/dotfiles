@@ -117,6 +117,32 @@ changing modes or enabling disabled outputs. An arrangement failure is logged an
 login continues with the existing layout. Install launcher changes with the
 command above; rebuilding dwm alone does not update the launcher.
 
+## Keyboard layouts and tmux
+
+Super+Space switches between English and Russian. Caps Lock emits F2, and
+Shift+Caps Lock toggles capitalization. `tmux.conf` uses F2 as its prefix. Press
+and release Caps Lock, then press the command key. Physical F2 also works, and
+Ctrl+b remains available as a secondary prefix. Press Caps Lock twice to send F2 to an application
+or an inner tmux session; Ctrl+b twice sends a literal Ctrl+b.
+
+| After the prefix | Action |
+| --- | --- |
+| h / j / k / l | Focus the left / lower / upper / right pane |
+| H / J / K / L | Resize toward that direction by five cells; keys can repeat |
+| \| | Split into left and right panes, keeping the working directory |
+| - | Split into upper and lower panes, keeping the working directory |
+| Tab | Return to the previous tmux window |
+| { / } | Swap with the previous / next pane in pane order |
+| z | Toggle pane zoom |
+| Space | Cycle pane layouts |
+| ; | Return to the previous pane |
+| ! | Move the pane into its own window |
+
+Install the updated session launcher with the command above for future logins.
+Reload tmux with `tmux source-file ~/.tmux.conf` (or prefix+r). On remote machines,
+load the same tmux configuration; the keyboard mapping belongs on the local X
+desktop and needs no X11 forwarding.
+
 ## Firefox profiles in dwm
 
 Alt+Ctrl+P runs `ff-personal --new-tab about:newtab`; Alt+Ctrl+M runs
