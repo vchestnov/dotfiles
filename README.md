@@ -153,6 +153,34 @@ The `nothing` and `test` link profiles leave Codex alone unless `--codex` is giv
 Repository-local agent skills are backed up under `.agents/skills`, with source
 metadata in `skills-lock.json`.
 
+### Resume Codex sessions across accounts
+
+[`codex-resume`](scripts/codex-resume) lists saved interactive sessions across
+ChatGPT accounts and providers, then opens an `fzf` picker showing their update
+time, title, and directory. It resumes the selected UUID in its original directory
+using the `dotfiles` profile. The existing `codex` alias stays unchanged.
+
+```sh
+./scripts/codex-resume                   # Current directory, across accounts
+./scripts/codex-resume --all             # Every directory
+./scripts/codex-resume --all --query math
+./scripts/codex-resume --all --list      # Print metadata; do not open a session
+./scripts/codex-resume --all --dry-run   # Pick and inspect the launch command
+./scripts/codex-resume --profile personal
+```
+
+The helper needs Python 3, `fzf`, and a running local Codex app-server with
+`app-server proxy` and `thread/list` support (tested with Codex 0.170.0). If the
+daemon is stopped, start it explicitly with `command codex app-server daemon start`.
+`CODEX_HOME` is inherited normally; `--no-profile` uses the base configuration.
+Listing works without `fzf`. Escape cancels the picker.
+
+Only `initialize` and `thread/list` API requests are used to discover sessions;
+the helper does not edit history, account ownership, configuration, or login files.
+Codex's own checks still apply when resuming. The standard user-script linking in
+`makesymlinks.sh` installs the command for desktop and server setups. Run the
+offline checks with `python3 tests/codex_resume.py`.
+
 ### npm global installs and Codex updates
 
 The shared Node shell configuration uses nvm when installed. Without nvm, it

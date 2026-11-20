@@ -1,0 +1,275 @@
+#!/usr/bin/env python3
+"""Pick a local Codex session across ChatGPT accounts, then resume its UUID."""
+
+import argparse
+import asyncio
+import base64
+from contextlib import suppress
+from datetime import datetime
+import hashlib
+import json
+import os
+from pathlib import Path
+import shlex
+import shutil
+import subprocess
+import struct
+import sys
+import unicodedata
+from uuid import UUID
+
+
+class ResumeError(Exception):
+    pass
+
+
+class LocalWebSocket:
+    """RFC 6455 text frames over the daemon proxy's stdin/stdout streams."""
+
+    def __init__(self, reader, writer):
+        self.reader = reader
+        self.writer = writer
+        self.connected = False
+
+    async def connect(self):
+        key = base64.b64encode(os.urandom(16)).decode("ascii")
+        self.writer.write((
+            "GET / HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\n"
+            "Connection: Upgrade\r\nSec-WebSocket-Version: 13\r\n"
+            f"Sec-WebSocket-Key: {key}\r\n\r\n"
+        ).encode("ascii"))
+        await self.writer.drain()
+        response = (await self.reader.readuntil(b"\r\n\r\n")).decode("ascii")
+        status, *lines = response.split("\r\n")
+        headers = {name.lower(): value.strip() for name, value in
+                   (line.split(":", 1) for line in lines if ":" in line)}
+        accept = base64.b64encode(hashlib.sha1(
+            (key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").encode("ascii")
+        ).digest()).decode("ascii")
+        if status.split()[1:2] != ["101"] or headers.get("sec-websocket-accept") != accept:
+            raise ResumeError("the Codex proxy did not accept a WebSocket connection")
+        self.connected = True
+
+    async def send(self, payload, opcode=1):
+        mask = os.urandom(4)
+        size = len(payload)
+        if size < 126:
+            length = bytes([0x80 | size])
+        elif size < 65536:
+            length = bytes([0x80 | 126]) + struct.pack("!H", size)
+        else:
+            length = bytes([0x80 | 127]) + struct.pack("!Q", size)
+        masked = bytes(value ^ mask[index % 4] for index, value in enumerate(payload))
+        self.writer.write(bytes([0x80 | opcode]) + length + mask + masked)
+        await self.writer.drain()
+
+    async def receive(self):
+        message = bytearray()
+        started = False
+        while True:
+            first, second = await self.reader.readexactly(2)
+            final, opcode = bool(first & 0x80), first & 0x0F
+            if first & 0x70 or second & 0x80:
+                raise ResumeError("unsupported WebSocket frame from Codex")
+            size = second & 0x7F
+            if size in (126, 127):
+                width = 2 if size == 126 else 8
+                size = int.from_bytes(await self.reader.readexactly(width), "big")
+            if size > 8 * 1024 * 1024 or len(message) + size > 8 * 1024 * 1024:
+                raise ResumeError("Codex session-list response exceeds 8 MiB")
+            if opcode >= 8 and (not final or size > 125):
+                raise ResumeError("invalid WebSocket control frame from Codex")
+            payload = await self.reader.readexactly(size)
+            if opcode == 8:
+                raise ResumeError("Codex closed the session-list connection")
+            if opcode == 9:
+                await self.send(payload, opcode=10)
+                continue
+            if opcode == 10:
+                continue
+            if opcode not in (0, 1) or (opcode == 0) != started:
+                raise ResumeError("invalid WebSocket text frame from Codex")
+            started = True
+            message.extend(payload)
+            if final:
+                return json.loads(message)
+
+
+async def list_sessions(codex, cwd):
+    """Use the running daemon's API; never edit its databases or rollout files."""
+    process = await asyncio.create_subprocess_exec(
+        codex, "app-server", "proxy",
+        stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
+        limit=8 * 1024 * 1024,
+    )
+    websocket = LocalWebSocket(process.stdout, process.stdin)
+    request_id = 0
+
+    async def send(message):
+        await websocket.send(json.dumps(message).encode())
+
+    async def request(method, params):
+        nonlocal request_id
+        request_id += 1
+        await send({"id": request_id, "method": method, "params": params})
+
+        async def response():
+            while True:
+                message = await websocket.receive()
+                if "method" in message:
+                    if "id" in message:
+                        # Listing sessions never authorizes commands or file changes.
+                        await send({"id": message["id"], "error": {
+                            "code": -32601, "message": "Unsupported client request",
+                        }})
+                    continue
+                if message.get("id") != request_id:
+                    continue
+                if "error" in message:
+                    raise ResumeError(f"{method}: {message['error']['message']}")
+                return message["result"]
+
+        try:
+            return await asyncio.wait_for(response(), timeout=15)
+        except asyncio.TimeoutError as error:
+            raise ResumeError(f"timed out waiting for Codex {method}") from error
+
+    try:
+        try:
+            await asyncio.wait_for(websocket.connect(), timeout=15)
+        except asyncio.TimeoutError as error:
+            raise ResumeError("timed out connecting to the Codex daemon") from error
+        await request("initialize", {
+            "clientInfo": {"name": "dotfiles-resume", "version": "1.0"},
+        })
+        await send({"method": "initialized", "params": {}})
+        sessions = {}
+        cursor = None
+        seen_cursors = set()
+        while True:
+            page = await request("thread/list", {
+                "currentAccountOnly": False,
+                "modelProviders": [],
+                "archived": False,
+                "cwd": cwd,
+                "limit": 100,
+                "sortKey": "updated_at",
+                "sortDirection": "desc",
+                "cursor": cursor,
+            })
+            for thread in page["data"]:
+                if thread.get("path") is None:
+                    continue
+                # Retain the actual fields separately from the display text.
+                thread_id = str(UUID(thread["id"]))
+                if not Path(thread["cwd"]).is_absolute():
+                    raise ResumeError(f"session {thread_id} has a relative directory")
+                sessions[thread_id] = thread
+            cursor = page.get("nextCursor")
+            if cursor is None:
+                break
+            if cursor in seen_cursors:
+                raise ResumeError("Codex returned a repeated pagination cursor")
+            seen_cursors.add(cursor)
+        return sessions
+    except (asyncio.IncompleteReadError, ConnectionError) as error:
+        raise ResumeError(
+            "cannot read from the local Codex daemon; check the error above. "
+            "If it is stopped, run: codex app-server daemon start"
+        ) from error
+    finally:
+        if websocket.connected:
+            with suppress(ConnectionError):
+                await websocket.send(b"", opcode=8)
+        process.stdin.close()
+        try:
+            await asyncio.wait_for(process.wait(), timeout=2)
+        except asyncio.TimeoutError:
+            process.terminate()
+            try:
+                await asyncio.wait_for(process.wait(), timeout=2)
+            except asyncio.TimeoutError:
+                process.kill()
+                await process.wait()
+
+
+def display_text(value):
+    """Keep titles and paths on one line without terminal control sequences."""
+    return " ".join("".join(
+        " " if unicodedata.category(character) in ("Cc", "Cf") else character
+        for character in value
+    ).split())
+
+
+def session_rows(sessions):
+    rows = []
+    for thread_id, thread in sorted(
+        sessions.items(), key=lambda item: item[1]["updatedAt"], reverse=True,
+    ):
+        updated = datetime.fromtimestamp(thread["updatedAt"]).strftime("%Y-%m-%d %H:%M")
+        title = thread.get("name") or thread.get("preview") or "Untitled"
+        rows.append("\t".join([
+            thread_id, updated, display_text(title)[:160], display_text(thread["cwd"]),
+        ]))
+    return rows
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--all", action="store_true", help="include every directory")
+    parser.add_argument("--query", default="", help="prefill the fzf search")
+    profiles = parser.add_mutually_exclusive_group()
+    profiles.add_argument("--profile", default="dotfiles", help="Codex profile (default: dotfiles)")
+    profiles.add_argument("--no-profile", action="store_const", dest="profile", const=None,
+                          help="use the base Codex configuration")
+    actions = parser.add_mutually_exclusive_group()
+    actions.add_argument("--list", action="store_true", help="print UUID, updated time, title, directory")
+    actions.add_argument("--dry-run", action="store_true", help="pick a session and print its launch command")
+    args = parser.parse_args()
+    codex = shutil.which("codex")
+    if not codex:
+        raise ResumeError("codex is not on PATH")
+    fzf = None if args.list else shutil.which("fzf")
+    if not args.list and not fzf:
+        raise ResumeError("fzf is required for the picker; use --list to inspect sessions")
+    sessions = asyncio.run(list_sessions(codex, None if args.all else str(Path.cwd())))
+    rows = session_rows(sessions)
+    if args.list:
+        if rows:
+            print("\n".join(rows))
+        return
+    if not rows:
+        raise ResumeError("no saved sessions found; try --all to include other directories")
+    environment = dict(os.environ)
+    # User fzf bindings, multi-selection, or output options can change its result
+    # format. Use a predictable single-selection picker for session launching.
+    environment.pop("FZF_DEFAULT_OPTS", None)
+    environment.pop("FZF_DEFAULT_OPTS_FILE", None)
+    result = subprocess.run([
+        fzf, "--delimiter=\t", "--with-nth=2..", "--no-multi", "--no-sort",
+        "--height=80%", "--border", "--prompt=Codex session> ",
+        "--header=Updated | Title | Directory (all accounts)", "--query=" + args.query,
+    ], input="\n".join(rows) + "\n", stdout=subprocess.PIPE, text=True, env=environment)
+    if result.returncode in (1, 130):
+        return
+    if result.returncode:
+        raise ResumeError(f"fzf failed with exit status {result.returncode}")
+    selected = result.stdout.rstrip("\n").split("\t", 1)[0]
+    if selected not in sessions:
+        raise ResumeError("fzf returned an unknown session ID")
+    command = [codex, "resume", selected, "--cd=" + sessions[selected]["cwd"]]
+    if args.profile is not None:
+        command.append("--profile=" + args.profile)
+    if args.dry_run:
+        print(shlex.join(command))
+    else:
+        os.execv(codex, command)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        sys.exit(130)
+    except (ResumeError, OSError, ValueError, KeyError, TypeError) as error:
+        sys.exit(f"codex-resume: {error}")
