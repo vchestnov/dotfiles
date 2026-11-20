@@ -166,6 +166,11 @@ from top to bottom, then the entire left column from top to bottom, and wraps
 back to master. Alt+J follows the reverse order. Floating windows follow the tiled
 columns. Other layouts retain their existing Alt+J / Alt+K bindings.
 
+Alt+Ctrl+Return focuses the existing first master on the current monitor without
+changing the window arrangement. It works in tiled layouts with at least one
+master and respects fullscreen focus locking. Alt+Return promotes the focused
+window into the master area.
+
 Alt+Ctrl+Left / Alt+Ctrl+Right send the focused side window to the left / right
 column. Each transfer retains the master and the other windows' column
 assignments, allowing unequal side counts. These commands act on tiled side
