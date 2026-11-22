@@ -26,20 +26,6 @@ augroup dotfiles_monochrome
 augroup END
 
 set t_Co=256
-colorscheme molokai
-
-" Default highlight overrides for the base dark theme.
-" https://jonasjacek.github.io/colors/
-hi Comment ctermfg=244
-hi Visual  ctermbg=240
-hi Search  ctermfg=54  ctermbg=208
-hi Normal  ctermbg=none
-hi Function ctermfg=156
-
-hi DiffAdd    ctermfg=none ctermbg=22
-hi DiffChange ctermfg=none ctermbg=236
-hi DiffDelete ctermfg=250  ctermbg=52
-hi DiffText   ctermfg=231  ctermbg=54
 
 function! SwitchColorscheme(scheme)
   execute 'colorscheme' a:scheme
@@ -63,6 +49,18 @@ function! SwitchColorscheme(scheme)
 endfunction
 
 command! -nargs=1 Colorcall :call SwitchColorscheme(<q-args>)
+
+let s:host = tolower(hostname())
+" Oxford-specific regexp but ok whatevar
+let s:is_oxford = s:host =~# '\.maths\.ox\.ac\.uk$'
+
+let s:default_scheme = s:is_oxford ? 'monochrome' : 'molokai'
+let g:dotfiles_default_scheme = get(g:, 'dotfiles_default_scheme', s:default_scheme)
+
+let g:greyscale_auto_sync = get(g:, 'greyscale_auto_sync',
+    \ !s:is_oxford && empty($SSH_CONNECTION) && empty($SSH_TTY))
+
+execute 'Colorcall ' . g:dotfiles_default_scheme
 
 " Greyscale mode:
 " - uses monochrome with the gutter and fold adjustments above
