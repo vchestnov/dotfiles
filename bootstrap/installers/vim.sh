@@ -4,7 +4,7 @@ set -Eeuo pipefail
 install_vim() {
     log_section "VIM INSTALLATION"
 
-    # Build Vim from source with terminal and xclip support
+    # Python tools run as separate processes; avoid a host-specific libpython ABI.
     log_info "Building Vim from source..."
     clone_or_update "https://github.com/vim/vim.git" "$SRC_DIR/vim"
 
@@ -15,7 +15,8 @@ install_vim() {
         --with-features=huge \
         --enable-multibyte \
         --enable-rubyinterp=yes \
-        --enable-python3interp=yes \
+        --disable-pythoninterp \
+        --disable-python3interp \
         --enable-perlinterp=yes \
         --enable-luainterp=yes \
         --enable-gui=no \
@@ -32,5 +33,5 @@ install_vim() {
     : "${XDG_CACHE_HOME:=$HOME/.cache}";
     mkdir -p "$XDG_CACHE_HOME/vim/"{swap,undo,backup}
 
-log_success "Vim installed with terminal and xclip support"
+    log_success "Vim installed with terminal and clipboard support, without embedded Python"
 }

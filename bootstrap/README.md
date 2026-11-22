@@ -94,6 +94,18 @@ user-local `go` toolchain component. The `tlrc` component installs the command
 integration, follow its [upstream setup instructions](https://github.com/ajeetdsouza/zoxide#installation)
 in the repository-managed shell configuration.
 
+## Vim
+
+Vim is built without embedded Python (`-python`, `-python3`), so its executable
+does not depend on a particular `libpython` version. The configured plugins use
+Vimscript and external tools. Python language servers, TeX inverse search, and
+the custom `:MathematicaCleanup` formatter run Python as a separate process;
+they do not require Vim's Python interface. The formatter uses only Python's
+standard library and works with Python 3.12.
+
+Rebuild an existing installation with `./bootstrap.sh nothing --only vim`.
+Check the result with `vim --version` and `ldd ~/.local/bin/vim`.
+
 ## pySecDec
 
 Install with `./bootstrap.sh server --only pysecdec`. This optional component
@@ -264,6 +276,7 @@ bash tests/bootstrap_cli.sh
 bash tests/amflow_installer.sh
 bash tests/codex_profile.sh
 bash tests/suckless_workflow.sh
+bash tests/vim_mma_cleanup.sh
 ./bootstrap.sh desktop --dry-run
 ./bootstrap.sh server --dry-run
 git diff --check
