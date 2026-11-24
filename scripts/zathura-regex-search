@@ -226,12 +226,8 @@ if __name__ == '__main__':
     try:
         main()
     except (OSError, ValueError, GLib.Error, subprocess.SubprocessError) as error:
-        message = 'Zathura regexp search: ' + str(error)
-        print(message, file=sys.stderr)
-        # A shortcut launched by Zathura has no interactive terminal for errors.
-        explicit_pattern = any(arg == '--pattern' or arg.startswith('--pattern=')
-                               for arg in sys.argv[1:])
-        if not explicit_pattern and shutil.which('zenity'):
-            subprocess.run(['zenity', '--error', '--title=Zathura regexp search',
-                            '--text=' + message], check=False)
+        # Viewer shortcuts inherit the launching terminal; keep them silent.
+        # Explicit command-line searches retain diagnostics for troubleshooting.
+        if any(arg == '--pattern' or arg.startswith('--pattern=') for arg in sys.argv[1:]):
+            print('Zathura regexp search: ' + str(error), file=sys.stderr)
         sys.exit(1)

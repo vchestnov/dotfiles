@@ -47,7 +47,10 @@ such as `^`, have no visible text to highlight.
 The helper is [scripts/zathura-regex-search](../../scripts/zathura-regex-search),
 with [the Vim matcher](../../scripts/lib/zathura-regex.vim). It requires system
 Python with PyGObject and Poppler (`python3-gi`, `gir1.2-poppler-0.18` on Ubuntu),
-Vim, dmenu and a session D-Bus. Zenity displays search errors when available.
+Vim, dmenu and a session D-Bus. Searches from the viewer shortcuts are silent,
+including failures: no dialogs or terminal messages. Direct command-line searches
+using `--pattern` retain error diagnostics on stderr. Failed searches preserve
+the current view and the last successful search.
 Patterns are passed to Vim as JSON data. No expression is evaluated as shell or
 Ex commands. Per-window results live in `$XDG_RUNTIME_DIR/zathura-regex`, falling
 back to `$XDG_CACHE_HOME/zathura-regex` or `~/.cache/zathura-regex`. A PDF rebuild
