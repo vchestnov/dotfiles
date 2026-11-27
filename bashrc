@@ -166,15 +166,12 @@ fi
 if [[ "$host" = amps ]]; then
     export FERMATPATH="$HOME/scratch/software/fermat/ferl6/fer64"
     source "/media/scratch/software/OpenXM/rc/dot.bashrc"
-
-    [ -f ~/.fzf.bash ] && source ~/.fzf.bash
 fi
 
 if [[ "$host" = mac ]]; then
     # export FERMATPATH="$HOME/soft/ferl6/fer64"
     # source "$HOME/soft/OpenXM/rc/dot.bashrc"
 
-    [ -f ~/.fzf.bash ] && source ~/.fzf.bash
     . "$CARGO_HOME/env"
 
     if type rg &> /dev/null; then
@@ -184,7 +181,6 @@ if [[ "$host" = mac ]]; then
 fi
 
 if [[ "$host" = thinkpad ]]; then
-    [ -f "$XDG_CONFIG_HOME/fzf.bash" ] && . "$XDG_CONFIG_HOME/fzf.bash"
     [ -f "$CARGO_HOME/env" ] && . "$CARGO_HOME/env"
 
     if type rg &> /dev/null; then
@@ -202,9 +198,7 @@ if [[ "$host" = thinkpad ]]; then
 fi
 
 case "$host" in
-    fire-chief-ash.maths.ox.ac.uk|\
-    pc-copper.maths.ox.ac.uk)
-    [ -f "$XDG_CONFIG_HOME/fzf.bash" ] && . "$XDG_CONFIG_HOME/fzf.bash"
+    *.maths.ox.ac.uk)
     [ -f "$CARGO_HOME/env" ] && . "$CARGO_HOME/env"
 
     if type rg &> /dev/null; then
@@ -240,6 +234,13 @@ fi
 export FZF_DEFAULT_COMMAND='fd --type f --hidden --follow --exclude .git'
 export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_COMMAND"
 export FZF_ALT_C_COMMAND='fd --type d --hidden --follow --exclude .git'
+
+# Load key bindings and completion on every host with fzf configured.
+if [[ -r "$XDG_CONFIG_HOME/fzf.bash" ]]; then
+    source "$XDG_CONFIG_HOME/fzf.bash"
+elif [[ -r "$HOME/.fzf.bash" ]]; then
+    source "$HOME/.fzf.bash"
+fi
 
 # fzf functions
 fv() {
