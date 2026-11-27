@@ -1,5 +1,49 @@
 # SSH X11 Forwarding Renewal Notes
 
+## Vim Clipboard After Reconnecting to tmux
+
+Reattaching tmux copies the new SSH client's `DISPLAY` and `XAUTHORITY` into
+tmux's session environment. Existing shells and Vim processes keep their original
+environment. A surviving Vim can therefore report:
+
+```text
+X clipboard copy failed; check DISPLAY and SSH forwarding
+```
+
+The remote clipboard provider in `vim/config/clipboard.vim` now retries a failed
+copy or paste once using tmux's current `DISPLAY` and `XAUTHORITY`. A working
+clipboard does not query tmux or change displays. If recovery fails, Vim restores
+its previous environment and reports the underlying `xsel` error. No X11
+connection is made during Vim startup.
+
+For an already-open Vim, load the updated provider without restarting:
+
+```vim
+:unlet! g:dotfiles_clipboard_config_loaded
+:source ~/.vim/config/clipboard.vim
+```
+
+Then repeat the copy or paste. The SSH connection that provides the new display
+must remain open. Reconnect with X11 forwarding and reattach tmux normally;
+`tmux attach -E` suppresses the environment update.
+
+To check the connection from a **new tmux pane** without changing the clipboard:
+
+```bash
+printf 'DISPLAY=%s\nXAUTHORITY=%s\n' "$DISPLAY" "${XAUTHORITY-}"
+tmux show-environment DISPLAY
+tmux show-environment XAUTHORITY
+timeout 5 xdpyinfo >/dev/null
+```
+
+If this succeeds but Vim still fails, compare Vim's environment with tmux using
+`:echo $DISPLAY` and `:echo $XAUTHORITY`. If the new pane also fails, the problem
+is in the forwarding connection or X11 authentication; copying tmux's values
+cannot repair that connection.
+
+References: [tmux session environment](https://man.openbsd.org/tmux#GLOBAL_AND_SESSION_ENVIRONMENT)
+and [OpenSSH X11 forwarding](https://man.openbsd.org/ssh#X11_FORWARDING).
+
 ## Current Setup
 
 - Laptop connects to `fire-chief-ash` with `ssh -XAY`.
@@ -53,36 +97,14 @@ Practical takeaway:
 - Keep one dedicated `tmux` window/pane as an X11 anchor session to the compute node.
 - Do not close it while other compute-node shells are borrowing its `DISPLAY`.
 
-## Likely Future Direction
+## Remaining Shell and Second-Hop Limitations
 
-Automate the refresh of `DISPLAY` across `tmux` windows/sessions on the compute node, similar in spirit to the existing `RefreshSSHAuthSock` helper for `SSH_AUTH_SOCK`.
+Vim's recovery updates only that Vim process. Existing shells retain their own
+environment. New tmux panes receive the updated environment automatically.
 
-Possible requirements for such a helper:
-
-- detect or accept a working `DISPLAY` value from a live donor session
-- update the current shell environment
-- optionally print copy-pasteable `export DISPLAY=...` commands
-- possibly integrate with `tmux` panes/windows
-- avoid disturbing unrelated SSH sessions
-
-## Prompt For Future Implementation
-
-```text
-Please help me automate X11 forwarding recovery for my SSH/tmux workflow.
-
-My setup:
-- laptop -> ssh -XAY -> fire-chief-ash
-- inside tmux on fire-chief-ash -> ssh -XAY -> compute node
-- sometimes the second-hop X forwarding on the compute node breaks
-- I can recover it manually by opening a new tmux window on fire-chief-ash, ssh -XAY to the same compute node, reading the new DISPLAY value there, and exporting that DISPLAY in the old compute-node shell
-- this only works while the donor SSH session stays open
-
-I want a helper script or shell function that makes this easier.
-
-Please propose and implement a pragmatic solution that:
-- works well with tmux
-- makes the donor-session dependency explicit
-- minimizes manual copy/paste
-- is safe for repeated use
-- fits into my dotfiles setup
-```
+An SSH client already running inside an old pane also retains its original X11
+forwarding state. When a second-hop connection depends on an expired first-hop
+display, open a new pane and establish a fresh second-hop connection as described
+above. Updating Vim on the first machine cannot repair an existing SSH client on
+another machine. Automatic donor-session discovery and shell refresh remain
+future work.
